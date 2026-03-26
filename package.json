@@ -1,0 +1,48 @@
+{
+  "name": "archiyou-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "dev": "vite",
+    "dev:workspace": "APP=workspace vite",
+    "dev:viewer": "APP=viewer vite --port 5174",
+    "build": "tsc && vite build",
+    "build:workspace": "tsc && APP=workspace vite build",
+    "build:viewer": "tsc && APP=viewer vite build",
+    "preview": "vite preview",
+    "localize:extract": "lit-localize extract",
+    "localize:build": "lit-localize build",
+    "build:meshup": "cd libsdev/meshup && pnpm install && pnpm build",
+    "watch:meshup": "cd libsdev/meshup && pnpm build -- --watch",
+    "dev:full": "concurrently \"pnpm watch:meshup\" \"pnpm dev\""
+  },
+  "dependencies": {
+    "@awesome.me/webawesome": "^3.4.0",
+    "@codemirror/autocomplete": "^6.20.1",
+    "@codemirror/basic-setup": "^0.20.0",
+    "@codemirror/lang-javascript": "^6.2.2",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/theme-one-dark": "^6.1.3",
+    "@codemirror/view": "^6.35.0",
+    "@lit-labs/signals": "^0.2.0",
+    "@lit/localize": "^0.12.2",
+    "@vaadin/router": "^1.7.5",
+    "codemirror": "^6.0.1",
+    "comlink": "^4.4.2",
+    "lit": "^3.2.0",
+    "meshup": "workspace:*",
+    "oidc-client-ts": "^3.1.0",
+    "three": "^0.171.0"
+  },
+  "devDependencies": {
+    "@lit/localize-tools": "^0.7.2",
+    "@types/node": "^25.5.0",
+    "@types/three": "^0.171.0",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  }
+}

@@ -1,0 +1,6 @@
+packages:
+  - 'libsdev/*'
+
+allowBuilds:
+  '@vaadin/vaadin-usage-statistics': false
+  esbuild: false

@@ -9,9 +9,9 @@ All web frontend applications of Archiyou. This includes the apps:
 
 ```bash
 # clone from repo with submodules
-git --recursive clone https://gitlab.com/mvdnet/archiyou-web.git
+git clone --recursive  https://gitlab.com/mvdnet/archiyou-web.git
 # install dependencies with pnpm 
-pnpm
+pnpm install
 # start dev server
 pnpm dev
 

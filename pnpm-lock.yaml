@@ -52,7 +52,7 @@ importers:
         version: 3.3.2
       meshup:
         specifier: workspace:*
-        version: link:libsdev/meshup
+        version: link:devlibs/meshup
       oidc-client-ts:
         specifier: ^3.1.0
         version: 3.5.0
@@ -79,7 +79,7 @@ importers:
         specifier: ^6.1.0
         version: 6.4.1(@types/node@25.5.0)
 
-  libsdev/meshup:
+  devlibs/meshup:
     devDependencies:
       '@types/node':
         specifier: ^25.0.2

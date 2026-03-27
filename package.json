@@ -14,8 +14,8 @@
     "preview": "vite preview",
     "localize:extract": "lit-localize extract",
     "localize:build": "lit-localize build",
-    "build:meshup": "cd libsdev/meshup && pnpm install && pnpm build",
-    "watch:meshup": "cd libsdev/meshup && pnpm build -- --watch",
+    "build:meshup": "cd devlibs/meshup && pnpm install && pnpm build",
+    "watch:meshup": "cd devlibs/meshup && pnpm build -- --watch",
     "dev:full": "concurrently \"pnpm watch:meshup\" \"pnpm dev\""
   },
   "dependencies": {

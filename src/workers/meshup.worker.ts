@@ -23,7 +23,7 @@ import {
   Point,
   Vector,
   Vertex,
-} from '../../libsdev/meshup/dist';
+} from '../../devlibs/meshup/src/index.js';
 
 /** Scope object passed to user code — each key becomes a local variable. */
 const scope: Record<string, unknown> = {

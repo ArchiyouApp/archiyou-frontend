@@ -1,5 +1,5 @@
 packages:
-  - 'libsdev/*'
+  - 'devlibs/*'
 
 allowBuilds:
   '@vaadin/vaadin-usage-statistics': false

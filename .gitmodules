@@ -1,3 +1,3 @@
-[submodule "libsdev/meshup"]
-	path = libsdev/meshup
-	url = /media/mvdnet/DATA/projects/archiyou/dev/meshup
+[submodule "devlibs/meshup"]
+	path = devlibs/meshup
+	url = https://github.com/ArchiyouApp/meshup.git

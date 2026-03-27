@@ -7,7 +7,79 @@ import { applyDarkTheme, removeDarkTheme, isDarkTheme } from '../styles/dark-the
 
 
 @customElement('nav-bar')
-export class NavBar extends LitElement {
+export class NavBar extends LitElement
+{
+  // ── 1. Render ──
+  override render()
+  {
+    return html`
+      <span class="brand" @click=${() => Router.go('/editor')}>
+          <img src="img/ay_logo_white.png" alt="Archiyou">
+      </span>
+
+      <div class="spacer"></div>
+
+      ${this._userName
+        ? html`
+            <span class="user">${this._userName}</span>
+            <wa-button size="small" @click=${this._logout}>
+              ${msg('Sign out')}
+            </wa-button>
+          `
+        : html`
+            <wa-button size="small" variant="brand" @click=${this._login}>
+              ${msg('Sign in')}
+            </wa-button>
+          `}
+
+      <wa-button appearance="plain" @click=${this._toggleTheme}>
+        <wa-icon
+          name=${this._dark ? 'sun' : 'moon'}
+          label=${this._dark ? msg('Light mode') : msg('Dark mode')}
+        ></wa-icon>
+      </wa-button>
+    `;
+  }
+
+  // ── 2. State ──
+  @state() private _userName = '';
+  @state() private _dark = false;
+
+  // ── 3. Lifecycle ──
+  override async connectedCallback()
+  {
+    super.connectedCallback();
+    this._dark = isDarkTheme();
+    const user = await authService.getUser();
+    this._userName = user?.profile.name ?? user?.profile.email ?? '';
+  }
+
+  // ── 4. Behaviour & Methods ──
+  private _toggleTheme()
+  {
+    if (isDarkTheme())
+    {
+      removeDarkTheme();
+      this._dark = false;
+    }
+    else
+    {
+      applyDarkTheme();
+      this._dark = true;
+    }
+  }
+
+  private _login()
+  {
+    Router.go('/login');
+  }
+
+  private async _logout()
+  {
+    await authService.logout();
+  }
+
+  // ── 5. Styles ──
   static override styles = css`
     :host {
       display: flex;
@@ -41,68 +113,12 @@ export class NavBar extends LitElement {
       color: var(--color-text-muted);
     }
   `;
-
-  @state() private _userName = '';
-  @state() private _dark = false;
-
-  override async connectedCallback() {
-    super.connectedCallback();
-    this._dark = isDarkTheme();
-    const user = await authService.getUser();
-    this._userName = user?.profile.name ?? user?.profile.email ?? '';
-  }
-
-  private _toggleTheme() {
-    if (isDarkTheme()) {
-      removeDarkTheme();
-      this._dark = false;
-    } else {
-      applyDarkTheme();
-      this._dark = true;
-    }
-  }
-
-  private _login() {
-    Router.go('/login');
-  }
-
-  private async _logout() {
-    await authService.logout();
-  }
-
-  override render() {
-    return html`
-      <span class="brand" @click=${() => Router.go('/editor')}>
-          <img src="img/ay_logo_white.png" alt="Archiyou">
-      </span>
-
-      <div class="spacer"></div>
-
-      ${this._userName
-        ? html`
-            <span class="user">${this._userName}</span>
-            <wa-button size="small" @click=${this._logout}>
-              ${msg('Sign out')}
-            </wa-button>
-          `
-        : html`
-            <wa-button size="small" variant="brand" @click=${this._login}>
-              ${msg('Sign in')}
-            </wa-button>
-          `}
-
-      <wa-button appearance="plain" @click=${this._toggleTheme}>
-        <wa-icon
-          name=${this._dark ? 'sun' : 'moon'}
-          label=${this._dark ? msg('Light mode') : msg('Dark mode')}
-        ></wa-icon>
-      </wa-button>
-    `;
-  }
 }
 
-declare global {
-  interface HTMLElementTagNameMap {
+declare global
+{
+  interface HTMLElementTagNameMap
+  {
     'nav-bar': NavBar;
   }
 }

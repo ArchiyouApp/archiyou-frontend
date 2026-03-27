@@ -4,7 +4,44 @@ import { msg } from '@lit/localize';
 import { authService } from '../services/auth-service.js';
 
 @customElement('page-login')
-export class PageLogin extends LitElement {
+export class PageLogin extends LitElement
+{
+  // ── 1. Render ──
+  override render()
+  {
+    return html`
+      <div class="card">
+        <h1>Archiyou</h1>
+        <p>${msg('Sign in to continue')}</p>
+        <wa-button
+          variant="brand"
+          ?loading=${this._loading}
+          @click=${this._handleLogin}
+        >
+          ${msg('Sign in')}
+        </wa-button>
+      </div>
+    `;
+  }
+
+  // ── 2. State ──
+  @state() private _loading = false;
+
+  // ── 4. Behaviour & Methods ──
+  private async _handleLogin()
+  {
+    this._loading = true;
+    try
+    {
+      await authService.login();
+    }
+    catch
+    {
+      this._loading = false;
+    }
+  }
+
+  // ── 5. Styles ──
   static override styles = css`
     :host {
       display: flex;
@@ -35,37 +72,12 @@ export class PageLogin extends LitElement {
       margin: 0 0 var(--space-6);
     }
   `;
-
-  @state() private _loading = false;
-
-  private async _handleLogin() {
-    this._loading = true;
-    try {
-      await authService.login();
-    } catch {
-      this._loading = false;
-    }
-  }
-
-  override render() {
-    return html`
-      <div class="card">
-        <h1>Archiyou</h1>
-        <p>${msg('Sign in to continue')}</p>
-        <wa-button
-          variant="brand"
-          ?loading=${this._loading}
-          @click=${this._handleLogin}
-        >
-          ${msg('Sign in')}
-        </wa-button>
-      </div>
-    `;
-  }
 }
 
-declare global {
-  interface HTMLElementTagNameMap {
+declare global
+{
+  interface HTMLElementTagNameMap
+  {
     'page-login': PageLogin;
   }
 }

@@ -12,43 +12,21 @@ import { executionResult } from '../state/workspace.js';
  * <model-viewer> — Three.js GLTF viewer with IBL, spotlight shadows, and AgX tone mapping.
  */
 @customElement('model-viewer')
-export class ModelViewer extends SignalWatcher(LitElement) {
-  static override styles = css`
-    :host {
-      display: block;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
-    canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
-  `;
-
-  /** URL of a GLTF / GLB model to load. */
-  @property() src = '';
-
-  private _renderer!: THREE.WebGLRenderer;
-  private _scene!: THREE.Scene;
-  private _camera!: THREE.PerspectiveCamera;
-  private _controls!: OrbitControls;
-  private _spotlight!: THREE.SpotLight;
-  private _gltfLoader!: GLTFLoader;
-  private _resizeObserver?: ResizeObserver;
-  private _frameId = 0;
-  private _mixer?: THREE.AnimationMixer;
-  private _clock = new THREE.Clock();
-  private _dirty = true;
-  private _currentModel?: THREE.Object3D;
-  private _lastGltf?: string;
-
-  override render() {
+export class ModelViewer extends SignalWatcher(LitElement)
+{
+  // ── 1. Render ──
+  override render()
+  {
     return html`<canvas></canvas>`;
   }
 
-  override firstUpdated() {
+  // ── 2. Properties ──
+  /** URL of a GLTF / GLB model to load. */
+  @property() src = '';
+
+  // ── 3. Lifecycle ──
+  override firstUpdated()
+  {
     const canvas = this.renderRoot.querySelector('canvas')!;
     this._initRenderer(canvas);
     this._initScene();
@@ -64,21 +42,25 @@ export class ModelViewer extends SignalWatcher(LitElement) {
     if (this.src) this._loadSrc(this.src);
   }
 
-  override updated(changed: Map<string, unknown>) {
-    if (changed.has('src') && this.src && this._renderer) {
+  override updated(changed: Map<string, unknown>)
+  {
+    if (changed.has('src') && this.src && this._renderer)
+    {
       this._loadSrc(this.src);
     }
 
     // React to signal changes: load new GLTF whenever executionResult updates
     const result = executionResult.get();
     const gltf = result?.gltf;
-    if (gltf && gltf !== this._lastGltf && this._renderer) {
+    if (gltf && gltf !== this._lastGltf && this._renderer)
+    {
       this._lastGltf = gltf;
       this.loadGLTFString(gltf);
     }
   }
 
-  override disconnectedCallback() {
+  override disconnectedCallback()
+  {
     super.disconnectedCallback();
     cancelAnimationFrame(this._frameId);
     this._resizeObserver?.disconnect();
@@ -86,11 +68,23 @@ export class ModelViewer extends SignalWatcher(LitElement) {
     this._renderer?.dispose();
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Setup                                                              */
-  /* ------------------------------------------------------------------ */
+  // ── 4. Behaviour & Methods ──
+  private _renderer!: THREE.WebGLRenderer;
+  private _scene!: THREE.Scene;
+  private _camera!: THREE.PerspectiveCamera;
+  private _controls!: OrbitControls;
+  private _spotlight!: THREE.SpotLight;
+  private _gltfLoader!: GLTFLoader;
+  private _resizeObserver?: ResizeObserver;
+  private _frameId = 0;
+  private _mixer?: THREE.AnimationMixer;
+  private _clock = new THREE.Clock();
+  private _dirty = true;
+  private _currentModel?: THREE.Object3D;
+  private _lastGltf?: string;
 
-  private _initRenderer(canvas: HTMLCanvasElement) {
+  private _initRenderer(canvas: HTMLCanvasElement)
+  {
     const r = new THREE.WebGLRenderer({
       canvas,
       antialias: true,
@@ -105,7 +99,8 @@ export class ModelViewer extends SignalWatcher(LitElement) {
     this._renderer = r;
   }
 
-  private _initScene() {
+  private _initScene()
+  {
     this._scene = new THREE.Scene();
     this._scene.background = new THREE.Color(0xf1f5f9);
 
@@ -120,7 +115,8 @@ export class ModelViewer extends SignalWatcher(LitElement) {
     this._camera.position.set(3, 2, 3);
   }
 
-  private _initLights() {
+  private _initLights()
+  {
     // Soft fill that supplements IBL
     this._scene.add(new THREE.AmbientLight(0xffffff, 0.3));
 
@@ -141,7 +137,8 @@ export class ModelViewer extends SignalWatcher(LitElement) {
     this._spotlight = spot;
   }
 
-  private _initGround() {
+  private _initGround()
+  {
     const mesh = new THREE.Mesh(
       new THREE.PlaneGeometry(20, 20),
       new THREE.ShadowMaterial({ opacity: 0.15 }),
@@ -151,7 +148,8 @@ export class ModelViewer extends SignalWatcher(LitElement) {
     this._scene.add(mesh);
   }
 
-  private _initControls(canvas: HTMLCanvasElement) {
+  private _initControls(canvas: HTMLCanvasElement)
+  {
     const c = new OrbitControls(this._camera, canvas);
     c.enableDamping = true;
     c.dampingFactor = 0.08;
@@ -163,7 +161,8 @@ export class ModelViewer extends SignalWatcher(LitElement) {
     this._controls = c;
   }
 
-  private _initLoaders() {
+  private _initLoaders()
+  {
     const draco = new DRACOLoader();
     draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
     this._gltfLoader = new GLTFLoader();
@@ -175,29 +174,35 @@ export class ModelViewer extends SignalWatcher(LitElement) {
   /* ------------------------------------------------------------------ */
 
   /** Load a GLTF / GLB model from a URL. */
-  async loadModel(url: string) {
+  async loadModel(url: string)
+  {
     this._disposeModel();
     const gltf = await this._gltfLoader.loadAsync(url);
     this._applyGLTF(gltf);
   }
 
   /** Parse and display a raw GLTF JSON string or GLB ArrayBuffer. */
-  async loadGLTFString(data: string | ArrayBuffer) {
+  async loadGLTFString(data: string | ArrayBuffer)
+  {
     this._disposeModel();
     const gltf = await new Promise<import('three/examples/jsm/loaders/GLTFLoader.js').GLTF>(
-      (resolve, reject) => {
+      (resolve, reject) =>
+      {
         this._gltfLoader.parse(data, '', resolve, reject);
       },
     );
     this._applyGLTF(gltf);
   }
 
-  private _applyGLTF(gltf: import('three/examples/jsm/loaders/GLTFLoader.js').GLTF) {
+  private _applyGLTF(gltf: import('three/examples/jsm/loaders/GLTFLoader.js').GLTF)
+  {
     const model = gltf.scene;
 
     // Enable shadow casting / receiving on every mesh
-    model.traverse((n) => {
-      if ((n as THREE.Mesh).isMesh) {
+    model.traverse((n) =>
+    {
+      if ((n as THREE.Mesh).isMesh)
+      {
         n.castShadow = true;
         n.receiveShadow = true;
       }
@@ -225,9 +230,10 @@ export class ModelViewer extends SignalWatcher(LitElement) {
     this._frameCamera(model);
 
     // Play animations if present
-    if (gltf.animations.length) {
+    if (gltf.animations.length)
+    {
       this._mixer = new THREE.AnimationMixer(model);
-      for (const clip of gltf.animations) this._mixer.clipAction(clip).play();
+      gltf.animations.forEach(clip => this._mixer!.clipAction(clip).play());
     }
 
     this._dirty = true;
@@ -238,21 +244,28 @@ export class ModelViewer extends SignalWatcher(LitElement) {
   /* ------------------------------------------------------------------ */
 
   /** Detect whether src is a URL or raw GLTF/GLB data and load accordingly. */
-  private _loadSrc(src: string) {
+  private _loadSrc(src: string)
+  {
     const trimmed = src.trimStart();
     // Heuristic: raw GLTF JSON starts with '{', everything else is treated as a URL
-    if (trimmed.startsWith('{')) {
+    if (trimmed.startsWith('{'))
+    {
       this.loadGLTFString(src);
-    } else {
+    }
+    else
+    {
       this.loadModel(src);
     }
   }
 
-  private _disposeModel() {
+  private _disposeModel()
+  {
     if (!this._currentModel) return;
     this._scene.remove(this._currentModel);
-    this._currentModel.traverse((n) => {
-      if ((n as THREE.Mesh).isMesh) {
+    this._currentModel.traverse((n) =>
+    {
+      if ((n as THREE.Mesh).isMesh)
+      {
         const m = n as THREE.Mesh;
         m.geometry.dispose();
         const mats = Array.isArray(m.material) ? m.material : [m.material];
@@ -263,7 +276,8 @@ export class ModelViewer extends SignalWatcher(LitElement) {
     this._mixer = undefined;
   }
 
-  private _frameCamera(obj: THREE.Object3D) {
+  private _frameCamera(obj: THREE.Object3D)
+  {
     const box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
@@ -282,7 +296,8 @@ export class ModelViewer extends SignalWatcher(LitElement) {
     this._controls.update();
   }
 
-  private _resize() {
+  private _resize()
+  {
     const w = this.clientWidth;
     const h = this.clientHeight;
     if (!w || !h) return;
@@ -292,26 +307,46 @@ export class ModelViewer extends SignalWatcher(LitElement) {
     this._dirty = true;
   }
 
-  private _loop = () => {
+  private _loop = () =>
+  {
     this._frameId = requestAnimationFrame(this._loop);
     const dt = this._clock.getDelta();
 
-    if (this._mixer) {
+    if (this._mixer)
+    {
       this._mixer.update(dt);
       this._dirty = true;
     }
 
     if (this._controls.update()) this._dirty = true;
 
-    if (this._dirty) {
+    if (this._dirty)
+    {
       this._renderer.render(this._scene, this._camera);
       this._dirty = false;
     }
   };
+
+  // ── 5. Styles ──
+  static override styles = css`
+    :host {
+      display: block;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  `;
 }
 
-declare global {
-  interface HTMLElementTagNameMap {
+declare global
+{
+  interface HTMLElementTagNameMap
+  {
     'model-viewer': ModelViewer;
   }
 }

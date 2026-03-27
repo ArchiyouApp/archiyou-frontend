@@ -15,7 +15,27 @@ import { applySystemTheme } from '../../styles/dark-theme.js';
 import { setLocale, detectLocale } from '../../i18n/locale-config.js';
 
 @customElement('app-shell')
-export class AppShell extends LitElement {
+export class AppShell extends LitElement
+{
+  // ── 1. Render ──
+  override render()
+  {
+    return html`<main id="outlet"></main>`;
+  }
+
+  // ── 3. Lifecycle ──
+  override firstUpdated()
+  {
+    applySystemTheme();
+
+    // Initialise locale (best-effort — locale modules may not exist until lit-localize build)
+    setLocale(detectLocale()).catch(() => {/* source locale, no module needed */});
+
+    const outlet = this.renderRoot.querySelector<HTMLElement>('#outlet')!;
+    initRouter(outlet);
+  }
+
+  // ── 5. Styles ──
   static override styles = css`
     :host {
       display: flex;
@@ -33,24 +53,12 @@ export class AppShell extends LitElement {
       flex-direction: column;
     }
   `;
-
-  override render() {
-    return html`<main id="outlet"></main>`;
-  }
-
-  override firstUpdated() {
-    applySystemTheme();
-
-    // Initialise locale (best-effort — locale modules may not exist until lit-localize build)
-    setLocale(detectLocale()).catch(() => {/* source locale, no module needed */});
-
-    const outlet = this.renderRoot.querySelector<HTMLElement>('#outlet')!;
-    initRouter(outlet);
-  }
 }
 
-declare global {
-  interface HTMLElementTagNameMap {
+declare global
+{
+  interface HTMLElementTagNameMap
+  {
     'app-shell': AppShell;
   }
 }

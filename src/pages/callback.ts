@@ -5,7 +5,31 @@ import { msg } from '@lit/localize';
 import { authService } from '../services/auth-service.js';
 
 @customElement('page-callback')
-export class PageCallback extends LitElement {
+export class PageCallback extends LitElement
+{
+  // ── 1. Render ──
+  override render()
+  {
+    return html`<wa-spinner></wa-spinner><span>${msg('Signing in…')}</span>`;
+  }
+
+  // ── 3. Lifecycle ──
+  override async connectedCallback()
+  {
+    super.connectedCallback();
+    try
+    {
+      await authService.callback();
+      Router.go('/');
+    }
+    catch (err)
+    {
+      console.error('OAuth callback failed', err);
+      Router.go('/login');
+    }
+  }
+
+  // ── 5. Styles ──
   static override styles = css`
     :host {
       display: flex;
@@ -16,25 +40,12 @@ export class PageCallback extends LitElement {
       color: var(--color-text);
     }
   `;
-
-  override async connectedCallback() {
-    super.connectedCallback();
-    try {
-      await authService.callback();
-      Router.go('/');
-    } catch (err) {
-      console.error('OAuth callback failed', err);
-      Router.go('/login');
-    }
-  }
-
-  override render() {
-    return html`<wa-spinner></wa-spinner><span>${msg('Signing in…')}</span>`;
-  }
 }
 
-declare global {
-  interface HTMLElementTagNameMap {
+declare global
+{
+  interface HTMLElementTagNameMap
+  {
     'page-callback': PageCallback;
   }
 }

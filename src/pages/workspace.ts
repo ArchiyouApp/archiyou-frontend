@@ -6,7 +6,45 @@ import { msg } from '@lit/localize';
 import { workspace, createScript } from '../state/workspace.js';
 
 @customElement('page-workspace')
-export class PageWorkspace extends SignalWatcher(LitElement) {
+export class PageWorkspace extends SignalWatcher(LitElement)
+{
+  // ── 1. Render ──
+  override render()
+  {
+    const { scripts } = workspace.get();
+
+    return html`
+      <header>
+        <h2>${msg('Workspace')}</h2>
+        <wa-button variant="brand" @click=${this._newScript}>
+          ${msg('New Script')}
+        </wa-button>
+      </header>
+
+      ${scripts.length === 0
+        ? html`<p class="empty">${msg('No scripts yet. Create your first one!')}</p>`
+        : html`
+          <div class="script-grid">
+            ${scripts.map(s => html`
+              <div class="script-card" @click=${() => Router.go(`/editor/${s.id}`)}>
+                <strong>${s.name}</strong>
+                <p>${new Date(s.updatedAt).toLocaleDateString()}</p>
+              </div>
+            `)}
+          </div>
+        `
+      }
+    `;
+  }
+
+  // ── 4. Behaviour & Methods ──
+  private _newScript()
+  {
+    const script = createScript();
+    Router.go(`/editor/${script.id}`);
+  }
+
+  // ── 5. Styles ──
   static override styles = css`
     :host {
       display: block;
@@ -51,42 +89,12 @@ export class PageWorkspace extends SignalWatcher(LitElement) {
       text-align: center;
     }
   `;
-
-  private _newScript() {
-    const script = createScript();
-    Router.go(`/editor/${script.id}`);
-  }
-
-  override render() {
-    const { scripts } = workspace.get();
-
-    return html`
-      <header>
-        <h2>${msg('Workspace')}</h2>
-        <wa-button variant="brand" @click=${this._newScript}>
-          ${msg('New Script')}
-        </wa-button>
-      </header>
-
-      ${scripts.length === 0
-        ? html`<p class="empty">${msg('No scripts yet. Create your first one!')}</p>`
-        : html`
-          <div class="script-grid">
-            ${scripts.map(s => html`
-              <div class="script-card" @click=${() => Router.go(`/editor/${s.id}`)}>
-                <strong>${s.name}</strong>
-                <p>${new Date(s.updatedAt).toLocaleDateString()}</p>
-              </div>
-            `)}
-          </div>
-        `
-      }
-    `;
-  }
 }
 
-declare global {
-  interface HTMLElementTagNameMap {
+declare global
+{
+  interface HTMLElementTagNameMap
+  {
     'page-workspace': PageWorkspace;
   }
 }

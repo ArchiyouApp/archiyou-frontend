@@ -4,7 +4,21 @@ import { applySystemTheme } from '../../styles/dark-theme.js';
 import '../../components/viewer-3d.js';
 
 @customElement('viewer-shell')
-export class ViewerShell extends LitElement {
+export class ViewerShell extends LitElement
+{
+  // ── 1. Render ──
+  override render()
+  {
+    return html`<viewer-3d></viewer-3d>`;
+  }
+
+  // ── 3. Lifecycle ──
+  override firstUpdated()
+  {
+    applySystemTheme();
+  }
+
+  // ── 5. Styles ──
   static override styles = css`
     :host {
       display: block;
@@ -18,18 +32,12 @@ export class ViewerShell extends LitElement {
       height: 100%;
     }
   `;
-
-  override firstUpdated() {
-    applySystemTheme();
-  }
-
-  override render() {
-    return html`<viewer-3d></viewer-3d>`;
-  }
 }
 
-declare global {
-  interface HTMLElementTagNameMap {
+declare global
+{
+  interface HTMLElementTagNameMap
+  {
     'viewer-shell': ViewerShell;
   }
 }

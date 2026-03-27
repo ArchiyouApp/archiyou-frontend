@@ -10,7 +10,20 @@ import { customElement } from 'lit/decorators.js';
 import '../components/nav-bar.js';
 
 @customElement('layout-main')
-export class LayoutMain extends LitElement {
+export class LayoutMain extends LitElement
+{
+  // ── 1. Render ──
+  override render()
+  {
+    return html`
+      <nav-bar></nav-bar>
+      <div class="content">
+        <slot></slot>
+      </div>
+    `;
+  }
+
+  // ── 5. Styles ──
   static override styles = css`
     :host {
       display: flex;
@@ -30,19 +43,12 @@ export class LayoutMain extends LitElement {
       flex-direction: column;
     }
   `;
-
-  override render() {
-    return html`
-      <nav-bar></nav-bar>
-      <div class="content">
-        <slot></slot>
-      </div>
-    `;
-  }
 }
 
-declare global {
-  interface HTMLElementTagNameMap {
+declare global
+{
+  interface HTMLElementTagNameMap
+  {
     'layout-main': LayoutMain;
   }
 }

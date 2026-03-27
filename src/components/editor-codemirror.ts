@@ -31,7 +31,148 @@ const themeCompartment = new Compartment();
 
 
 @customElement('code-editor')
-export class CodeEditor extends LitElement {
+export class CodeEditor extends LitElement
+{
+  // ── 1. Render ──
+  override render()
+  {
+    return html`
+      <div class="wrapper">
+        <div class="title-bar">
+          <wa-icon name="code"></wa-icon>Code Editor
+          <span class="spacer"></span>
+          <button class="execute-button" @click=${this._handleRunClick} title="Run (Ctrl+Enter)">
+            <wa-icon name="play" variant="solid" label="Execute"></wa-icon>
+          </button>
+        </div>
+        <div class="cm-container"></div>
+      </div>
+    `;
+  }
+
+  // ── 2. Properties ──
+  @property({ type: String }) value = '';
+
+  // ── 3. Lifecycle ──
+  override firstUpdated()
+  {
+    const container = this.renderRoot.querySelector<HTMLElement>('.cm-container')!;
+
+    this._view = new EditorView({
+      state: EditorState.create({
+        doc: this.value,
+        extensions: [
+          basicSetup,
+          javascript({ typescript: true }),
+          autocompletion({ override: [meshupCompletions] }),
+          keymap.of([
+            {
+              key: 'Ctrl-Enter',
+              mac: 'Cmd-Enter',
+              run: () => { this._fireExecute(); return true; },
+            },
+          ]),
+          themeCompartment.of(this._currentTheme()),
+          EditorView.updateListener.of(update =>
+          {
+            if (update.docChanged)
+            {
+              this._skipNextUpdate = true;
+              this.dispatchEvent(new CustomEvent<string>('change', {
+                detail: update.state.doc.toString(),
+                bubbles: true,
+                composed: true,
+              }));
+            }
+          }),
+        ],
+      }),
+      parent: container,
+    });
+
+    // Switch theme when prefers-color-scheme changes
+    this._darkMQ.addEventListener('change', this._onColorSchemeChange);
+
+    // Switch theme when data-theme attribute changes on <html>
+    this._themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+  }
+
+  override updated(changed: Map<string, unknown>)
+  {
+    if (changed.has('value') && this._view && !this._skipNextUpdate)
+    {
+      const current = this._view.state.doc.toString();
+      if (current !== this.value)
+      {
+        this._view.dispatch({
+          changes: { from: 0, to: current.length, insert: this.value },
+        });
+      }
+    }
+    this._skipNextUpdate = false;
+  }
+
+  override disconnectedCallback()
+  {
+    super.disconnectedCallback();
+    this._darkMQ.removeEventListener('change', this._onColorSchemeChange);
+    this._themeObserver.disconnect();
+    this._view?.destroy();
+    this._view = null;
+  }
+
+  // ── 4. Behaviour & Methods ──
+  private _view: EditorView | null = null;
+  private _skipNextUpdate = false;
+  private _darkMQ = window.matchMedia('(prefers-color-scheme: dark)');
+
+  private _currentTheme()
+  {
+    const isDark = document.documentElement.dataset['theme'] === 'dark' || this._darkMQ.matches;
+    return isDark ? oneDark : lightTheme;
+  }
+
+  /** Get the current editor text. */
+  getCode(): string
+  {
+    return this._view?.state.doc.toString() ?? this.value;
+  }
+
+  private _fireExecute()
+  {
+    this.dispatchEvent(new CustomEvent<string>('execute', {
+      detail: this.getCode(),
+      bubbles: true,
+      composed: true,
+    }));
+  }
+
+  private _onColorSchemeChange = () =>
+  {
+    this._swapTheme();
+  };
+
+  private _themeObserver = new MutationObserver(() =>
+  {
+    this._swapTheme();
+  });
+
+  private _swapTheme()
+  {
+    this._view?.dispatch({
+      effects: themeCompartment.reconfigure(this._currentTheme()),
+    });
+  }
+
+  private _handleRunClick()
+  {
+    this._fireExecute();
+  }
+
+  // ── 5. Styles ──
   static override styles = css`
     :host {
       display: flex;
@@ -94,130 +235,12 @@ export class CodeEditor extends LitElement {
     }
 
   `;
-
-  @property({ type: String }) value = '';
-
-  private _view: EditorView | null = null;
-  private _skipNextUpdate = false;
-  private _darkMQ = window.matchMedia('(prefers-color-scheme: dark)');
-
-  private _currentTheme() {
-    const isDark = document.documentElement.dataset['theme'] === 'dark' || this._darkMQ.matches;
-    return isDark ? oneDark : lightTheme;
-  }
-
-  /** Get the current editor text. */
-  getCode(): string {
-    return this._view?.state.doc.toString() ?? this.value;
-  }
-
-  private _fireExecute() {
-    this.dispatchEvent(new CustomEvent<string>('execute', {
-      detail: this.getCode(),
-      bubbles: true,
-      composed: true,
-    }));
-  }
-
-  override firstUpdated() {
-    const container = this.renderRoot.querySelector<HTMLElement>('.cm-container')!;
-
-    this._view = new EditorView({
-      state: EditorState.create({
-        doc: this.value,
-        extensions: [
-          basicSetup,
-          javascript({ typescript: true }),
-          autocompletion({ override: [meshupCompletions] }),
-          keymap.of([
-            {
-              key: 'Ctrl-Enter',
-              mac: 'Cmd-Enter',
-              run: () => { this._fireExecute(); return true; },
-            },
-          ]),
-          themeCompartment.of(this._currentTheme()),
-          EditorView.updateListener.of(update => {
-            if (update.docChanged) {
-              this._skipNextUpdate = true;
-              this.dispatchEvent(new CustomEvent<string>('change', {
-                detail: update.state.doc.toString(),
-                bubbles: true,
-                composed: true,
-              }));
-            }
-          }),
-        ],
-      }),
-      parent: container,
-    });
-
-    // Switch theme when prefers-color-scheme changes
-    this._darkMQ.addEventListener('change', this._onColorSchemeChange);
-
-    // Switch theme when data-theme attribute changes on <html>
-    this._themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme'],
-    });
-  }
-
-  private _onColorSchemeChange = () => {
-    this._swapTheme();
-  };
-
-  private _themeObserver = new MutationObserver(() => {
-    this._swapTheme();
-  });
-
-  private _swapTheme() {
-    this._view?.dispatch({
-      effects: themeCompartment.reconfigure(this._currentTheme()),
-    });
-  }
-
-  override updated(changed: Map<string, unknown>) {
-    if (changed.has('value') && this._view && !this._skipNextUpdate) {
-      const current = this._view.state.doc.toString();
-      if (current !== this.value) {
-        this._view.dispatch({
-          changes: { from: 0, to: current.length, insert: this.value },
-        });
-      }
-    }
-    this._skipNextUpdate = false;
-  }
-
-  override disconnectedCallback() {
-    super.disconnectedCallback();
-    this._darkMQ.removeEventListener('change', this._onColorSchemeChange);
-    this._themeObserver.disconnect();
-    this._view?.destroy();
-    this._view = null;
-  }
-
-  private _handleRunClick() {
-    this._fireExecute();
-  }
-
-  override render() {
-    return html`
-      <div class="wrapper">
-        <div class="title-bar">
-          <wa-icon name="code"></wa-icon>Code Editor
-          <span class="spacer"></span>
-          <button class="execute-button" @click=${this._handleRunClick} title="Run (Ctrl+Enter)">
-            <wa-icon name="play" variant="solid" label="Execute"></wa-icon>
-          </button>
-        </div>
-        <div class="cm-container"></div>
-      </div>
-    `;
-  }
 }
 
-declare global {
-  interface HTMLElementTagNameMap {
+declare global
+{
+  interface HTMLElementTagNameMap
+  {
     'code-editor': CodeEditor;
   }
 }

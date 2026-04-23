@@ -52,6 +52,7 @@ export const tokens = {
   lineHeightBase: '1.5',
 
   // --- Text sizing (Tailwind-inspired, rem) ---
+  textXXs:   '0.5rem',    // 8px
   textXs:   '0.75rem',    // 12px
   textSm:   '0.875rem',   // 14px
   textBase: '1rem',       // 16px
@@ -63,12 +64,12 @@ export const tokens = {
   text5xl:  '3rem',       // 48px
 
   // --- Spacing scale (8-pt) ---
-  space1: '4px',
-  space2: '8px',
-  space3: '12px',
-  space4: '16px',
-  space6: '24px',
-  space8: '32px',
+  spaceXs: '4px',
+  spaceSm: '8px',
+  spaceMd: '12px',
+  spaceLg: '16px',
+  spaceXl: '24px',
+  space2xl: '32px', 
 
   // --- Radius ---
   radiusSm: '4px',

@@ -6,91 +6,84 @@
  */
 
 import { signal, computed } from '@lit-labs/signals';
-import type { ExecuteResult } from '../workers/meshup.worker.js';
 
-// ---- Types ----
+import { Script } from '../../devlibs/archiyou-core-next/src/execution/Script';
+import type { RunnerScriptExecutionResult } from '../../devlibs/archiyou-core-next/src/runner/types';
 
-export interface Script {
-  id: string;
-  name: string;
-  code: string;
-  updatedAt: string;
+//// LOAD SETTINGS ////
+import { EDITOR_START_SCRIPT } from '../settings';
+
+//// STATE ////
+
+export interface UserState
+{
+  anonymous: boolean;
+  name: string | null;
+  // TODO: more + typing
 }
 
-export interface WorkspaceModel {
-  scripts: Script[];
-  selectedScriptId: string | null;
+export interface EditorState
+{
+  executing: boolean;            // whether a script is currently executing
+  script: Script | null;         // current script
+  scriptVersions: [];            // TODO: for future versioning support
+  result: RunnerScriptExecutionResult | null;
 }
 
-// ---- State ----
+export interface WorkspaceState
+{
+  user: UserState;
+  editor: EditorState;
+}
 
-export const workspace = signal<WorkspaceModel>({
-  scripts: [],
-  selectedScriptId: null,
+//// SIGNALS ////
+
+export const userState = signal<UserState>({
+  anonymous: true,
+  name: null,
 });
 
-/** The result of the most recent script execution, or null if not yet run. */
-export const executionResult = signal<ExecuteResult | null>(null);
-
-// ---- Computed ----
-
-export const selectedScript = computed(() => {
-  const ws = workspace.get();
-  return ws.scripts.find(s => s.id === ws.selectedScriptId) ?? null;
+export const editorState = signal<EditorState>({
+  executing: false,
+  script: new Script('anonymous', 'Untitled', EDITOR_START_SCRIPT), // start with empty script for now
+  scriptVersions: [],
+  result: null,
 });
 
-export const scriptCount = computed(() => workspace.get().scripts.length);
+/** Combined view — use when you need the full workspace shape. */
+export const workspace = computed<WorkspaceState>(() => ({
+  user: userState.get(),
+  editor: editorState.get(),
+}));
 
-// ---- Mutations ----
-
-function generateId(): string {
-  return crypto.randomUUID();
-}
+//// MUTATIONS ////
 
 /** Add a new empty script and select it. Returns the new script. */
-export function createScript(name = 'Untitled'): Script {
-  const script: Script = {
-    id: generateId(),
-    name,
-    code: '',
-    updatedAt: new Date().toISOString(),
-  };
-  workspace.set({
-    ...workspace.get(),
-    scripts: [...workspace.get().scripts, script],
-    selectedScriptId: script.id,
-  });
+export function createScript(name: string = 'Untitled'): Script
+{
+  const script = new Script(undefined, name);
+  editorState.set({ ...editorState.get(), script });
   return script;
 }
 
-/** Select an existing script by id. */
-export function selectScript(id: string): void {
-  workspace.set({ ...workspace.get(), selectedScriptId: id });
-}
-
-/** Update the code of an existing script. */
-export function updateScriptCode(id: string, code: string): void {
-  workspace.set({
-    ...workspace.get(),
-    scripts: workspace.get().scripts.map(s =>
-      s.id === id ? { ...s, code, updatedAt: new Date().toISOString() } : s,
-    ),
-  });
-}
-
-/** Delete a script by id. */
-export function deleteScript(id: string): void {
-  const ws = workspace.get();
-  const scripts = ws.scripts.filter(s => s.id !== id);
-  const selectedScriptId = ws.selectedScriptId === id
-    ? (scripts[0]?.id ?? null)
-    : ws.selectedScriptId;
-  workspace.set({ scripts, selectedScriptId });
+/** Update the code of the current script. */
+export function updateScriptCode(code: string): void
+{
+  const script = editorState.get().script;
+  if (!script) return;
+  script.code = code;
+  script.updated = new Date();
+  editorState.set({ ...editorState.get() }); // shallow copy triggers reactivity
 }
 
 /** Store the result of the latest execution. */
-export function setExecutionResult(result: ExecuteResult): void 
+export function setExecutionResult(result: RunnerScriptExecutionResult): void
 {
-  console.log(JSON.stringify(result));
-  executionResult.set(result);
+  console.log('**** WORKSPACE: New execution result:', result);
+  editorState.set({ ...editorState.get(), result });
+}
+
+export function setExecuting(executing: boolean): void
+{
+  editorState.set({ ...editorState.get(), executing });
 }

@@ -19,19 +19,22 @@ import '@awesome.me/webawesome/dist/components/button/button.js';
 
 // CodeMirror imports
 import { EditorView, basicSetup } from 'codemirror';
-import { EditorState, Compartment } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
+import { EditorState, Compartment } from '@codemirror/state';
 import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { autocompletion } from '@codemirror/autocomplete';
-import { meshupCompletions } from './editor-completions.js';
+import { archiyouCompletions } from './completions.js';
+
+import { SignalWatcher } from '@lit-labs/signals';
+import { workspace } from '../../state/workspace.js';
 
 const lightTheme = EditorView.theme({}, { dark: false });
 const themeCompartment = new Compartment();
 
 
-@customElement('code-editor')
-export class CodeEditor extends LitElement
+@customElement('editor-code-box')
+export class CodeBox extends SignalWatcher(LitElement)
 {
   // ── 1. Render ──
   override render()
@@ -40,9 +43,18 @@ export class CodeEditor extends LitElement
       <div class="wrapper">
         <div class="title-bar">
           <wa-icon name="code"></wa-icon>Code Editor
+          <span class="state">
+            ${(workspace.get().editor.executing) 
+                ? html`<wa-icon name="cog" animation="spin-reverse" label="executing"></wa-icon>`
+                : (workspace.get().editor.result)
+                    ? html`<wa-icon name="circle-check" label="success"></wa-icon>`
+                    : ''
+            }
+          </span>
           <span class="spacer"></span>
-          <button class="execute-button" @click=${this._handleRunClick} title="Run (Ctrl+Enter)">
-            <wa-icon name="play" variant="solid" label="Execute"></wa-icon>
+          <button class="execute-button" 
+              @click=${this._handleRunClick} title="Run (Ctrl+Enter)">
+              <wa-icon name="play" variant="solid" label="Execute"></wa-icon>
           </button>
         </div>
         <div class="cm-container"></div>
@@ -51,7 +63,7 @@ export class CodeEditor extends LitElement
   }
 
   // ── 2. Properties ──
-  @property({ type: String }) value = '';
+  @property({ type: String }) code = '';
 
   // ── 3. Lifecycle ──
   override firstUpdated()
@@ -60,11 +72,11 @@ export class CodeEditor extends LitElement
 
     this._view = new EditorView({
       state: EditorState.create({
-        doc: this.value,
+        doc: this.code,
         extensions: [
           basicSetup,
           javascript({ typescript: true }),
-          autocompletion({ override: [meshupCompletions] }),
+          autocompletion({ override: [archiyouCompletions] }),
           keymap.of([
             {
               key: 'Ctrl-Enter',
@@ -102,13 +114,13 @@ export class CodeEditor extends LitElement
 
   override updated(changed: Map<string, unknown>)
   {
-    if (changed.has('value') && this._view && !this._skipNextUpdate)
+    if (changed.has('code') && this._view && !this._skipNextUpdate)
     {
       const current = this._view.state.doc.toString();
-      if (current !== this.value)
+      if (current !== this.code)
       {
         this._view.dispatch({
-          changes: { from: 0, to: current.length, insert: this.value },
+          changes: { from: 0, to: current.length, insert: this.code },
         });
       }
     }
@@ -138,7 +150,7 @@ export class CodeEditor extends LitElement
   /** Get the current editor text. */
   getCode(): string
   {
-    return this._view?.state.doc.toString() ?? this.value;
+    return this._view?.state.doc.toString() ?? this.code;
   }
 
   private _fireExecute()
@@ -178,7 +190,8 @@ export class CodeEditor extends LitElement
       display: flex;
       position: relative;
       flex-direction: column;
-      height: 100%;
+      flex: 1;
+      min-height: 0;
     }
 
     .wrapper {
@@ -186,6 +199,7 @@ export class CodeEditor extends LitElement
       flex-direction: column;
       padding: 2rem;
       flex: 1;
+      min-height: 0;
     }
 
     .title-bar {
@@ -223,10 +237,10 @@ export class CodeEditor extends LitElement
     }
 
     .cm-container {
-      /* flex: 1; */
+      flex: 1;
+      min-height: 0;
       border-radius: var(--radius-lg);
       border: 1px solid var(--color-border);
-      height: 100%;
     }
 
     /* Override CodeMirror to fill available height */
@@ -241,6 +255,6 @@ declare global
 {
   interface HTMLElementTagNameMap
   {
-    'code-editor': CodeEditor;
+    'editor-code-box': CodeBox;
   }
 }

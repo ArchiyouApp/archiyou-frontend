@@ -1,12 +1,14 @@
 import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { executionResult } from '../state/workspace.js';
+import { workspace } from '../../state/workspace.js';
+import type { ScriptOutputData } from '../../../devlibs/archiyou-core-next/src/execution/types.js';
+import { applyEdgeExtensions } from './gltf-edge-extensions.js';
 
 /**
  * <model-viewer> — Three.js GLTF viewer with IBL, spotlight shadows, and AgX tone mapping.
@@ -17,12 +19,11 @@ export class ModelViewer extends SignalWatcher(LitElement)
   // ── 1. Render ──
   override render()
   {
+    // Read signal here so SignalWatcher tracks it and re-renders when workspace changes
+    this._pendingGlbOutput = workspace.get().editor.result?.outputs
+      ?.find(o => o.path.requestedPath === 'default/model/glb');
     return html`<canvas></canvas>`;
   }
-
-  // ── 2. Properties ──
-  /** URL of a GLTF / GLB model to load. */
-  @property() src = '';
 
   // ── 3. Lifecycle ──
   override firstUpdated()
@@ -38,24 +39,16 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     this._resizeObserver = new ResizeObserver(() => this._resize());
     this._resizeObserver.observe(this);
-
-    if (this.src) this._loadSrc(this.src);
   }
 
-  override updated(changed: Map<string, unknown>)
+  override updated(_changed: Map<string, unknown>)
   {
-    if (changed.has('src') && this.src && this._renderer)
+    const glbOutput = this._pendingGlbOutput;
+    console.log('==== GLB Output changed:', glbOutput);
+    if (glbOutput && glbOutput !== this._lastGlbOutput && this._renderer)
     {
-      this._loadSrc(this.src);
-    }
-
-    // React to signal changes: load new GLTF whenever executionResult updates
-    const result = executionResult.get();
-    const gltf = result?.gltf;
-    if (gltf && gltf !== this._lastGltf && this._renderer)
-    {
-      this._lastGltf = gltf;
-      this.loadGLTFString(gltf);
+      this._lastGlbOutput = glbOutput;
+      this._loadGlbOutput(glbOutput);
     }
   }
 
@@ -81,7 +74,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _clock = new THREE.Clock();
   private _dirty = true;
   private _currentModel?: THREE.Object3D;
-  private _lastGltf?: string;
+  private _lastGlbOutput?: ScriptOutputData;
+  private _pendingGlbOutput?: ScriptOutputData;
 
   private _initRenderer(canvas: HTMLCanvasElement)
   {
@@ -170,19 +164,10 @@ export class ModelViewer extends SignalWatcher(LitElement)
   }
 
   /* ------------------------------------------------------------------ */
-  /*  Public API                                                         */
+  /*  Internals                                                          */
   /* ------------------------------------------------------------------ */
 
-  /** Load a GLTF / GLB model from a URL. */
-  async loadModel(url: string)
-  {
-    this._disposeModel();
-    const gltf = await this._gltfLoader.loadAsync(url);
-    this._applyGLTF(gltf);
-  }
-
-  /** Parse and display a raw GLTF JSON string or GLB ArrayBuffer. */
-  async loadGLTFString(data: string | ArrayBuffer)
+  private async _loadGLTFString(data: string | ArrayBuffer)
   {
     this._disposeModel();
     const gltf = await new Promise<import('three/examples/jsm/loaders/GLTFLoader.js').GLTF>(
@@ -194,7 +179,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._applyGLTF(gltf);
   }
 
-  private _applyGLTF(gltf: import('three/examples/jsm/loaders/GLTFLoader.js').GLTF)
+  private async _applyGLTF(gltf: import('three/examples/jsm/loaders/GLTFLoader.js').GLTF)
   {
     const model = gltf.scene;
 
@@ -236,6 +221,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
       gltf.animations.forEach(clip => this._mixer!.clipAction(clip).play());
     }
 
+    // Render CAD hard edges from custom GLTF extensions
+    await applyEdgeExtensions(gltf, model);
+
     this._dirty = true;
   }
 
@@ -243,18 +231,41 @@ export class ModelViewer extends SignalWatcher(LitElement)
   /*  Internals                                                          */
   /* ------------------------------------------------------------------ */
 
-  /** Detect whether src is a URL or raw GLTF/GLB data and load accordingly. */
-  private _loadSrc(src: string)
+  private _loadGlbOutput(entry: ScriptOutputData)
   {
-    const trimmed = src.trimStart();
-    // Heuristic: raw GLTF JSON starts with '{', everything else is treated as a URL
-    if (trimmed.startsWith('{'))
+    const raw = entry.output;
+
+    if (raw instanceof Uint8Array)
     {
-      this.loadGLTFString(src);
+      this._loadGLTFString(raw.buffer as ArrayBuffer);
     }
-    else
+    else if (raw instanceof ArrayBuffer)
     {
-      this.loadModel(src);
+      console.log('HIERO');
+      this._loadGLTFString(raw);
+    }
+    else if (typeof raw === 'object' && raw !== null && 'data' in raw)
+    {
+      const wrapper = raw as { encoding?: string; data: ArrayBuffer | string };
+
+      if (wrapper.encoding === 'base64' && typeof wrapper.data === 'string')
+      {
+        const binary = atob(wrapper.data);
+        const buf = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) buf[i] = binary.charCodeAt(i);
+        this._loadGLTFString(buf.buffer);
+      }
+      else
+      {
+        this._loadGLTFString(wrapper.data as string | ArrayBuffer);
+      }
+    }
+    else if (typeof raw === 'string')
+    {
+      this._loadGLTFString(raw);
+    }
+    else {
+      console.error('Unsupported GLB output format:', raw);
     }
   }
 
@@ -264,11 +275,11 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._scene.remove(this._currentModel);
     this._currentModel.traverse((n) =>
     {
-      if ((n as THREE.Mesh).isMesh)
+      const obj = n as any;
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material)
       {
-        const m = n as THREE.Mesh;
-        m.geometry.dispose();
-        const mats = Array.isArray(m.material) ? m.material : [m.material];
+        const mats: THREE.Material[] = Array.isArray(obj.material) ? obj.material : [obj.material];
         mats.forEach((mat) => mat.dispose());
       }
     });
@@ -304,6 +315,16 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._camera.aspect = w / h;
     this._camera.updateProjectionMatrix();
     this._renderer.setSize(w, h, false);
+    // Keep pixel-accurate line width for LineMaterial edge overlays
+    this._currentModel?.traverse((n) =>
+    {
+      const mat = (n as any).material;
+      if (mat?.isLineMaterial)
+      {
+        (mat as import('three/examples/jsm/lines/LineMaterial.js').LineMaterial)
+          .resolution.set(w, h);
+      }
+    });
     this._dirty = true;
   }
 

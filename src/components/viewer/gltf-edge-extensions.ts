@@ -40,22 +40,39 @@ async function _attachEdgeLines(
     parser: GLTF['parser'],
 ): Promise<void>
 {
+    // Only render edges when an explicit stroke material was set by the user.
+    // Unstyled meshes (no strokeWidth / strokeDash) carry no material index
+    // and should not show any edge overlay.
+    if (ext.material === undefined) return;
+
     const indexAttr = mesh.geometry.index;
     if (!indexAttr) return;
 
-    const indices   = indexAttr.array as Uint32Array;
-    const positions = mesh.geometry.attributes.position.array as Float32Array;
+    const indices  = indexAttr.array;
+    // IMPORTANT: use getX/getY/getZ — not .array — because gltf-transform may write
+    // position + normal in a single interleaved buffer view (stride = 6).
+    // Three.js creates an InterleavedBufferAttribute in that case, and .array gives the
+    // full interleaved buffer, so positions[v*3] lands on the normal for odd v indices.
+    const posAttr  = mesh.geometry.attributes.position;
 
     // Fetch the 2-bit-per-edge visibility bitfield accessor
+    const accDef = (parser.json as any).accessors?.[ext.visibility];
     console.log(`_attachEdgeLines: mesh "${mesh.name}" ext=`, ext,
-        `indices=${indices.length} tris=${indices.length/3} positions=${positions.length/3}`);
-    // getDependency returns a THREE.BufferAttribute — extract the raw typed array
+        `indices=${indices.length} tris=${indices.length/3} vertices=${posAttr.count}`,
+        `visibilityAcc=`, accDef);
+    // getDependency returns a THREE.BufferAttribute — extract the raw typed array.
+    // The accessor is SCALAR UNSIGNED_BYTE (componentType 5121), so .array should be Uint8Array.
+    // If Three.js returns a different type (e.g. normalized Float32), re-interpret raw bytes.
     const visAttr = await parser.getDependency('accessor', ext.visibility) as THREE.BufferAttribute;
-    const visData = visAttr.array as Uint8Array;
-    console.log(`_attachEdgeLines: visAttr=`, visAttr, `visData bytes=${visData.length} sample=[${Array.from(visData.slice(0,8)).map(b => b.toString(2).padStart(8,'0')).join(' ')}]`);
+    const rawArr = visAttr.array;
+    const visData: Uint8Array = rawArr instanceof Uint8Array
+        ? rawArr
+        : new Uint8Array(rawArr.buffer, rawArr.byteOffset, (accDef?.count ?? rawArr.length));
+    console.log(`_attachEdgeLines: visData type=${rawArr.constructor.name} bytes=${visData.length} ALL=[${Array.from(visData).map(b => b.toString(2).padStart(8,'0')).join(' ')}]`);
 
     const lineVerts: number[] = [];
     const triCount = indices.length / 3;
+    let hardSlots = 0, smoothSlots = 0;
 
     for (let tri = 0; tri < triCount; tri++)
     {
@@ -65,16 +82,18 @@ async function _attachEdgeLines(
             const byteIdx = Math.floor(edgeIdx * 2 / 8);
             const bitOff  = (edgeIdx * 2) % 8;
             const val = (visData[byteIdx] >> bitOff) & 0x3;
-            if (val !== 2) continue; // only hard/crease edges
+            if (val !== 2) { smoothSlots++; continue; } // only hard/crease edges
+            hardSlots++;
 
             const a = indices[tri * 3 + slot];
             const b = indices[tri * 3 + (slot + 1) % 3];
             lineVerts.push(
-                positions[a * 3],     positions[a * 3 + 1], positions[a * 3 + 2],
-                positions[b * 3],     positions[b * 3 + 1], positions[b * 3 + 2],
+                posAttr.getX(a), posAttr.getY(a), posAttr.getZ(a),
+                posAttr.getX(b), posAttr.getY(b), posAttr.getZ(b),
             );
         }
     }
+    console.log(`_attachEdgeLines: slots hard=${hardSlots} smooth=${smoothSlots} total=${hardSlots+smoothSlots} (expected for cube: 24 hard, 12 smooth)`);
 
     // Deduplicate: each hard edge is referenced from both adjacent triangles,
     // keep only the first occurrence per unique vertex pair.
@@ -93,6 +112,12 @@ async function _attachEdgeLines(
     }
 
     console.log(`_attachEdgeLines: mesh "${mesh.name}" → ${lineVerts.length / 6} raw / ${dedupedVerts.length / 6} deduped hard edges`);
+    // Log all deduped edges so we can verify they are box corner-edges, not face diagonals
+    for (let i = 0; i < dedupedVerts.length; i += 6)
+    {
+        const r = (v: number) => v.toFixed(3);
+        console.log(`  edge ${i/6}: (${r(dedupedVerts[i])},${r(dedupedVerts[i+1])},${r(dedupedVerts[i+2])}) → (${r(dedupedVerts[i+3])},${r(dedupedVerts[i+4])},${r(dedupedVerts[i+5])})`);
+    }
     if (!dedupedVerts.length) return;
 
     // Push mesh faces slightly back so lines win the depth test (no z-fighting)

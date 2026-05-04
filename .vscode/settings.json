@@ -1,5 +1,8 @@
 {
     "chat.tools.terminal.autoApprove": {
-        "pnpm": true
+        "pnpm": true,
+        "git fsck": true,
+        "git add": true,
+        "git commit": true
     }
 }

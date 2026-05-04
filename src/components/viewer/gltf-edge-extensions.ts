@@ -131,13 +131,16 @@ async function _attachEdgeLines(
     {
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.Float32BufferAttribute(dedupedVerts, 3));
-        mesh.parent!.add(new THREE.LineSegments(geo, mat));
+        const lines = new THREE.LineSegments(geo, mat);
+        lines.userData.cannotReceiveAO = true;
+        mesh.parent!.add(lines);
         console.log(`_attachEdgeLines: added LineSegments to scene`);
     }
     else
     {
         const geo2 = new LineSegmentsGeometry().setPositions(dedupedVerts);
         const lines2 = new LineSegments2(geo2, mat as LineMaterial);
+        lines2.userData.cannotReceiveAO = true;
         mesh.parent!.add(lines2);
         console.log(`_attachEdgeLines: added LineSegments2 to scene`);
     }

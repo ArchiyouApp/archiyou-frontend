@@ -224,6 +224,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // Render CAD hard edges from custom GLTF extensions
     await applyEdgeExtensions(gltf, model);
 
+    // Ensure LineMaterial resolution is set for pixel-accurate line width
+    this._resize();
     this._dirty = true;
   }
 
@@ -241,7 +243,6 @@ export class ModelViewer extends SignalWatcher(LitElement)
     }
     else if (raw instanceof ArrayBuffer)
     {
-      console.log('HIERO');
       this._loadGLTFString(raw);
     }
     else if (typeof raw === 'object' && raw !== null && 'data' in raw)

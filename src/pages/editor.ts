@@ -11,6 +11,7 @@ import type { Remote } from 'comlink';
 import '../components/editor/sidemenu.js';
 import '../components/editor/codebox.js';
 import '../components/editor/console.js';
+import '../components/editor/scene-explorer.js';
 import '../components/viewer/model-viewer.js';
 
 import { workspace, updateScriptCode, setExecutionResult, setExecuting } from '../state/workspace';
@@ -35,7 +36,7 @@ export class PageEditor extends SignalWatcher(LitElement)
         >
         <wa-icon class="split-grip"
             slot="divider" variant="solid" name="grip-lines-vertical"></wa-icon>
-        <wa-split-panel class="left-split" slot="start" orientation="vertical" position="75">
+        <wa-split-panel class="left-split" slot="start" orientation="vertical" position="70">
           <wa-icon class="split-grip-h"
               slot="divider" variant="solid" name="grip-lines"></wa-icon>
           <editor-code-box
@@ -44,7 +45,10 @@ export class PageEditor extends SignalWatcher(LitElement)
             @change=${this._handleCodeChange}
             @execute=${this._handleExecute}
           ></editor-code-box>
-          <editor-console slot="end"></editor-console>
+          <div class="bottom-panel" slot="end">
+            <editor-console></editor-console>
+            <scene-explorer></scene-explorer>
+          </div>
         </wa-split-panel>
         <model-viewer slot="end"></model-viewer>
       </wa-split-panel>
@@ -52,7 +56,8 @@ export class PageEditor extends SignalWatcher(LitElement)
   }
 
   // Properties
-  @property({ attribute: false }) location?: RouterLocation;  
+  @property({ attribute: false }) location?: RouterLocation;
+
 
   // Lifecycle
   override connectedCallback()
@@ -169,27 +174,19 @@ export class PageEditor extends SignalWatcher(LitElement)
       --divider-width: 12px;
     }
 
-    editor-side-menu {
-      flex-shrink: 0;
-    }
+    editor-side-menu { flex-shrink: 0; }
 
     .left-split {
       width: 100%;
       height: 100%;
     }
 
-    wa-split-panel::part(divider)
-    {
-      /* Apply frosted glass effect to divider */
+    wa-split-panel::part(divider) {
       background-color: rgb(0,0,0, 0.05);
-      backdrop-filter: blur(5px); /* var(--color-gray); */
+      backdrop-filter: blur(5px);
     }
 
-    wa-icon.split-grip {
-      color: var(--color-gray-dark);
-      opacity: 0.3;
-    }
-
+    wa-icon.split-grip,
     wa-icon.split-grip-h {
       color: var(--color-gray-dark);
       opacity: 0.3;
@@ -198,7 +195,29 @@ export class PageEditor extends SignalWatcher(LitElement)
     model-viewer {
       width: 100%;
       height: 100%;
-      margin-left: -12px; /** Hack to have blur split */
+      margin-left: -12px;
+    }
+
+    /* ── Bottom tab panel ── */
+
+    .bottom-panel {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    editor-console,
+    scene-explorer {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    editor-console[collapsed],
+    scene-explorer[collapsed] {
+      flex: 0 0 auto;
     }
   `;
 }

@@ -7,6 +7,26 @@
 
 import { signal, computed } from '@lit-labs/signals';
 
+// ── Scene tree ────────────────────────────────────────────────────────────────
+
+export interface SceneMaterialData
+{
+  color?: string;       // '#rrggbb'
+  opacity: number;
+  transparent: boolean;
+  wireframe?: boolean;
+}
+
+export interface SceneNodeData
+{
+  uuid: string;
+  name: string;
+  type: string;         // THREE object type string: 'Mesh', 'Group', 'LineSegments2', …
+  visible: boolean;
+  children: SceneNodeData[];
+  material?: SceneMaterialData;
+}
+
 import { Script } from '../../devlibs/archiyou-core-next/src/execution/Script';
 import type { RunnerScriptExecutionResult } from '../../devlibs/archiyou-core-next/src/runner/types';
 
@@ -37,6 +57,10 @@ export interface WorkspaceState
 }
 
 //// SIGNALS ////
+
+export const sceneTree = signal<SceneNodeData | null>(null);
+export const hiddenNodes = signal<ReadonlySet<string>>(new Set<string>());
+export const activeBottomPanel = signal<'console' | 'scene' | 'none'>('console');
 
 export const userState = signal<UserState>({
   anonymous: true,
@@ -86,4 +110,28 @@ export function setExecutionResult(result: RunnerScriptExecutionResult): void
 export function setExecuting(executing: boolean): void
 {
   editorState.set({ ...editorState.get(), executing });
+}
+
+export function setSceneTree(tree: SceneNodeData | null): void
+{
+  sceneTree.set(tree);
+}
+
+export function toggleNodeVisibility(uuid: string): void
+{
+  const next = new Set(hiddenNodes.get());
+  if (next.has(uuid)) next.delete(uuid);
+  else next.add(uuid);
+  hiddenNodes.set(next);
+}
+
+export function clearSceneState(): void
+{
+  sceneTree.set(null);
+  hiddenNodes.set(new Set<string>());
+}
+
+export function setActiveBottomPanel(panel: 'console' | 'scene' | 'none'): void
+{
+  activeBottomPanel.set(panel);
 }

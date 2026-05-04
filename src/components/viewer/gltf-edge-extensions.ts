@@ -127,12 +127,16 @@ async function _attachEdgeLines(
     const mat = _resolveLineMaterial(ext.material, parser);
     console.log(`_attachEdgeLines: material =`, mat.type, mat instanceof THREE.LineBasicMaterial ? '(LineBasicMaterial)' : '(LineMaterial)');
 
+    // Mark the source mesh so the scene explorer skips it (container node is shown instead)
+    mesh.userData.isEdgeSurface = true;
+
     if (mat instanceof THREE.LineBasicMaterial)
     {
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.Float32BufferAttribute(dedupedVerts, 3));
         const lines = new THREE.LineSegments(geo, mat);
         lines.userData.cannotReceiveAO = true;
+        lines.userData.isEdgeOverlay = true;
         mesh.parent!.add(lines);
         console.log(`_attachEdgeLines: added LineSegments to scene`);
     }
@@ -141,6 +145,7 @@ async function _attachEdgeLines(
         const geo2 = new LineSegmentsGeometry().setPositions(dedupedVerts);
         const lines2 = new LineSegments2(geo2, mat as LineMaterial);
         lines2.userData.cannotReceiveAO = true;
+        lines2.userData.isEdgeOverlay = true;
         mesh.parent!.add(lines2);
         console.log(`_attachEdgeLines: added LineSegments2 to scene`);
     }

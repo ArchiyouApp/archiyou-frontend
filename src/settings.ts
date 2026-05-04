@@ -5,7 +5,9 @@
 // Editor
 export const EDITOR_START_SCRIPT = `// Welcome to Archiyou!
 b = box(10,10,10).color('red');
-s = sphere(5).color('blue').move(15,0,0);
+s = sphere(5).color('blue').move(5,5,5);
+b.subtract(s);
+s.hide();
 c = circle(15).color('yellow');
 r = rect(20,20).color('green');
 `

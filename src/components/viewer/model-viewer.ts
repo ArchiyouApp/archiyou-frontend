@@ -1,14 +1,18 @@
 import { LitElement, html, css } from 'lit';
-import { customElement } from 'lit/decorators.js';
+import { customElement, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { workspace } from '../../state/workspace.js';
+import { workspace, hiddenNodes, setSceneTree, clearSceneState } from '../../state/workspace.js';
 import type { ScriptOutputData } from '../../../devlibs/archiyou-core-next/src/execution/types.js';
+import type { SceneNodeData, SceneMaterialData } from '../../state/workspace.js';
 import { applyEdgeExtensions } from './gltf-edge-extensions.js';
+import { VIEW_STYLES } from './view-styles.js';
+import type { ViewStyle, ViewStyleMaterialConfig } from './view-styles.js';
+import './viewer-menu.js';
 
 /**
  * <model-viewer> — Three.js GLTF viewer with IBL, spotlight shadows, and AgX tone mapping.
@@ -19,10 +23,27 @@ export class ModelViewer extends SignalWatcher(LitElement)
   // ── 1. Render ──
   override render()
   {
-    // Read signal here so SignalWatcher tracks it and re-renders when workspace changes
+    // Read signals so SignalWatcher tracks them and re-renders on change
     this._pendingGlbOutput = workspace.get().editor.result?.outputs
       ?.find(o => o.path.requestedPath === 'default/model/glb');
-    return html`<canvas></canvas>`;
+    this._pendingHiddenNodes = hiddenNodes.get();
+
+    return html`
+      <canvas></canvas>
+      <viewer-menu
+        .activeStyleId=${this._activeStyleId}
+        .arSupported=${this._arSupported}
+        .arActive=${this._arActive}
+        .isOrtho=${this._isOrtho}
+        @viewer-zoom-in=${this._zoomIn}
+        @viewer-zoom-out=${this._zoomOut}
+        @viewer-center=${this._centerCamera}
+        @viewer-set-style=${(e: Event) =>
+          this._applyViewStyle((e as CustomEvent<{ styleId: string }>).detail.styleId)}
+        @viewer-toggle-ar=${this._toggleAR}
+        @viewer-toggle-projection=${this._toggleProjection}
+      ></viewer-menu>
+    `;
   }
 
   // ── 3. Lifecycle ──
@@ -35,6 +56,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._initGround();
     this._initControls(canvas);
     this._initLoaders();
+    this._initAR();
     this._loop();
 
     this._resizeObserver = new ResizeObserver(() => this._resize());
@@ -50,6 +72,14 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._lastGlbOutput = glbOutput;
       this._loadGlbOutput(glbOutput);
     }
+
+    // Re-apply full view style when user toggles node visibility, so that
+    // style-level hiding and user-level hiding are composed correctly.
+    if (this._pendingHiddenNodes !== this._lastAppliedHiddenNodes && this._renderer)
+    {
+      this._lastAppliedHiddenNodes = this._pendingHiddenNodes;
+      this._applyViewStyle(this._activeStyleId);
+    }
   }
 
   override disconnectedCallback()
@@ -59,14 +89,30 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._resizeObserver?.disconnect();
     this._controls?.dispose();
     this._renderer?.dispose();
+    this._roomEnvTexture?.dispose();
   }
 
-  // ── 4. Behaviour & Methods ──
+  // ── 4. State ──
+
+  // Reactive state that updates viewer-menu props
+  @state() private _activeStyleId = 'realistic';
+  @state() private _arSupported = false;
+  @state() private _arActive = false;
+  @state() private _isOrtho = false;
+
+  // Three.js scene objects
   private _renderer!: THREE.WebGLRenderer;
   private _scene!: THREE.Scene;
   private _camera!: THREE.PerspectiveCamera;
+  private _orthoCamera?: THREE.OrthographicCamera;
   private _controls!: OrbitControls;
+  private _ambientLight!: THREE.AmbientLight;
   private _spotlight!: THREE.SpotLight;
+  private _hemiLight?: THREE.HemisphereLight;
+  private _gridHelper?: THREE.GridHelper;
+  private _roomEnvTexture?: THREE.Texture;
+
+  // Model / animation
   private _gltfLoader!: GLTFLoader;
   private _resizeObserver?: ResizeObserver;
   private _frameId = 0;
@@ -76,6 +122,23 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _currentModel?: THREE.Object3D;
   private _lastGlbOutput?: ScriptOutputData;
   private _pendingGlbOutput?: ScriptOutputData;
+  private _hasFramedCamera = false;
+
+  // View-style override tracking
+  private _savedMaterials = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+  private _savedLineColors = new Map<THREE.Object3D, { color: THREE.Color; opacity: number; transparent: boolean; linewidth?: number; dashed?: boolean; dashSize?: number; gapSize?: number }>();
+  private _overrideMaterials: THREE.Material[] = [];
+  private _hiddenObjects: THREE.Object3D[] = [];
+  private _userHiddenObjects: THREE.Object3D[] = [];
+
+  // AR
+  private _xrSession?: unknown;
+
+  // Node visibility (driven by hiddenNodes signal)
+  private _pendingHiddenNodes: ReadonlySet<string> = new Set();
+  private _lastAppliedHiddenNodes?: ReadonlySet<string>;
+
+  // ── 5. Initialisation helpers ──
 
   private _initRenderer(canvas: HTMLCanvasElement)
   {
@@ -83,6 +146,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
       canvas,
       antialias: true,
       powerPreference: 'high-performance',
+      logarithmicDepthBuffer: true,
     });
     r.setPixelRatio(Math.min(devicePixelRatio, 2));
     r.toneMapping = THREE.AgXToneMapping;
@@ -101,7 +165,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // Image-based lighting from a procedural studio-style room environment
     const pmrem = new THREE.PMREMGenerator(this._renderer);
     const envScene = new RoomEnvironment();
-    this._scene.environment = pmrem.fromScene(envScene, 0.04).texture;
+    this._roomEnvTexture = pmrem.fromScene(envScene, 0.04).texture;
+    this._scene.environment = this._roomEnvTexture;
     envScene.dispose();
     pmrem.dispose();
 
@@ -111,8 +176,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
   private _initLights()
   {
-    // Soft fill that supplements IBL
-    this._scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+    this._ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+    this._scene.add(this._ambientLight);
 
     // Key spotlight with VSM soft shadows
     const spot = new THREE.SpotLight(0xffffff, 5);
@@ -139,6 +204,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
     );
     mesh.rotation.x = -Math.PI / 2;
     mesh.receiveShadow = true;
+    mesh.userData.isViewerHelper = true;
     this._scene.add(mesh);
   }
 
@@ -163,9 +229,493 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._gltfLoader.setDRACOLoader(draco);
   }
 
-  /* ------------------------------------------------------------------ */
-  /*  Internals                                                          */
-  /* ------------------------------------------------------------------ */
+  private _initAR = async () =>
+  {
+    if ('xr' in navigator)
+    {
+      try
+      {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        this._arSupported = await (navigator as any).xr.isSessionSupported('immersive-ar');
+      }
+      catch
+      {
+        this._arSupported = false;
+      }
+    }
+  };
+
+  // ── 6. Navigation controls ──
+
+  private _zoomIn = () =>
+  {
+    const dir = this._camera.position.clone().sub(this._controls.target);
+    const dist = dir.length();
+    const newDist = Math.max(this._controls.minDistance, dist * 0.8);
+    this._camera.position.copy(
+      this._controls.target.clone().add(dir.normalize().multiplyScalar(newDist)),
+    );
+    this._controls.update();
+    this._dirty = true;
+  };
+
+  private _zoomOut = () =>
+  {
+    const dir = this._camera.position.clone().sub(this._controls.target);
+    const dist = dir.length();
+    const newDist = Math.min(this._controls.maxDistance, dist * 1.25);
+    this._camera.position.copy(
+      this._controls.target.clone().add(dir.normalize().multiplyScalar(newDist)),
+    );
+    this._controls.update();
+    this._dirty = true;
+  };
+
+  private _centerCamera = () =>
+  {
+    if (this._currentModel)
+    {
+      this._frameCamera(this._currentModel);
+    }
+    else
+    {
+      this._controls.target.set(0, 0.5, 0);
+      this._camera.position.set(3, 2, 3);
+      this._controls.update();
+      this._dirty = true;
+    }
+  };
+
+  // ── 7. AR mode ──
+
+  private _toggleAR = async () =>
+  {
+    if (!this._arSupported) return;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const xr = (navigator as any).xr;
+
+    if (this._arActive && this._xrSession)
+    {
+      await (this._xrSession as { end(): Promise<void> }).end();
+      return;
+    }
+
+    try
+    {
+      const session = await xr.requestSession('immersive-ar', {
+        requiredFeatures: ['hit-test'],
+        optionalFeatures: ['dom-overlay'],
+      });
+      this._xrSession = session;
+      this._renderer.xr.enabled = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await this._renderer.xr.setSession(session as any);
+      this._arActive = true;
+
+      // Switch from rAF to XR animation loop
+      cancelAnimationFrame(this._frameId);
+      this._renderer.setAnimationLoop(() =>
+      {
+        if (this._controls.update()) this._dirty = true;
+        this._renderer.render(this._scene, this._isOrtho ? this._orthoCamera! : this._camera);
+      });
+
+      session.addEventListener('end', () =>
+      {
+        this._arActive = false;
+        this._xrSession = undefined;
+        this._renderer.xr.enabled = false;
+        this._renderer.setAnimationLoop(null);
+        this._loop();
+        this._dirty = true;
+      });
+    }
+    catch (e)
+    {
+      console.warn('AR session failed:', e);
+    }
+  };
+
+  // ── 8. View styles ──
+
+  private _buildOrthoFromPersp(): void
+  {
+    const dist = this._camera.position.distanceTo(this._controls.target);
+    const fovRad = (this._camera.fov * Math.PI) / 180;
+    const frustumH = 2 * dist * Math.tan(fovRad / 2);
+    const aspect = this._camera.aspect;
+
+    if (!this._orthoCamera)
+    {
+      this._orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.001, 10000);
+    }
+    this._orthoCamera.left   = -(frustumH * aspect) / 2;
+    this._orthoCamera.right  =  (frustumH * aspect) / 2;
+    this._orthoCamera.top    =  frustumH / 2;
+    this._orthoCamera.bottom = -frustumH / 2;
+    this._orthoCamera.near   = this._camera.near;
+    this._orthoCamera.far    = this._camera.far;
+    this._orthoCamera.position.copy(this._camera.position);
+    this._orthoCamera.quaternion.copy(this._camera.quaternion);
+    this._orthoCamera.updateProjectionMatrix();
+  }
+
+  private _toggleProjection = () =>
+  {
+    if (!this._isOrtho)
+    {
+      this._buildOrthoFromPersp();
+      this._controls.object = this._orthoCamera!;
+      this._controls.update();
+      this._isOrtho = true;
+    }
+    else
+    {
+      this._camera.position.copy(this._orthoCamera!.position);
+      this._camera.quaternion.copy(this._orthoCamera!.quaternion);
+      this._camera.updateProjectionMatrix();
+      this._controls.object = this._camera;
+      this._controls.update();
+      this._isOrtho = false;
+    }
+    this._dirty = true;
+  };
+
+  private _applyViewStyle(styleId: string)
+  {
+    const style = VIEW_STYLES.find(s => s.id === styleId);
+    if (!style) return;
+
+    // Restore materials from any previous override style before applying new one
+    this._restoreStyleOverrides();
+
+    // Background + renderer
+    const bg = style.background ?? 0xf1f5f9;
+    this._scene.background = new THREE.Color(bg);
+    this._renderer.setClearColor(bg);
+
+    if (style.toneMapping !== undefined) this._renderer.toneMapping = style.toneMapping as THREE.ToneMapping;
+    if (style.toneMappingExposure !== undefined) this._renderer.toneMappingExposure = style.toneMappingExposure;
+
+    // Shadows
+    const shadows = style.shadows ?? true;
+    this._renderer.shadowMap.enabled = shadows;
+    this._spotlight.castShadow = shadows;
+
+    // IBL environment
+    if (style.environment === 'room')
+    {
+      if (!this._roomEnvTexture)
+      {
+        const pmrem = new THREE.PMREMGenerator(this._renderer);
+        const envScene = new RoomEnvironment();
+        this._roomEnvTexture = pmrem.fromScene(envScene, 0.04).texture;
+        envScene.dispose();
+        pmrem.dispose();
+      }
+      this._scene.environment = this._roomEnvTexture;
+    }
+    else if (style.environment === null)
+    {
+      this._scene.environment = null;
+    }
+
+    // Lighting
+    this._applyLightConfig(this._ambientLight, style.ambientLight);
+    this._applyLightConfig(this._spotlight, style.spotlight);
+
+    if (style.hemiLight)
+    {
+      if (!this._hemiLight)
+      {
+        this._hemiLight = new THREE.HemisphereLight(0xffffff, 0x888888, 1);
+        this._scene.add(this._hemiLight);
+      }
+      this._applyLightConfig(this._hemiLight, style.hemiLight);
+    }
+    else if (this._hemiLight)
+    {
+      this._hemiLight.visible = false;
+    }
+
+    // Grid
+    if (style.grid?.visible)
+    {
+      if (!this._gridHelper)
+      {
+        this._gridHelper = new THREE.GridHelper(
+          style.grid.size ?? 10,
+          style.grid.divisions ?? 20,
+          style.grid.color ?? 0x444444,
+          style.grid.color ?? 0x333333,
+        );
+        this._gridHelper.userData.isViewerHelper = true;
+        this._scene.add(this._gridHelper);
+      }
+      else
+      {
+        this._gridHelper.visible = true;
+      }
+    }
+    else if (this._gridHelper)
+    {
+      this._gridHelper.visible = false;
+    }
+
+    // Material overrides — traverse scene only when the style has mesh/line config
+    if (style.mesh !== undefined || style.lines !== undefined)
+    {
+      this._scene.traverse((node) =>
+      {
+        if (node.userData.isViewerHelper) return;
+
+        const isLineSegments2 = node.type === 'LineSegments2';
+        const isNativeLine = node instanceof THREE.LineSegments || node instanceof THREE.Line;
+        const isMeshSurface = (node as THREE.Mesh).isMesh && !isLineSegments2;
+
+        if (isLineSegments2 || isNativeLine)
+        {
+          this._applyLineStyleOverride(node, style);
+        }
+        else if (isMeshSurface)
+        {
+          this._applyMeshStyleOverride(node as THREE.Mesh, style);
+        }
+      });
+    }
+
+    // Apply user-controlled node visibility on top of style overrides
+    this._applyNodeVisibility(this._pendingHiddenNodes);
+
+    this._activeStyleId = styleId;
+    this._dirty = true;
+  }
+
+  private _applyNodeVisibility(hidden: ReadonlySet<string>)
+  {
+    // Restore previously user-hidden objects before re-applying the new set
+    for (const obj of this._userHiddenObjects) obj.visible = true;
+    this._userHiddenObjects = [];
+
+    if (!this._currentModel) return;
+    this._currentModel.traverse((node) =>
+    {
+      if (node.userData.isViewerHelper) return;
+      if (hidden.has(node.uuid))
+      {
+        node.visible = false;
+        this._userHiddenObjects.push(node);
+      }
+    });
+    this._dirty = true;
+  }
+
+  private _applyMeshStyleOverride(mesh: THREE.Mesh, style: ViewStyle)
+  {
+    if (style.mesh === null)
+    {
+      this._hiddenObjects.push(mesh);
+      mesh.visible = false;
+    }
+    else if (style.mesh !== undefined)
+    {
+      const existingMat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+      this._savedMaterials.set(mesh, mesh.material);
+      const newMat = this._buildMeshMaterial(style.mesh, existingMat);
+      this._overrideMaterials.push(newMat);
+      mesh.material = newMat;
+    }
+  }
+
+  private _applyLineStyleOverride(node: THREE.Object3D, style: ViewStyle)
+  {
+    if (style.lines === null)
+    {
+      this._hiddenObjects.push(node);
+      node.visible = false;
+    }
+    else if (style.lines !== undefined)
+    {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mat = (node as any).material;
+      if (mat?.color)
+      {
+        this._savedLineColors.set(node, {
+          color: mat.color.clone(),
+          opacity: mat.opacity ?? 1,
+          transparent: mat.transparent ?? false,
+          linewidth: 'linewidth' in mat ? mat.linewidth : undefined,
+          dashed: 'dashed' in mat ? mat.dashed : undefined,
+          dashSize: 'dashSize' in mat ? mat.dashSize : undefined,
+          gapSize: 'gapSize' in mat ? mat.gapSize : undefined,
+        });
+        if (style.lines.color !== undefined) mat.color.setHex(style.lines.color);
+        if (style.lines.strokeWidth !== undefined && 'linewidth' in mat) mat.linewidth = style.lines.strokeWidth;
+        if (style.lines.strokeDash !== undefined)
+        {
+          if ('dashed' in mat) mat.dashed = style.lines.strokeDash > 0;
+          if ('dashSize' in mat) mat.dashSize = style.lines.strokeDash;
+        }
+      }
+    }
+  }
+
+  private _restoreStyleOverrides()
+  {
+    for (const [mesh, mat] of this._savedMaterials)
+    {
+      mesh.material = mat;
+    }
+    this._savedMaterials.clear();
+
+    for (const [obj, saved] of this._savedLineColors)
+    {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mat = (obj as any).material;
+      if (mat?.color)
+      {
+        mat.color.copy(saved.color);
+        mat.opacity = saved.opacity;
+        mat.transparent = saved.transparent;
+        if (saved.linewidth !== undefined && 'linewidth' in mat) mat.linewidth = saved.linewidth;
+        if (saved.dashed !== undefined && 'dashed' in mat) mat.dashed = saved.dashed;
+        if (saved.dashSize !== undefined && 'dashSize' in mat) mat.dashSize = saved.dashSize;
+        if (saved.gapSize !== undefined && 'gapSize' in mat) mat.gapSize = saved.gapSize;
+      }
+    }
+    this._savedLineColors.clear();
+
+    for (const obj of this._hiddenObjects)
+    {
+      obj.visible = true;
+    }
+    this._hiddenObjects = [];
+
+    for (const mat of this._overrideMaterials)
+    {
+      mat.dispose();
+    }
+    this._overrideMaterials = [];
+  }
+
+  private _buildMeshMaterial(config: ViewStyleMaterialConfig, existingMat?: THREE.Material): THREE.Material
+  {
+    const existingColor = existingMat && 'color' in existingMat
+      ? (existingMat as THREE.MeshBasicMaterial).color?.getHex()
+      : undefined;
+    const existingOpacity = existingMat?.opacity;
+    const existingSide = existingMat?.side;
+    const existingFlatShading = existingMat && 'flatShading' in existingMat
+      ? (existingMat as THREE.MeshPhongMaterial).flatShading
+      : undefined;
+
+    const color = config.color ?? existingColor ?? 0xffffff;
+    const opacity = config.opacity ?? existingOpacity ?? 1;
+    const transparent = config.transparent ?? existingMat?.transparent ?? (opacity < 1);
+    const side = config.side === 'double' ? THREE.DoubleSide
+      : config.side === 'back' ? THREE.BackSide
+      : config.side === 'front' ? THREE.FrontSide
+      : existingSide ?? THREE.FrontSide;
+
+    if (config.wireframe)
+    {
+      return new THREE.MeshBasicMaterial({
+        color,
+        wireframe: true,
+        opacity,
+        transparent,
+        side,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+      });
+    }
+
+    return new THREE.MeshPhongMaterial({
+      color,
+      opacity,
+      transparent,
+      side,
+      depthTest: config.depthTest ?? true,
+      depthWrite: !transparent,
+      flatShading: config.flatShading ?? existingFlatShading ?? false,
+      shininess: 10,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
+    });
+  }
+
+  private _applyLightConfig(
+    light: THREE.Light,
+    cfg: { enabled: boolean; color?: number; intensity?: number; castShadow?: boolean } | undefined,
+  )
+  {
+    if (!cfg) return;
+    light.visible = cfg.enabled;
+    if (cfg.color !== undefined) light.color.setHex(cfg.color);
+    if (cfg.intensity !== undefined) light.intensity = cfg.intensity;
+    if (cfg.castShadow !== undefined && 'castShadow' in light)
+    {
+      (light as THREE.SpotLight).castShadow = cfg.castShadow;
+    }
+  }
+
+  // ── 9. Scene tree ──
+
+  // Raw geometry node types that are implementation details — never shown as tree nodes.
+  // They may be children of a named container; their material is surfaced on the container.
+  private static readonly _GEO_TYPES = new Set([
+    'Mesh', 'LineSegments', 'LineSegments2', 'Line', 'Line2', 'Points',
+  ]);
+
+  private _buildSceneTree(obj: THREE.Object3D): SceneNodeData
+  {
+    const geoTypes = ModelViewer._GEO_TYPES;
+
+    // Bubble material up from the first geometry child when the container has none
+    const ownMaterial = this._extractMaterial(obj);
+    const material = ownMaterial
+      ?? this._extractMaterial(
+        obj.children.find(c => geoTypes.has(c.type)) ?? obj,
+      );
+
+    const semanticChildren = obj.children.filter(
+      c => !c.userData.isViewerHelper && !geoTypes.has(c.type),
+    );
+
+    return {
+      uuid: obj.uuid,
+      name: obj.name || obj.type,
+      type: obj.type,
+      visible: obj.visible,
+      material,
+      children: semanticChildren.map(c => this._buildSceneTree(c)),
+    };
+  }
+
+  private _extractMaterial(obj: THREE.Object3D): SceneMaterialData | undefined
+  {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const raw = (obj as any).material;
+    if (!raw) return undefined;
+    const m: THREE.Material = Array.isArray(raw) ? raw[0] : raw;
+    if (!m) return undefined;
+
+    const result: SceneMaterialData = { opacity: m.opacity, transparent: m.transparent };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const col = (m as any).color;
+    if (col instanceof THREE.Color) result.color = '#' + col.getHexString();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ('wireframe' in m) result.wireframe = (m as any).wireframe as boolean;
+
+    return result;
+  }
+
+  // ── 10. Model loading ──
 
   private async _loadGLTFString(data: string | ArrayBuffer)
   {
@@ -183,13 +733,23 @@ export class ModelViewer extends SignalWatcher(LitElement)
   {
     const model = gltf.scene;
 
-    // Enable shadow casting / receiving on every mesh
+    // Enable shadow casting / receiving on every mesh; polygon offset pushes
+    // surfaces back so coplanar edge lines never z-fight with them.
     model.traverse((n) =>
     {
       if ((n as THREE.Mesh).isMesh)
       {
         n.castShadow = true;
         n.receiveShadow = true;
+        const mats = Array.isArray((n as THREE.Mesh).material)
+          ? (n as THREE.Mesh).material as THREE.Material[]
+          : [(n as THREE.Mesh).material as THREE.Material];
+        mats.forEach((m) =>
+        {
+          m.polygonOffset = true;
+          m.polygonOffsetFactor = 1;
+          m.polygonOffsetUnits = 1;
+        });
       }
     });
 
@@ -212,7 +772,11 @@ export class ModelViewer extends SignalWatcher(LitElement)
     const mc = new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3());
     this._spotlight.target.position.copy(mc);
 
-    this._frameCamera(model);
+    if (!this._hasFramedCamera)
+    {
+      this._frameCamera(model);
+      this._hasFramedCamera = true;
+    }
 
     // Play animations if present
     if (gltf.animations.length)
@@ -226,12 +790,24 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     // Ensure LineMaterial resolution is set for pixel-accurate line width
     this._resize();
-    this._dirty = true;
-  }
 
-  /* ------------------------------------------------------------------ */
-  /*  Internals                                                          */
-  /* ------------------------------------------------------------------ */
+    // Pre-populate hiddenNodes with any nodes the exporter marked as default-hidden
+    // so the scene explorer shows them with eye-slash and they start invisible.
+    const initiallyHidden = new Set<string>();
+    model.traverse((n) => { if (n.userData.defaultVisible === false) initiallyHidden.add(n.uuid); });
+    if (initiallyHidden.size > 0)
+    {
+      hiddenNodes.set(initiallyHidden);
+      this._pendingHiddenNodes = initiallyHidden;
+      this._lastAppliedHiddenNodes = initiallyHidden;
+    }
+
+    // Publish scene tree for the scene explorer (after edges are attached)
+    setSceneTree(this._buildSceneTree(model));
+
+    // Re-apply current view style to newly loaded geometry
+    this._applyViewStyle(this._activeStyleId);
+  }
 
   private _loadGlbOutput(entry: ScriptOutputData)
   {
@@ -265,7 +841,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
     {
       this._loadGLTFString(raw);
     }
-    else {
+    else
+    {
       console.error('Unsupported GLB output format:', raw);
     }
   }
@@ -273,10 +850,18 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _disposeModel()
   {
     if (!this._currentModel) return;
+
+    // Clear scene explorer state; new UUIDs after reload won't match old hidden set
+    clearSceneState();
+
+    // Restore style overrides first so we dispose originals (not override mats) below
+    this._restoreStyleOverrides();
+    this._userHiddenObjects = [];
+
     this._scene.remove(this._currentModel);
     this._currentModel.traverse((n) =>
     {
-      const obj = n as any;
+      const obj = n as any; // eslint-disable-line @typescript-eslint/no-explicit-any
       if (obj.geometry) obj.geometry.dispose();
       if (obj.material)
       {
@@ -306,6 +891,12 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._camera.far = dist * 20;
     this._camera.updateProjectionMatrix();
     this._controls.update();
+    if (this._isOrtho)
+    {
+      this._buildOrthoFromPersp();
+      this._controls.object = this._orthoCamera!;
+      this._controls.update();
+    }
   }
 
   private _resize()
@@ -315,11 +906,19 @@ export class ModelViewer extends SignalWatcher(LitElement)
     if (!w || !h) return;
     this._camera.aspect = w / h;
     this._camera.updateProjectionMatrix();
+    if (this._orthoCamera)
+    {
+      const frustumH = this._orthoCamera.top - this._orthoCamera.bottom;
+      const aspect = w / h;
+      this._orthoCamera.left   = -(frustumH * aspect) / 2;
+      this._orthoCamera.right  =  (frustumH * aspect) / 2;
+      this._orthoCamera.updateProjectionMatrix();
+    }
     this._renderer.setSize(w, h, false);
     // Keep pixel-accurate line width for LineMaterial edge overlays
     this._currentModel?.traverse((n) =>
     {
-      const mat = (n as any).material;
+      const mat = (n as any).material; // eslint-disable-line @typescript-eslint/no-explicit-any
       if (mat?.isLineMaterial)
       {
         (mat as import('three/examples/jsm/lines/LineMaterial.js').LineMaterial)
@@ -344,23 +943,32 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     if (this._dirty)
     {
-      this._renderer.render(this._scene, this._camera);
+      this._renderer.render(this._scene, this._isOrtho ? this._orthoCamera! : this._camera);
       this._dirty = false;
     }
   };
 
-  // ── 5. Styles ──
+  // ── 10. Styles ──
   static override styles = css`
     :host {
       display: block;
+      position: relative;
       width: 100%;
       height: 100%;
       overflow: hidden;
     }
+
     canvas {
       display: block;
       width: 100%;
       height: 100%;
+    }
+
+    viewer-menu {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 10;
     }
   `;
 }

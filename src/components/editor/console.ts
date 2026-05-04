@@ -4,7 +4,7 @@ import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import { workspace } from '../../state/workspace.js';
+import { workspace, activeBottomPanel, setActiveBottomPanel } from '../../state/workspace.js';
 import type { ConsoleMessageType } from '../../../devlibs/archiyou-core-next/src/console/types';
 
 const MESSAGE_TYPES: ConsoleMessageType[] = ['error', 'exec', 'geom', 'user', 'warn', 'info'];
@@ -35,6 +35,9 @@ export class EditorConsole extends SignalWatcher(LitElement)
   // ── 1. Render ──
   override render()
   {
+    const collapsed = activeBottomPanel.get() !== 'console';
+    this.toggleAttribute('collapsed', collapsed);
+
     const messages = workspace.get().editor.result?.messages ?? [];
 
     const counts = Object.fromEntries(
@@ -44,14 +47,16 @@ export class EditorConsole extends SignalWatcher(LitElement)
     const filtered = messages.filter(m => this._activeFilters.has(m.type));
 
     return html`
-      <div class="header">
+      <div class="header" @click=${this._activate}>
         <wa-icon name="terminal"></wa-icon>
-        <span class="title">
-          Console
-        </span>
-        <span class="badge">${messages.length}</span>
+        <span class="title">Console</span>
         <span class="spacer"></span>
-        <div class="filters">
+        <span class="badge">${messages.length}</span>
+        <wa-icon name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
+      </div>
+
+      ${!collapsed ? html`
+        <div class="toolbar">
           ${MESSAGE_TYPES.map(type => html`
             <button
               class="filter-btn type-${type} ${this._activeFilters.has(type) ? 'active' : ''}"
@@ -63,13 +68,7 @@ export class EditorConsole extends SignalWatcher(LitElement)
             </button>
           `)}
         </div>
-        <button class="collapse-btn" @click=${this._toggleCollapse}
-            title=${this._collapsed ? 'Expand console' : 'Collapse console'}>
-          <wa-icon name=${this._collapsed ? 'chevron-up' : 'chevron-down'}></wa-icon>
-        </button>
-      </div>
 
-      ${!this._collapsed ? html`
         <div class="messages">
           ${filtered.length === 0
             ? html`<div class="empty">No messages</div>`
@@ -90,6 +89,9 @@ export class EditorConsole extends SignalWatcher(LitElement)
   @state() private _activeFilters: Set<ConsoleMessageType> = new Set(MESSAGE_TYPES);
 
   // ── 4. Behaviour & Methods ──
+  private _activate = () =>
+    setActiveBottomPanel(activeBottomPanel.get() === 'console' ? 'none' : 'console');
+
   private _toggleFilter(type: ConsoleMessageType)
   {
     const next = new Set(this._activeFilters);
@@ -104,7 +106,6 @@ export class EditorConsole extends SignalWatcher(LitElement)
       display: flex;
       flex-direction: column;
       width: 100%;
-      height: 100%;
       font-family: var(--font-sans);
       font-size: var(--text-sm);
       border-top: 1px solid var(--color-border);
@@ -127,6 +128,7 @@ export class EditorConsole extends SignalWatcher(LitElement)
       padding: 0.35rem 1rem;
       flex-shrink: 0;
       user-select: none;
+      cursor: pointer;
       background: var(--color-gray);
     }
 
@@ -150,27 +152,17 @@ export class EditorConsole extends SignalWatcher(LitElement)
       line-height: 1;
     }
 
-    /* Collapse button */
-    .collapse-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
-      border-radius: var(--radius-full);
-      background: transparent;
-      border: none;
-      color: var(--color-dark-gray);
-      cursor: pointer;
-    }
-
     .spacer { flex: 1; }
 
-    /* ── Filter buttons ── */
+    /* ── Filter toolbar (below header) ── */
 
-    .filters {
+    .toolbar {
       display: flex;
-      gap: var(--space-2, 8px);
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 4px 10px;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--color-border);
     }
 
     .filter-btn {

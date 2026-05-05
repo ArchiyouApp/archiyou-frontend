@@ -676,7 +676,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     // Bubble material up from the first geometry child when the container has none
     const ownMaterial = this._extractMaterial(obj);
-    const material = ownMaterial
+    let material = ownMaterial
       ?? this._extractMaterial(
         obj.children.find(c => geoTypes.has(c.type)) ?? obj,
       );
@@ -685,10 +685,15 @@ export class ModelViewer extends SignalWatcher(LitElement)
       c => !c.userData.isViewerHelper && !geoTypes.has(c.type),
     );
 
+    // Infer semantic type from direct geometry children so the scene-explorer
+    // can show the correct icon (e.g. 'Mesh' instead of 'Object3D').
+    const geoChild = obj.children.find(c => !c.userData.isViewerHelper && geoTypes.has(c.type));
+    const semanticType = geoChild?.type ?? obj.type;
+
     return {
       uuid: obj.uuid,
       name: obj.name || obj.type,
-      type: obj.type,
+      type: semanticType,
       visible: obj.visible,
       material,
       children: semanticChildren.map(c => this._buildSceneTree(c)),
@@ -802,8 +807,13 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._lastAppliedHiddenNodes = initiallyHidden;
     }
 
-    // Publish scene tree for the scene explorer (after edges are attached)
-    setSceneTree(this._buildSceneTree(model));
+    // Publish scene tree for the scene explorer (after edges are attached).
+    // Skip the Three.js gltf.scene Group wrapper; start from the GLTFBuilder
+    // 'root' node directly and label it 'Scene'.
+    const contentRoot = model.children.find(c => !c.userData.isViewerHelper) ?? model;
+    const treeRoot = this._buildSceneTree(contentRoot);
+    treeRoot.name = 'Scene';
+    setSceneTree(treeRoot);
 
     // Re-apply current view style to newly loaded geometry
     this._applyViewStyle(this._activeStyleId);

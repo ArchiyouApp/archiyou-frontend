@@ -33,6 +33,24 @@ import type { RunnerScriptExecutionResult } from '../../devlibs/archiyou-core-ne
 //// LOAD SETTINGS ////
 import { EDITOR_START_SCRIPT } from '../settings';
 
+//// LOCAL STORAGE ////
+
+const SCRIPT_STORAGE_KEY = 'archiyou:editor:script';
+
+/** Persist the current script code to localStorage. */
+export function saveScriptCode(code: string): void
+{
+  try { localStorage.setItem(SCRIPT_STORAGE_KEY, code); }
+  catch { /* storage unavailable – silently ignore */ }
+}
+
+/** Load the last-saved script code, or null when nothing is stored. */
+export function loadPersistedScriptCode(): string | null
+{
+  try { return localStorage.getItem(SCRIPT_STORAGE_KEY); }
+  catch { return null; }
+}
+
 //// STATE ////
 
 export interface UserState
@@ -67,9 +85,11 @@ export const userState = signal<UserState>({
   name: null,
 });
 
+const _initialCode = loadPersistedScriptCode() ?? EDITOR_START_SCRIPT;
+
 export const editorState = signal<EditorState>({
   executing: false,
-  script: new Script('anonymous', 'Untitled', EDITOR_START_SCRIPT), // start with empty script for now
+  script: new Script('anonymous', 'Untitled', _initialCode),
   scriptVersions: [],
   result: null,
 });
@@ -90,13 +110,14 @@ export function createScript(name: string = 'Untitled'): Script
   return script;
 }
 
-/** Update the code of the current script. */
+/** Update the code of the current script and persist it to localStorage. */
 export function updateScriptCode(code: string): void
 {
   const script = editorState.get().script;
   if (!script) return;
   script.code = code;
   script.updated = new Date();
+  saveScriptCode(code);
   editorState.set({ ...editorState.get() }); // shallow copy triggers reactivity
 }
 

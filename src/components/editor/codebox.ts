@@ -19,8 +19,8 @@ import '@awesome.me/webawesome/dist/components/button/button.js';
 
 // CodeMirror imports
 import { EditorView, basicSetup } from 'codemirror';
-import { keymap } from '@codemirror/view';
-import { EditorState, Compartment } from '@codemirror/state';
+import { keymap, Decoration, DecorationSet } from '@codemirror/view';
+import { EditorState, Compartment, StateEffect, StateField } from '@codemirror/state';
 import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { autocompletion } from '@codemirror/autocomplete';
@@ -31,6 +31,36 @@ import { workspace } from '../../state/workspace.js';
 
 const lightTheme = EditorView.theme({}, { dark: false });
 const themeCompartment = new Compartment();
+
+// ── Error-line highlight ──────────────────────────────────────────────────────
+/** Effect: set a 1-indexed line number, 'all' for every line, or null to clear. */
+const setErrorLine = StateEffect.define<number | 'all' | null>();
+const errorLineMark = Decoration.line({ class: 'cm-error-line' });
+
+const errorLineField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(deco, tr)
+  {
+    for (const effect of tr.effects)
+    {
+      if (!effect.is(setErrorLine)) continue;
+      if (effect.value === null) return Decoration.none;
+      if (effect.value === 'all')
+      {
+        const marks: ReturnType<typeof errorLineMark.range>[] = [];
+        for (let i = 1; i <= tr.state.doc.lines; i++)
+          marks.push(errorLineMark.range(tr.state.doc.line(i).from));
+        return Decoration.set(marks);
+      }
+      // Single line — guard against out-of-range
+      if (effect.value < 1 || effect.value > tr.state.doc.lines) return Decoration.none;
+      const line = tr.state.doc.line(effect.value);
+      return Decoration.set([errorLineMark.range(line.from)]);
+    }
+    return deco.map(tr.changes);
+  },
+  provide: f => EditorView.decorations.from(f),
+});
 
 
 @customElement('editor-code-box')
@@ -44,11 +74,19 @@ export class CodeBox extends SignalWatcher(LitElement)
         <div class="title-bar">
           <wa-icon name="code"></wa-icon>Code Editor
           <span class="state">
-            ${(workspace.get().editor.executing) 
+            ${workspace.get().editor.executing
                 ? html`<wa-icon name="cog" animation="spin-reverse" label="executing"></wa-icon>`
-                : (workspace.get().editor.result)
-                    ? html`<wa-icon name="circle-check" label="success"></wa-icon>`
-                    : ''
+                : workspace.get().editor.result?.status === 'error'
+                    ? html`
+                        <wa-icon class="error-icon" name="circle-xmark" label="error"></wa-icon>
+                        <span class="error-message" title=${this._fullErrorMessage(workspace.get().editor.result?.errors?.[0]?.message)}>
+                          ${this._shortErrorMessage(workspace.get().editor.result?.errors?.[0])}
+                        </span>`
+                    : workspace.get().editor.result?.status === 'success'
+                        ? html`
+                            <wa-icon class="success-icon" name="circle-check" label="success"></wa-icon>
+                            <span class="duration">${this._formatDuration(workspace.get().editor.result!.duration)}</span>`
+                        : ''
             }
           </span>
           <span class="spacer"></span>
@@ -75,6 +113,7 @@ export class CodeBox extends SignalWatcher(LitElement)
         doc: this.code,
         extensions: [
           basicSetup,
+          errorLineField,
           javascript({ typescript: true }),
           autocompletion({ override: [archiyouCompletions] }),
           keymap.of([
@@ -125,6 +164,14 @@ export class CodeBox extends SignalWatcher(LitElement)
       }
     }
     this._skipNextUpdate = false;
+
+    // Sync error-line highlight whenever the execution result signal changes
+    const result = workspace.get().editor.result;
+    if (result !== this._lastAppliedResult)
+    {
+      this._lastAppliedResult = result;
+      this._applyErrorHighlight(result);
+    }
   }
 
   override disconnectedCallback()
@@ -139,6 +186,7 @@ export class CodeBox extends SignalWatcher(LitElement)
   // ── 4. Behaviour & Methods ──
   private _view: EditorView | null = null;
   private _skipNextUpdate = false;
+  private _lastAppliedResult: ReturnType<typeof workspace.get>['editor']['result'] | undefined = undefined;
   private _darkMQ = window.matchMedia('(prefers-color-scheme: dark)');
 
   private _currentTheme()
@@ -182,6 +230,47 @@ export class CodeBox extends SignalWatcher(LitElement)
   private _handleRunClick()
   {
     this._fireExecute();
+  }
+
+  /** Dispatch the error-line effect to the CodeMirror editor. */
+  private _applyErrorHighlight(result: ReturnType<typeof workspace.get>['editor']['result'])
+  {
+    if (!this._view) return;
+    if (result?.status !== 'error') {
+      this._view.dispatch({ effects: setErrorLine.of(null) });
+      return;
+    }
+    const lineStart = result.errors?.[0]?.lineStart;
+    const value: number | 'all' = (typeof lineStart === 'number' && lineStart > 0)
+      ? lineStart
+      : 'all';
+    this._view.dispatch({ effects: setErrorLine.of(value) });
+  }
+
+  /** Extract a 1-line summary from the error result entry, prepending line info. */
+  private _shortErrorMessage(err: { message?: string; lineStart?: number } | undefined): string
+  {
+    const msg = err?.message;
+    const lineNum = typeof err?.lineStart === 'number' && err.lineStart > 0 ? err.lineStart : null;
+    const prefix = lineNum !== null ? `Line ${lineNum}: ` : '';
+    if (!msg) return `${prefix}Execution error`;
+    const m = msg.match(/- error: '(.+?)'/);
+    const text = m ? m[1] : (msg.split('\n').find(l => l.trim().length > 0) ?? 'Execution error');
+    const full = `${prefix}${text}`;
+    return full.length > 80 ? full.slice(0, 77) + '…' : full;
+  }
+
+  /** Return the full message for the tooltip. */
+  private _fullErrorMessage(msg: string | undefined): string
+  {
+    return msg ?? '';
+  }
+
+  /** Format a duration in ms to a human-readable string. */
+  private _formatDuration(ms: number | undefined): string
+  {
+    if (ms === undefined || ms === null) return '';
+    return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
   }
 
   // ── 5. Styles ──
@@ -246,6 +335,36 @@ export class CodeBox extends SignalWatcher(LitElement)
     /* Override CodeMirror to fill available height */
     .cm-editor {
       height: 100%;
+    }
+
+    /* Error line highlight (applied via CodeMirror StateField) */
+    .cm-error-line {
+      background: rgba(239, 68, 68, 0.18) !important;
+    }
+
+    /* Error state in title bar */
+    .error-icon {
+      color: var(--wa-color-danger-500, #ef4444);
+      flex-shrink: 0;
+    }
+
+    .error-message {
+      color: var(--wa-color-danger-500, #ef4444);
+      font-size: var(--text-xs, 0.75rem);
+      max-width: 28ch;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: default;
+    }
+
+    .success-icon {
+      color: var(--wa-color-success-500, #22c55e);
+    }
+
+    .duration {
+      font-size: var(--text-xs, 0.75rem);
+      color: var(--color-gray-dark);
     }
 
   `;

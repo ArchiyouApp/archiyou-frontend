@@ -78,7 +78,7 @@ export const VIEW_STYLES: ViewStyle[] = [
     toneMappingExposure: 1.0,
     environment: null,
     ambientLight: { enabled: true, color: 0xffffff, intensity: 0.3 },
-    spotlight: { enabled: true, color: 0xffffff, intensity: 5, castShadow: true },
+    spotlight: { enabled: true, color: 0xffffff, intensity: 5, castShadow: false },
     mesh: {
       opacity: 0.35,
       transparent: true,

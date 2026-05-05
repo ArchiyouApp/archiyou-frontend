@@ -24,13 +24,11 @@ export async function applyEdgeExtensions(gltf: GLTF, root: THREE.Object3D): Pro
         meshCount++;
         const mesh = node as THREE.Mesh;
         const ext = mesh.userData?.gltfExtensions?.['EXT_mesh_primitive_edge_visibility'];
-        console.log(`applyEdgeExtensions: mesh "${mesh.name}" userData.gltfExtensions =`, mesh.userData?.gltfExtensions);
         if (!ext) return;
         extCount++;
         tasks.push(_attachEdgeLines(mesh, ext, gltf.parser));
     });
 
-    console.log(`applyEdgeExtensions: ${meshCount} meshes scanned, ${extCount} with EXT_mesh_primitive_edge_visibility`);
     await Promise.all(tasks);
 }
 
@@ -57,9 +55,7 @@ async function _attachEdgeLines(
 
     // Fetch the 2-bit-per-edge visibility bitfield accessor
     const accDef = (parser.json as any).accessors?.[ext.visibility];
-    console.log(`_attachEdgeLines: mesh "${mesh.name}" ext=`, ext,
-        `indices=${indices.length} tris=${indices.length/3} vertices=${posAttr.count}`,
-        `visibilityAcc=`, accDef);
+    
     // getDependency returns a THREE.BufferAttribute — extract the raw typed array.
     // The accessor is SCALAR UNSIGNED_BYTE (componentType 5121), so .array should be Uint8Array.
     // If Three.js returns a different type (e.g. normalized Float32), re-interpret raw bytes.
@@ -68,7 +64,7 @@ async function _attachEdgeLines(
     const visData: Uint8Array = rawArr instanceof Uint8Array
         ? rawArr
         : new Uint8Array(rawArr.buffer, rawArr.byteOffset, (accDef?.count ?? rawArr.length));
-    console.log(`_attachEdgeLines: visData type=${rawArr.constructor.name} bytes=${visData.length} ALL=[${Array.from(visData).map(b => b.toString(2).padStart(8,'0')).join(' ')}]`);
+
 
     const lineVerts: number[] = [];
     const triCount = indices.length / 3;
@@ -93,7 +89,6 @@ async function _attachEdgeLines(
             );
         }
     }
-    console.log(`_attachEdgeLines: slots hard=${hardSlots} smooth=${smoothSlots} total=${hardSlots+smoothSlots} (expected for cube: 24 hard, 12 smooth)`);
 
     // Deduplicate: each hard edge is referenced from both adjacent triangles,
     // keep only the first occurrence per unique vertex pair.
@@ -111,12 +106,10 @@ async function _attachEdgeLines(
         dedupedVerts.push(ax, ay, az, bx, by, bz);
     }
 
-    console.log(`_attachEdgeLines: mesh "${mesh.name}" → ${lineVerts.length / 6} raw / ${dedupedVerts.length / 6} deduped hard edges`);
     // Log all deduped edges so we can verify they are box corner-edges, not face diagonals
     for (let i = 0; i < dedupedVerts.length; i += 6)
     {
         const r = (v: number) => v.toFixed(3);
-        console.log(`  edge ${i/6}: (${r(dedupedVerts[i])},${r(dedupedVerts[i+1])},${r(dedupedVerts[i+2])}) → (${r(dedupedVerts[i+3])},${r(dedupedVerts[i+4])},${r(dedupedVerts[i+5])})`);
     }
     if (!dedupedVerts.length) return;
 
@@ -125,7 +118,6 @@ async function _attachEdgeLines(
     mats.forEach((m) => { m.polygonOffset = true; m.polygonOffsetFactor = 1; m.polygonOffsetUnits = 1; });
 
     const mat = _resolveLineMaterial(ext.material, parser);
-    console.log(`_attachEdgeLines: material =`, mat.type, mat instanceof THREE.LineBasicMaterial ? '(LineBasicMaterial)' : '(LineMaterial)');
 
     // Mark the source mesh so the scene explorer skips it (container node is shown instead)
     mesh.userData.isEdgeSurface = true;
@@ -138,7 +130,6 @@ async function _attachEdgeLines(
         lines.userData.cannotReceiveAO = true;
         lines.userData.isEdgeOverlay = true;
         mesh.parent!.add(lines);
-        console.log(`_attachEdgeLines: added LineSegments to scene`);
     }
     else
     {
@@ -147,7 +138,6 @@ async function _attachEdgeLines(
         lines2.userData.cannotReceiveAO = true;
         lines2.userData.isEdgeOverlay = true;
         mesh.parent!.add(lines2);
-        console.log(`_attachEdgeLines: added LineSegments2 to scene`);
     }
 }
 
@@ -158,7 +148,7 @@ function _resolveLineMaterial(
 {
     const gltfMat = (parser.json as any).materials?.[materialIndex ?? -1];
     const bentley = gltfMat?.extensions?.['BENTLEY_materials_line_style'];
-    console.log(`_resolveLineMaterial: materialIndex=${materialIndex} bentley=`, bentley, 'gltfMat=', gltfMat);
+    
     const baseColor: [number, number, number, number] =
         gltfMat?.pbrMetallicRoughness?.baseColorFactor ?? [0, 0, 0, 1];
 

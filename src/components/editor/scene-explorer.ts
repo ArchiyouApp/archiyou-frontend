@@ -11,20 +11,17 @@ import type { SceneNodeData } from '../../state/workspace.js';
 const TYPE_ICON: Record<string, string> = {
   Mesh:          'cube',
   Group:         'layer-group',
-  Object3D:      'circle-dot',
-  LineSegments:  'minus',
-  LineSegments2: 'minus',
-  Line:          'minus',
+  Object3D:      'layer-group',
+  LineSegments:  'wave-square',
+  LineSegments2: 'wave-square',
+  Line2:         'wave-square',
+  Line:          'wave-square',
+  Points:        'circle-dot',
 };
 
 function nodeIcon(type: string): string
 {
-  return TYPE_ICON[type] ?? 'circle-dot';
-}
-
-function countNodes(node: SceneNodeData): number
-{
-  return 1 + node.children.reduce((n, c) => n + countNodes(c), 0);
+  return TYPE_ICON[type] ?? 'layer-group';
 }
 
 @customElement('scene-explorer')
@@ -52,14 +49,11 @@ export class SceneExplorer extends SignalWatcher(LitElement)
       this._expandedNodes = expanded;
     }
 
-    const total = tree ? countNodes(tree) : 0;
-
     return html`
       <div class="header" @click=${this._activate}>
         <wa-icon name="sitemap"></wa-icon>
         <span class="title">Scene</span>
         <span class="spacer"></span>
-        <span class="badge">${total}</span>
         <wa-icon name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
       </div>
 
@@ -174,19 +168,6 @@ export class SceneExplorer extends SignalWatcher(LitElement)
       font-size: var(--text-sm);
     }
 
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: var(--space-xl);
-      height: var(--space-xl);
-      border-radius: var(--radius-full);
-      background: var(--color-primary, #103eaa);
-      color: #fff;
-      font-size: var(--text-xxs);
-      line-height: 1;
-    }
-
     .spacer { flex: 1; }
 
     /* ── Tree ── */
@@ -229,7 +210,7 @@ export class SceneExplorer extends SignalWatcher(LitElement)
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--color-text-muted, #6b7280);
+      color: var(--color-gray-dark, #666);
       font-size: 10px;
     }
 
@@ -242,14 +223,8 @@ export class SceneExplorer extends SignalWatcher(LitElement)
     .node-icon {
       flex-shrink: 0;
       font-size: 11px;
-      color: var(--color-text-muted, #6b7280);
+      color: var(--color-gray-dark, #666);
     }
-
-    .node-icon.type-Mesh          { color: #3b82f6; }
-    .node-icon.type-Group         { color: #a855f7; }
-    .node-icon.type-LineSegments,
-    .node-icon.type-LineSegments2,
-    .node-icon.type-Line          { color: #14b8a6; }
 
     /* name */
     .node-name {

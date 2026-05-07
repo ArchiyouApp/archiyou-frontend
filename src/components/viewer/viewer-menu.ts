@@ -11,14 +11,18 @@ export class ViewerMenu extends LitElement
   @property({ type: Boolean }) arSupported = false;
   @property({ type: Boolean }) arActive = false;
   @property({ type: Boolean }) isOrtho = false;
+  @property({ type: Array }) animations: string[] = [];
+  @property() activeAnimation: string | null = null;
 
   @state() private _stylesOpen = false;
+  @state() private _animOpen = false;
 
   private _docClickHandler = (e: MouseEvent) =>
   {
-    if (this._stylesOpen && !e.composedPath().includes(this as unknown as EventTarget))
+    if ((this._stylesOpen || this._animOpen) && !e.composedPath().includes(this as unknown as EventTarget))
     {
       this._stylesOpen = false;
+      this._animOpen = false;
       document.removeEventListener('click', this._docClickHandler);
     }
   };
@@ -26,7 +30,22 @@ export class ViewerMenu extends LitElement
   private _toggleStyles = () =>
   {
     this._stylesOpen = !this._stylesOpen;
+    this._animOpen = false;
     if (this._stylesOpen)
+    {
+      setTimeout(() => document.addEventListener('click', this._docClickHandler), 0);
+    }
+    else
+    {
+      document.removeEventListener('click', this._docClickHandler);
+    }
+  };
+
+  private _toggleAnim = () =>
+  {
+    this._animOpen = !this._animOpen;
+    this._stylesOpen = false;
+    if (this._animOpen)
     {
       setTimeout(() => document.addEventListener('click', this._docClickHandler), 0);
     }
@@ -47,6 +66,17 @@ export class ViewerMenu extends LitElement
     }));
   };
 
+  private _selectAnimation = (name: string | null) =>
+  {
+    this._animOpen = false;
+    document.removeEventListener('click', this._docClickHandler);
+    this.dispatchEvent(new CustomEvent('viewer-set-animation', {
+      detail: { name },
+      bubbles: true,
+      composed: true,
+    }));
+  };
+
   private _emit = (type: string) =>
   {
     this.dispatchEvent(new CustomEvent(type, { bubbles: true, composed: true }));
@@ -56,6 +86,8 @@ export class ViewerMenu extends LitElement
   {
     super.disconnectedCallback();
     document.removeEventListener('click', this._docClickHandler);
+    this._stylesOpen = false;
+    this._animOpen = false;
   }
 
   override render()
@@ -109,6 +141,40 @@ export class ViewerMenu extends LitElement
               </div>
             ` : ''}
           </div>
+
+          <!-- animation selector (only shown when animations are available) -->
+          ${this.animations.length > 0 ? html`
+            <div class="style-anchor">
+              <button
+                class="icon-btn ${this._animOpen ? 'active' : ''}"
+                title="Animations"
+                @click=${this._toggleAnim}
+              >
+                <wa-icon name="film"></wa-icon>
+              </button>
+
+              ${this._animOpen ? html`
+                <div class="styles-flyout">
+                  <button
+                    class="style-item ${this.activeAnimation === null ? 'active' : ''}"
+                    @click=${() => this._selectAnimation(null)}
+                  >
+                    <wa-icon name="stop"></wa-icon>
+                    <span>Rest pose</span>
+                  </button>
+                  ${this.animations.map(name => html`
+                    <button
+                      class="style-item ${name === this.activeAnimation ? 'active' : ''}"
+                      @click=${() => this._selectAnimation(name)}
+                    >
+                      <wa-icon name="play"></wa-icon>
+                      <span>${name}</span>
+                    </button>
+                  `)}
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
 
           <!-- projection toggle -->
           <button

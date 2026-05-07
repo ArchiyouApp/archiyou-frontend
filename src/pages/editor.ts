@@ -13,8 +13,11 @@ import '../components/editor/codebox.js';
 import '../components/editor/console.js';
 import '../components/editor/scene-explorer.js';
 import '../components/viewer/model-viewer.js';
+import '../components/params/param-menu.js';
+import '../components/params/presets-menu.js';
 
-import { workspace, updateScriptCode, setExecutionResult, setExecuting } from '../state/workspace';
+import { workspace, scriptParams, updateScriptCode, setExecutionResult, setExecuting } from '../state/workspace';
+import type { ScriptParam } from '../state/workspace';
 import { RunnerScriptExecutionRequest } from '../../devlibs/archiyou-core-next/src/runner/types';
 
 @customElement('page-editor')
@@ -39,12 +42,15 @@ export class PageEditor extends SignalWatcher(LitElement)
         <wa-split-panel class="left-split" slot="start" orientation="vertical" position="70">
           <wa-icon class="split-grip-h"
               slot="divider" variant="solid" name="grip-lines"></wa-icon>
-          <editor-code-box
-            slot="start"
-              .code=${workspace.get().editor.script?.code ?? ''}
-            @change=${this._handleCodeChange}
-            @execute=${this._handleExecute}
-          ></editor-code-box>
+          <div class="top-panel" slot="start">
+            <presets-menu></presets-menu>
+            <param-menu @param-value-change=${() => this._scheduleParamExecute()}></param-menu>
+            <editor-code-box
+                .code=${workspace.get().editor.script?.code ?? ''}
+              @change=${this._handleCodeChange}
+              @execute=${this._handleExecute}
+            ></editor-code-box>
+          </div>
           <div class="bottom-panel" slot="end">
             <editor-console></editor-console>
             <scene-explorer></scene-explorer>
@@ -77,9 +83,21 @@ export class PageEditor extends SignalWatcher(LitElement)
   // Internal state
   private _code = '';
   private _codeChangeTimeout: number | null = null;
+  private _paramExecTimeout: number | null = null;
   private _worker: Remote<ArchiyouCoreApi> | null = null;
 
   // Methods 
+
+  /** Execute immediately (50 ms debounce to coalesce rapid slider ticks) after a param value change */
+  private _scheduleParamExecute()
+  {
+    if (this._paramExecTimeout !== null) clearTimeout(this._paramExecTimeout);
+    this._paramExecTimeout = window.setTimeout(() =>
+    {
+      this._paramExecTimeout = null;
+      this.execute();
+    }, 50);
+  }
 
   private _handleCodeChange(e: CustomEvent<string>)
   {
@@ -116,21 +134,71 @@ export class PageEditor extends SignalWatcher(LitElement)
   {
     const worker = this._worker ?? await loadArchiyouCore();
 
+    const scriptData = workspace.get().editor.script?.toData() as any;
+    const params     = scriptParams.get();
+
+    // Inject param definitions into script data so the Runner's ParamManager knows about them
+    scriptData.params = Object.fromEntries(
+      params.map(p => [p.name, {
+        name:    p.name,
+        schema:  this._buildParamSchema(p),
+        default: p.defaultValue,
+        order:   p.order,
+        ...(p.units !== undefined && { units: p.units }),
+      }])
+    );
+
+    // Current param values (value = interactive, falls back to definition default)
+    const paramValues: Record<string, any> = Object.fromEntries(
+      params.map(p => [p.name, p.value ?? p.defaultValue])
+    );
+
     const result = await worker.execute(
-                      {
-                        outputs: ['default/model/glb'],
-                        messages: ['info', 'geom', 'user', 'warn', 'error', 'exec'],
-                        script: workspace.get().editor.script?.toData()
-                      } as RunnerScriptExecutionRequest
-                    );     
+      {
+        outputs:  ['default/model/glb'],
+        messages: ['info', 'geom', 'user', 'warn', 'error', 'exec'],
+        script:   scriptData,
+        params:   paramValues,
+      } as RunnerScriptExecutionRequest
+    );
+
     if (result)
     {
       setExecutionResult(result);
       return result;
-    } 
-    else {
+    }
+    else
+    {
       console.error(`Execute failed without result. This should not happen!`);
     }
+  }
+
+  /** Build a JSON-Schema-compatible schema object from a ScriptParam for the Runner's ParamManager */
+  private _buildParamSchema(p: ScriptParam): Record<string, unknown>
+  {
+    const schema: Record<string, unknown> = { type: p.type };
+
+    if (p.type === 'number')
+    {
+      if (p.min  !== undefined) schema.minimum    = p.min;
+      if (p.max  !== undefined) schema.maximum    = p.max;
+      if (p.step !== undefined) schema.multipleOf = p.step;
+    }
+    else if (p.type === 'text')
+    {
+      if (p.minLength !== undefined) schema.minLength = p.minLength;
+      if (p.maxLength !== undefined) schema.maxLength = p.maxLength;
+    }
+    else if (p.type === 'options')
+    {
+      schema.enum = p.options ?? [];
+    }
+    else if (p.type === 'list')
+    {
+      schema.items = { type: p.listItemType ?? 'string' };
+    }
+
+    return schema;
   }
 
   private async _handleExecute()
@@ -206,6 +274,19 @@ export class PageEditor extends SignalWatcher(LitElement)
       width: 100%;
       height: 100%;
       overflow: hidden;
+    }
+
+    .top-panel {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .top-panel editor-code-box {
+      flex: 1;
+      min-height: 0;
     }
 
     editor-console,

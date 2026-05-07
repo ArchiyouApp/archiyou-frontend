@@ -35,11 +35,15 @@ export class ModelViewer extends SignalWatcher(LitElement)
         .arSupported=${this._arSupported}
         .arActive=${this._arActive}
         .isOrtho=${this._isOrtho}
+        .animations=${this._animationClips.map(c => c.name)}
+        .activeAnimation=${this._activeAnimationName}
         @viewer-zoom-in=${this._zoomIn}
         @viewer-zoom-out=${this._zoomOut}
         @viewer-center=${this._centerCamera}
         @viewer-set-style=${(e: Event) =>
           this._applyViewStyle((e as CustomEvent<{ styleId: string }>).detail.styleId)}
+        @viewer-set-animation=${(e: Event) =>
+          this._playAnimation((e as CustomEvent<{ name: string | null }>).detail.name)}
         @viewer-toggle-ar=${this._toggleAR}
         @viewer-toggle-projection=${this._toggleProjection}
       ></viewer-menu>
@@ -118,6 +122,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _frameId = 0;
   private _mixer?: THREE.AnimationMixer;
   private _clock = new THREE.Clock();
+  @state() private _animationClips: THREE.AnimationClip[] = [];
+  @state() private _activeAnimationName: string | null = null;
   private _dirty = true;
   private _currentModel?: THREE.Object3D;
   private _lastGlbOutput?: ScriptOutputData;
@@ -285,6 +291,25 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._dirty = true;
     }
   };
+
+  private _playAnimation(name: string | null)
+  {
+    if (!this._mixer) return;
+    this._mixer.stopAllAction();
+    if (name)
+    {
+      const clip = this._animationClips.find(c => c.name === name);
+      if (clip)
+      {
+        const action = this._mixer.clipAction(clip);
+        action.setLoop(THREE.LoopOnce, 1);
+        action.clampWhenFinished = true;
+        action.play();
+      }
+    }
+    this._activeAnimationName = name;
+    this._dirty = true;
+  }
 
   // ── 7. AR mode ──
 
@@ -783,11 +808,17 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._hasFramedCamera = true;
     }
 
-    // Play animations if present
+    // Store animations for user selection — don't auto-play
     if (gltf.animations.length)
     {
+      this._animationClips = gltf.animations;
+      this._activeAnimationName = null;
       this._mixer = new THREE.AnimationMixer(model);
-      gltf.animations.forEach(clip => this._mixer!.clipAction(clip).play());
+    }
+    else
+    {
+      this._animationClips = [];
+      this._activeAnimationName = null;
     }
 
     // Render CAD hard edges from custom GLTF extensions
@@ -881,6 +912,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
     });
     this._currentModel = undefined;
     this._mixer = undefined;
+    this._animationClips = [];
+    this._activeAnimationName = null;
   }
 
   private _frameCamera(obj: THREE.Object3D)

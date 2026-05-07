@@ -1,5 +1,6 @@
 packages:
   - 'devlibs/*'
+  - 'devlibs/archiyou-core-next/devlibs/*'
 
 allowBuilds:
   '@vaadin/vaadin-usage-statistics': false

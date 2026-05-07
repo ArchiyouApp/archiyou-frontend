@@ -191,7 +191,7 @@ export class ParamItemNumber extends LitElement
             border-radius: var(--radius-sm, 3px);
             overflow:      hidden;
             flex-shrink:   0;
-            width:         90px;
+            width:         110px;
         }
 
         .num-unit:focus-within { border-color: var(--color-primary); }
@@ -221,13 +221,13 @@ export class ParamItemNumber extends LitElement
         .unit
         {
             flex-shrink: 0;
-            width:       36px;
+            width:       58px;
             font-family: var(--font-sans);
             font-size:   var(--text-xs);
             color:       var(--color-gray-dark, #666);
             background:  var(--color-bg-elevated);
             border:      none;
-            padding:     1px 2px;
+            padding:     1px 6px;
             cursor:      pointer;
         }
 

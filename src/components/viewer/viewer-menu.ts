@@ -160,7 +160,7 @@ export class ViewerMenu extends LitElement
                     @click=${() => this._selectAnimation(null)}
                   >
                     <wa-icon name="stop"></wa-icon>
-                    <span>Rest pose</span>
+                    <span>Default</span>
                   </button>
                   ${this.animations.map(name => html`
                     <button

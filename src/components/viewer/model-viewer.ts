@@ -295,20 +295,53 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _playAnimation(name: string | null)
   {
     if (!this._mixer) return;
-    this._mixer.stopAllAction();
-    if (name)
+
+    if (name === null)
     {
-      const clip = this._animationClips.find(c => c.name === name);
-      if (clip)
+      const activeClip = this._activeAnimationName
+        ? this._animationClips.find(c => c.name === this._activeAnimationName)
+        : undefined;
+
+      if (!activeClip)
       {
-        const action = this._mixer.clipAction(clip);
-        action.setLoop(THREE.LoopOnce, 1);
-        action.clampWhenFinished = true;
-        action.play();
+        this._activeAnimationName = null;
+        this._dirty = true;
+        return;
       }
+
+      this._mixer.stopAllAction();
+      this._playClip(activeClip, true);
+      this._activeAnimationName = null;
+      this._dirty = true;
+      return;
     }
+
+    this._mixer.stopAllAction();
+    const clip = this._animationClips.find(c => c.name === name);
+
+    if (clip)
+    {
+      this._playClip(clip);
+    }
+
     this._activeAnimationName = name;
     this._dirty = true;
+  }
+
+  private _playClip(clip: THREE.AnimationClip, reverse = false)
+  {
+    if (!this._mixer) return;
+
+    const action = this._mixer.clipAction(clip);
+    action.reset();
+    action.paused = false;
+    action.enabled = true;
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.setEffectiveTimeScale(reverse ? -1 : 1);
+    action.setEffectiveWeight(1);
+    action.time = reverse ? clip.duration : 0;
+    action.play();
   }
 
   // ── 7. AR mode ──

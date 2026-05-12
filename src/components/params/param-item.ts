@@ -35,10 +35,8 @@ export class ParamItem extends LitElement
               @keydown=${this._onLabelKeydown}
             />`
         : html`
-            <span class="var-tag" title="use value with $${toVariableName(this.param.name)}">
-              <wa-icon name="tag"></wa-icon>
-            </span>
-            <span class="label" @dblclick=${this._startEditLabel}>
+            <span class="label" @dblclick=${this._startEditLabel}
+              title="use in your script with $${toVariableName(this.param.name).toUpperCase()}">
               ${this.param.name}
             </span>`
       }
@@ -231,18 +229,6 @@ export class ParamItem extends LitElement
       min-width: 0;
       outline: none;
     }
-
-    .var-tag {
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      color: var(--color-gray-dark, #666);
-      opacity: 0.35;
-      font-size: 10px;
-      cursor: default;
-    }
-
-    .var-tag:hover { opacity: 0.8; }
 
     .param-slot {
       flex: 1;

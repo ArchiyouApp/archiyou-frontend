@@ -72,7 +72,8 @@ export class CodeBox extends SignalWatcher(LitElement)
     return html`
       <div class="wrapper">
         <div class="title-bar">
-          <wa-icon name="code"></wa-icon>Code Editor
+          <wa-icon name="code"></wa-icon>
+          <span class="title">code editor</span>
           <span class="state">
             ${workspace.get().editor.executing
                 ? html`<wa-icon name="cog" animation="spin-reverse" label="executing"></wa-icon>`
@@ -286,7 +287,7 @@ export class CodeBox extends SignalWatcher(LitElement)
     .wrapper {
       display: flex;
       flex-direction: column;
-      padding: 2rem;
+      padding: 0;
       flex: 1;
       min-height: 0;
     }
@@ -294,25 +295,31 @@ export class CodeBox extends SignalWatcher(LitElement)
     .title-bar {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem 1rem;
+      gap: var(--space-sm, 8px);
+      padding: 0.35rem 1rem;
       font-family: var(--font-sans);
       font-size: var(--text-sm);
-      font-weight: 500;
       color: var(--color-text);
       flex-shrink: 0;
+      background: var(--color-gray);
+      border-bottom: 1px solid var(--color-border);
     }
 
-    .title-bar .spacer {
-      flex: 1;
+    .title {
+      font-weight: 500;
+      color: var(--color-text);
+      font-size: var(--text-sm);
     }
+
+    .spacer { flex: 1; }
 
     .execute-button {
-      width: 32px;
-      height: 32px;
+      width: 22px;
+      height: 22px;
       display: flex;
       align-items: center;
       justify-content: center;
+      font-size: 0.6rem;
       color: var(--color-white);
       background-color: var(--color-primary);
       border-radius: var(--radius-full);
@@ -328,13 +335,18 @@ export class CodeBox extends SignalWatcher(LitElement)
     .cm-container {
       flex: 1;
       min-height: 0;
-      border-radius: var(--radius-lg);
-      border: 1px solid var(--color-border);
     }
 
     /* Override CodeMirror to fill available height */
     .cm-editor {
       height: 100%;
+    }
+
+    /* Smaller font in editor */
+    .cm-content,
+    .cm-line,
+    .cm-gutters {
+      font-size: 0.72rem !important;
     }
 
     /* Error line highlight (applied via CodeMirror StateField) */

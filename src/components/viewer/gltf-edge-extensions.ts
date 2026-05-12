@@ -129,7 +129,7 @@ async function _attachEdgeLines(
         const lines = new THREE.LineSegments(geo, mat);
         lines.userData.cannotReceiveAO = true;
         lines.userData.isEdgeOverlay = true;
-        mesh.parent!.add(lines);
+        mesh.add(lines);
     }
     else
     {
@@ -137,7 +137,7 @@ async function _attachEdgeLines(
         const lines2 = new LineSegments2(geo2, mat as LineMaterial);
         lines2.userData.cannotReceiveAO = true;
         lines2.userData.isEdgeOverlay = true;
-        mesh.parent!.add(lines2);
+        mesh.add(lines2);
     }
 }
 

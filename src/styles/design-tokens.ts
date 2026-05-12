@@ -43,11 +43,14 @@ export const tokens = {
   colorText: '#414651',
   colorTextMuted: 'var(--color-gray-light)',
   colorBorder: '#cfcfcf',
+  colorDivider: '#e6e6e6',
 
 
   // --- Typography ---
-  fontSans: "'Outfit', system-ui, sans-serif",
-  fontMono: "'JetBrains Mono', 'Fira Code', monospace",
+  // See index.html to load the corresponding Google Fonts families
+  fontDisplay: "'Outfit', system-ui, sans-serif", // headlines, display text
+  fontSans: "'Plus Jakarta Sans', system-ui, sans-serif", // body text, UI (used to be Inter)
+  fontMono: "monospace, 'Inconsolata', 'JetBrains Mono', 'Fira Code', monospace", // code, data
   fontSizeBase: '16px',
   lineHeightBase: '1.5',
 

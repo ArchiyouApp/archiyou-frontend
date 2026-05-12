@@ -174,6 +174,31 @@ export function setActiveBottomPanel(panel: 'console' | 'scene' | 'none'): void
   activeBottomPanel.set(panel);
 }
 
+// ── Script Metadata ───────────────────────────────────────────────────────────
+
+export interface ScriptMetadata
+{
+  projectName: string;
+  version: string;
+  projectDetails: string;
+  categories: string[];
+}
+
+export const scriptMetadata = signal<ScriptMetadata>({
+  projectName: '',
+  version: '',
+  projectDetails: '',
+  categories: [],
+});
+
+/** The currently active script (mirrors editorState.script). */
+export const selectedScript = computed(() => editorState.get().script);
+
+export function updateScriptMetadata(_scriptId: string, metadata: ScriptMetadata): void
+{
+  scriptMetadata.set(metadata);
+}
+
 // ── Params ───────────────────────────────────────────────────────────────────
 
 export interface ScriptParam

@@ -1,6 +1,6 @@
 import { LitElement, html, css, nothing } from 'lit';
 import type { HTMLTemplateResult } from 'lit';
-import { customElement, state } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
@@ -27,6 +27,8 @@ function nodeIcon(type: string): string
 @customElement('scene-explorer')
 export class SceneExplorer extends SignalWatcher(LitElement)
 {
+  @property({ type: Boolean }) standalone = false;
+
   @state() private _expandedNodes = new Set<string>();
 
   // Track tree root UUID to reset expansion when a new model loads
@@ -34,8 +36,8 @@ export class SceneExplorer extends SignalWatcher(LitElement)
 
   override render()
   {
-    const collapsed = activeBottomPanel.get() !== 'scene';
-    this.toggleAttribute('collapsed', collapsed);
+    const collapsed = this.standalone ? false : activeBottomPanel.get() !== 'scene';
+    if (!this.standalone) this.toggleAttribute('collapsed', collapsed);
 
     const tree   = sceneTree.get();
     const hidden = hiddenNodes.get();
@@ -50,12 +52,14 @@ export class SceneExplorer extends SignalWatcher(LitElement)
     }
 
     return html`
-      <div class="header" @click=${this._activate}>
-        <wa-icon name="sitemap"></wa-icon>
-        <span class="title">Scene</span>
-        <span class="spacer"></span>
-        <wa-icon name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
-      </div>
+      ${!this.standalone ? html`
+        <div class="header" @click=${this._activate}>
+          <wa-icon name="sitemap"></wa-icon>
+          <span class="title">scene</span>
+          <span class="spacer"></span>
+          <wa-icon name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
+        </div>
+      ` : nothing}
 
       ${!collapsed ? html`
         <div class="tree">
@@ -154,7 +158,7 @@ export class SceneExplorer extends SignalWatcher(LitElement)
     .header {
       display: flex;
       align-items: center;
-      gap: var(--space-2, 8px);
+      gap: var(--space-sm, 8px);
       padding: 0.35rem 1rem;
       flex-shrink: 0;
       user-select: none;

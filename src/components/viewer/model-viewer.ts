@@ -1042,8 +1042,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     viewer-menu {
       position: absolute;
-      top: 12px;
-      right: 12px;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
       z-index: 10;
     }
   `;

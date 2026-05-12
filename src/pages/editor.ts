@@ -1,5 +1,5 @@
 import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, query, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 import type { RouterLocation } from '@vaadin/router';
 
@@ -8,15 +8,19 @@ import { ArchiyouCoreApi } from '../workers/archiyou.core.worker';
 
 import type { Remote } from 'comlink';
 
-import '../components/editor/sidemenu.js';
+import '../components/editor/main-menu.js';
 import '../components/editor/codebox.js';
 import '../components/editor/console.js';
-import '../components/editor/scene-explorer.js';
 import '../components/viewer/model-viewer.js';
 import '../components/params/param-menu.js';
 import '../components/params/presets-menu.js';
+import '../components/editor/toolbar.js';
+import '../components/editor/tool-panels.js';
+import '../components/editor/tools/scene-tool.js';
+import '../components/editor/tools/data-tool.js';
+import type { ToolDef } from '../components/editor/toolbar.js';
 
-import { workspace, scriptParams, updateScriptCode, setExecutionResult, setExecuting } from '../state/workspace';
+import { workspace, scriptParams, updateScriptCode, setExecutionResult, setExecuting, activeBottomPanel } from '../state/workspace';
 import type { ScriptParam } from '../state/workspace';
 import { RunnerScriptExecutionRequest } from '../../devlibs/archiyou-core-next/src/runner/types';
 
@@ -27,19 +31,29 @@ export class PageEditor extends SignalWatcher(LitElement)
   CONST_AUTORUN_DELAY = 1000;    // ms to wait after code changes before auto-running
   CONST_AUTORUN_MIN_SIZE = 20;   // minimum code length to trigger auto-run
 
+  readonly TOOLS: ToolDef[] = [
+    { id: 'scene', icon: 'sitemap', name: 'Scene', exclusive: false, component: 'editor-scene-tool', width: 30, height: 50 },
+    { id: 'data',  icon: 'table',       name: 'Data',  exclusive: false, component: 'editor-data-tool',  width: 30, height: 50 },
+  ];
+
   //// 
 
   override render()
   {
     return html`
-      <editor-side-menu></editor-side-menu>
+      <editor-main-menu
+        .active=${this._activeSection}
+        @menu-action=${this._handleMenuAction}
+        @menu-select=${this._handleMenuSelect}
+      ></editor-main-menu>
       <wa-split-panel
             position="50"
             snap="25% 50% 75%"
         >
         <wa-icon class="split-grip"
             slot="divider" variant="solid" name="grip-lines-vertical"></wa-icon>
-        <wa-split-panel class="left-split" slot="start" orientation="vertical" position="70">
+        <wa-split-panel class="left-split" slot="start" orientation="vertical"
+            @wa-reposition=${this._handleConsoleSplitReposition}>
           <wa-icon class="split-grip-h"
               slot="divider" variant="solid" name="grip-lines"></wa-icon>
           <div class="top-panel" slot="start">
@@ -53,22 +67,52 @@ export class PageEditor extends SignalWatcher(LitElement)
           </div>
           <div class="bottom-panel" slot="end">
             <editor-console></editor-console>
-            <scene-explorer></scene-explorer>
           </div>
         </wa-split-panel>
-        <model-viewer slot="end"></model-viewer>
+        <wa-split-panel
+          slot="end"
+          class="viewer-tools-split"
+          position=${this._activeTools.length > 0 ? 100 - this._activeTools.reduce((max, t) => Math.max(max, t.width), 0) : 100}
+        >
+          ${this._activeTools.length > 0 ? html`<wa-icon slot="divider" class="split-grip" variant="solid" name="grip-lines-vertical"></wa-icon>` : ''}
+          <model-viewer slot="start"></model-viewer>
+          <editor-tool-panels
+            slot="end"
+            .tools=${this._activeTools}
+            @tool-close=${this._handleToolClose}
+          ></editor-tool-panels>
+        </wa-split-panel>
       </wa-split-panel>
+      <editor-toolbar
+        .tools=${this.TOOLS}
+        .activeIds=${this._activeTools.map(t => t.id)}
+        @tool-toggle=${this._handleToolToggle}
+      ></editor-toolbar>
     `;
   }
 
   // Properties
   @property({ attribute: false }) location?: RouterLocation;
 
+  @state() private _activeSection: 'info' | 'code' | 'history' | 'files' | 'templates' | 'help' | 'settings' | null = 'code';
+  @state() private _activeTools: ToolDef[] = [];
+
+  @query('.left-split') private _leftSplitPanel!: HTMLElement & { position: number };
+  private _consoleSplitPosition = 70;
+  private _consoleWasOpen: boolean | null = null;
+
 
   // Lifecycle
   override connectedCallback()
   {
     super.connectedCallback();
+    // Default: open scene tool
+    const sceneTool = this.TOOLS.find(t => t.id === 'scene');
+    if (sceneTool) this._activeTools = [sceneTool];
+
+    const saved = localStorage.getItem('editor:consoleSplitPosition');
+    if (saved) this._consoleSplitPosition = Math.max(10, Math.min(95, parseFloat(saved)));
+
     console.info('Editor::connectedCallback(): Webworker starting...');
     loadArchiyouCore()
       .then(w => { 
@@ -78,6 +122,11 @@ export class PageEditor extends SignalWatcher(LitElement)
           this.checkAutoRun();
         })
       .catch(err => { console.error('Editor: worker init failed:', err); });
+  }
+
+  override updated()
+  {
+    this._syncConsoleSplitPosition();
   }
 
   // Internal state
@@ -155,7 +204,7 @@ export class PageEditor extends SignalWatcher(LitElement)
 
     const result = await worker.execute(
       {
-        outputs:  ['default/model/glb'],
+        outputs:  ['default/model/glb', 'default/tables/*/json'],
         messages: ['info', 'geom', 'user', 'warn', 'error', 'exec'],
         script:   scriptData,
         params:   paramValues,
@@ -201,6 +250,83 @@ export class PageEditor extends SignalWatcher(LitElement)
     return schema;
   }
 
+  private _handleMenuAction(e: CustomEvent<string>)
+  {
+    this.dispatchEvent(new CustomEvent('editor-action', {
+      detail: e.detail,
+      bubbles: true,
+      composed: true,
+    }));
+  }
+
+  private _handleMenuSelect(e: CustomEvent<'info' | 'code' | 'history' | 'files' | 'templates' | 'help' | 'settings' | null>)
+  {
+    this._activeSection = e.detail;
+    this.dispatchEvent(new CustomEvent('editor-section', {
+      detail: e.detail,
+      bubbles: true,
+      composed: true,
+    }));
+  }
+
+  private _handleToolToggle(e: CustomEvent<string>)
+  {
+    const id = e.detail;
+    const tool = this.TOOLS.find(t => t.id === id);
+    if (!tool) return;
+
+    const isActive = this._activeTools.some(t => t.id === id);
+
+    if (isActive)
+    {
+      this._activeTools = this._activeTools.filter(t => t.id !== id);
+    }
+    else
+    {
+      const base = tool.exclusive ? [] : this._activeTools.filter(t => !t.exclusive);
+      this._activeTools = [...base, tool];
+    }
+  }
+
+  private _handleToolClose(e: CustomEvent<string>)
+  {
+    this._activeTools = this._activeTools.filter(t => t.id !== e.detail);
+  }
+
+  private _syncConsoleSplitPosition()
+  {
+    const panel = this._leftSplitPanel as any;
+    if (!panel) return;
+
+    const isOpen = activeBottomPanel.get() === 'console';
+    if (this._consoleWasOpen === isOpen) return;
+    this._consoleWasOpen = isOpen;
+
+    if (isOpen)
+    {
+      panel.position = this._consoleSplitPosition;
+    }
+    else
+    {
+      const totalH = (panel as HTMLElement).offsetHeight;
+      if (totalH > 0)
+      {
+        panel.position = Math.max(0, ((totalH - 40) / totalH) * 100);
+      }
+    }
+  }
+
+  private _handleConsoleSplitReposition(e: Event)
+  {
+    if (activeBottomPanel.get() !== 'console') return;
+    const pos = (e.currentTarget as any).position as number;
+    if (typeof pos === 'number' && pos > 1 && pos < 99)
+    {
+      this._consoleSplitPosition = pos;
+      localStorage.setItem('editor:consoleSplitPosition', String(pos));
+    }
+  }
+
   private async _handleExecute()
   {
     if (workspace.get().editor.executing)
@@ -242,7 +368,21 @@ export class PageEditor extends SignalWatcher(LitElement)
       --divider-width: 12px;
     }
 
-    editor-side-menu { flex-shrink: 0; }
+    editor-main-menu { flex-shrink: 0; }
+    editor-toolbar    { flex-shrink: 0; }
+
+    .viewer-tools-split {
+      width: 100%;
+      height: 100%;
+      --divider-width: 12px;
+    }
+
+    editor-tool-panels {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      border-left: 1px solid var(--color-border);
+    }
 
     .left-split {
       width: 100%;
@@ -250,8 +390,7 @@ export class PageEditor extends SignalWatcher(LitElement)
     }
 
     wa-split-panel::part(divider) {
-      background-color: rgb(0,0,0, 0.05);
-      backdrop-filter: blur(5px);
+      background-color: var(--color-divider);
     }
 
     wa-icon.split-grip,
@@ -263,7 +402,6 @@ export class PageEditor extends SignalWatcher(LitElement)
     model-viewer {
       width: 100%;
       height: 100%;
-      margin-left: -12px;
     }
 
     /* ── Bottom tab panel ── */
@@ -289,15 +427,13 @@ export class PageEditor extends SignalWatcher(LitElement)
       min-height: 0;
     }
 
-    editor-console,
-    scene-explorer {
+    editor-console {
       flex: 1;
       min-height: 0;
       overflow: hidden;
     }
 
-    editor-console[collapsed],
-    scene-explorer[collapsed] {
+    editor-console[collapsed] {
       flex: 0 0 auto;
     }
   `;

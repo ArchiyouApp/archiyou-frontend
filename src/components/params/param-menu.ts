@@ -68,7 +68,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
     return html`
       <div class="header" @click=${this._toggleCollapse}>
         <wa-icon name="sliders"></wa-icon>
-        <span class="title">Parameters</span>
+        <span class="title">parameters</span>
         <span class="spacer"></span>
         <wa-icon name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
       </div>
@@ -631,7 +631,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
     .header {
       display: flex;
       align-items: center;
-      gap: var(--space-2, 8px);
+      gap: var(--space-sm, 8px);
       padding: 0.35rem 1rem;
       flex-shrink: 0;
       user-select: none;

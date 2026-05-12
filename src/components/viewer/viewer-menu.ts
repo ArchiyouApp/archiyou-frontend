@@ -212,7 +212,7 @@ export class ViewerMenu extends LitElement
 
     aside {
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
       align-items: center;
       gap: 2px;
       padding: 6px;
@@ -225,16 +225,17 @@ export class ViewerMenu extends LitElement
 
     .group {
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
       align-items: center;
       gap: 2px;
     }
 
     hr {
-      width: 22px;
+      height: 22px;
+      width: 0;
       border: none;
-      border-top: 1px solid rgba(255, 255, 255, 0.12);
-      margin: 3px 0;
+      border-left: 1px solid rgba(255, 255, 255, 0.12);
+      margin: 0 3px;
     }
 
     .icon-btn {
@@ -275,8 +276,9 @@ export class ViewerMenu extends LitElement
 
     .styles-flyout {
       position: absolute;
-      right: calc(100% + 10px);
-      top: 0;
+      bottom: calc(100% + 10px);
+      left: 50%;
+      transform: translateX(-50%);
       z-index: 100;
       background: rgba(10, 16, 32, 0.93);
       backdrop-filter: blur(12px);

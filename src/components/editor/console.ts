@@ -3,6 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
+import '../menu-badge.js';
 
 import { workspace, activeBottomPanel, setActiveBottomPanel } from '../../state/workspace.js';
 import type { ConsoleMessageType } from '../../../devlibs/archiyou-core-next/src/console/types';
@@ -49,9 +50,9 @@ export class EditorConsole extends SignalWatcher(LitElement)
     return html`
       <div class="header" @click=${this._activate}>
         <wa-icon name="terminal"></wa-icon>
-        <span class="title">Console</span>
+        <span class="title">console</span>
         <span class="spacer"></span>
-        <span class="badge">${messages.length}</span>
+        <menu-badge .value=${messages.length} color="danger"></menu-badge>
         <wa-icon name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
       </div>
 
@@ -124,7 +125,7 @@ export class EditorConsole extends SignalWatcher(LitElement)
     .header {
       display: flex;
       align-items: center;
-      gap: var(--space-2, 8px);
+      gap: var(--space-sm, 8px);
       padding: 0.35rem 1rem;
       flex-shrink: 0;
       user-select: none;
@@ -136,20 +137,6 @@ export class EditorConsole extends SignalWatcher(LitElement)
       font-weight: 500;
       color: var(--color-text);
       font-size: var(--text-sm);
-    }
-
-    /* total message count */
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: var(--space-xl);
-      height: var(--space-xl);
-      border-radius: var(--radius-full);
-      background: var(--color-alert);
-      color: var(--color-white);
-      font-size: var(--text-xxs);
-      line-height: 1;
     }
 
     .spacer { flex: 1; }
@@ -220,7 +207,7 @@ export class EditorConsole extends SignalWatcher(LitElement)
     .message {
       display: flex;
       align-items: baseline;
-      gap: var(--space-2, 8px);
+      gap: var(--space-sm, 8px);
       padding: 0.18rem 1rem;
       font-size: 0.72rem;
       font-family: var(--font-mono, monospace);

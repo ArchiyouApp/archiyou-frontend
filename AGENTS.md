@@ -112,7 +112,7 @@ export class CTComponentName extends SignalWatcher(LitElement)
     .container {
       display: flex;
       align-items: center;
-      gap: var(--space-2);
+      gap: var(--space-sm);
       padding: var(--space-4);
       background: var(--color-bg-elevated);
       border: 1px solid var(--color-border);

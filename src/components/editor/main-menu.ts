@@ -1,68 +1,72 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { msg } from '@lit/localize';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
-import './hamburger-menu.js';
+import '@awesome.me/webawesome/dist/components/tooltip/tooltip.js';
+import './main-menu-file-menu.js';
+import './panel-info.js';
 
 type MenuItem = 'info' | 'code' | 'history' | 'files' | 'templates' | 'help' | 'settings';
 
-@customElement('editor-side-menu')
-export class SideMenu extends LitElement
+@customElement('editor-main-menu')
+export class MainMenu extends LitElement
 {
   // ── 1. Render ──
   override render()
   {
     return html`
       <!-- top: hamburger dropdown -->
-      <editor-hamburger-menu></editor-hamburger-menu>
+      <editor-main-menu-file-menu></editor-main-menu-file-menu>
 
       <!-- sections -->
       <div class="sections">
         <wa-button
+          id="btn-info"
           appearance="plain"
           class=${this._active === 'info' ? 'active' : ''}
           @click=${() => this._select('info')}
         ><wa-icon name="circle-info" label="Info"></wa-icon></wa-button>
+        <wa-tooltip for="btn-info" placement="right">${msg('Info')}</wa-tooltip>
 
         <wa-button
+          id="btn-code"
           appearance="plain"
           class=${this._active === 'code' ? 'active' : ''}
           @click=${() => this._select('code')}
         ><wa-icon name="code" label="Code editor"></wa-icon></wa-button>
+        <wa-tooltip for="btn-code" placement="right">${msg('Code editor')}</wa-tooltip>
 
-        <wa-button
-          appearance="plain"
-          class=${this._active === 'history' ? 'active' : ''}
-          @click=${() => this._select('history')}
-        ><wa-icon name="clock-rotate-left" label="History"></wa-icon></wa-button>
-
-        <wa-button
-          appearance="plain"
-          class=${this._active === 'files' ? 'active' : ''}
-          @click=${() => this._select('files')}
-        ><wa-icon name="file-lines" label="Files"></wa-icon></wa-button>
       </div>
 
       <!-- bottom: templates, help, settings -->
       <div class="bottom">
         <wa-button
+          id="btn-templates"
           appearance="plain"
           class=${this._active === 'templates' ? 'active' : ''}
           @click=${() => this._select('templates')}
-        ><wa-icon name="cube" label="Templates"></wa-icon></wa-button>
+        ><wa-icon name="rocket" label="Templates"></wa-icon></wa-button>
+        <wa-tooltip for="btn-templates" placement="right">${msg('Templates')}</wa-tooltip>
 
         <wa-button
+          id="btn-help"
           appearance="plain"
           class=${this._active === 'help' ? 'active' : ''}
           @click=${() => this._select('help')}
         ><wa-icon name="circle-question" label="Help"></wa-icon></wa-button>
+        <wa-tooltip for="btn-help" placement="right">${msg('Help')}</wa-tooltip>
 
         <wa-button
+          id="btn-settings"
           appearance="plain"
           class=${this._active === 'settings' ? 'active' : ''}
           @click=${() => this._select('settings')}
         ><wa-icon name="gear" label="Settings"></wa-icon></wa-button>
+        <wa-tooltip for="btn-settings" placement="right">${msg('Settings')}</wa-tooltip>
       </div>
+
+      <panel-info ?hidden=${this._active !== 'info'}></panel-info>
     `;
   }
 
@@ -106,6 +110,23 @@ export class SideMenu extends LitElement
       border-right: 1px solid var(--color-border);
       align-items: center;
       gap: var(--space-1, 4px);
+      position: relative;
+      z-index: 20;
+    }
+
+    panel-info {
+      position: absolute;
+      top: 0;
+      left: 100%;
+      height: 100%;
+      width: 320px;
+      border-right: 1px solid var(--color-border);
+      z-index: 20;
+      box-shadow: var(--shadow-lg, 4px 0 16px rgba(0,0,0,0.15));
+    }
+
+    panel-info[hidden] {
+      display: none;
     }
 
     .sections {
@@ -138,6 +159,6 @@ declare global
 {
   interface HTMLElementTagNameMap
   {
-    'editor-side-menu': SideMenu;
+    'editor-main-menu': MainMenu;
   }
 }

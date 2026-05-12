@@ -64,7 +64,7 @@ export class PageLogin extends LitElement
     h1 {
       font-family: var(--font-sans);
       color: var(--color-text);
-      margin: 0 0 var(--space-2);
+      margin: 0 0 var(--space-sm);
     }
 
     p {

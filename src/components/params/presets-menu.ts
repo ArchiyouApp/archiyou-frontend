@@ -3,6 +3,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
+import '../menu-badge.js';
 
 import {
   scriptPresets,
@@ -39,9 +40,9 @@ export class PresetsMenu extends SignalWatcher(LitElement)
     return html`
       <div class="header" @click=${this._toggleCollapse}>
         <wa-icon name="bookmark"></wa-icon>
-        <span class="title">Presets</span>
+        <span class="title">presets</span>
         ${count > 0 ? html`
-          <span class="badge ${this._badgeFlashing ? 'flash' : ''}">${count}</span>
+          <menu-badge .value=${count} .attention=${this._badgeFlashing}></menu-badge>
         ` : nothing}
         <span class="spacer"></span>
         <wa-icon name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
@@ -216,7 +217,7 @@ export class PresetsMenu extends SignalWatcher(LitElement)
     .header {
       display: flex;
       align-items: center;
-      gap: var(--space-2, 8px);
+      gap: var(--space-sm, 8px);
       padding: 0.35rem 1rem;
       flex-shrink: 0;
       user-select: none;
@@ -236,35 +237,6 @@ export class PresetsMenu extends SignalWatcher(LitElement)
     }
 
     .spacer { flex: 1; }
-
-    /* ── Count badge ── */
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 18px;
-      height: 18px;
-      padding: 0 5px;
-      border-radius: 9px;
-      background: var(--color-primary);
-      color: #fff;
-      font-size: 10px;
-      font-weight: 600;
-      line-height: 1;
-      transition: background 0.3s ease;
-    }
-
-    @keyframes badge-alert {
-      0%   { background: var(--color-primary); transform: scale(1); }
-      15%  { background: var(--color-alert, #ef4444); transform: scale(1.25); }
-      50%  { background: var(--color-alert, #ef4444); transform: scale(1.1); }
-      100% { background: var(--color-primary); transform: scale(1); }
-    }
-
-    .badge.flash {
-      animation: badge-alert 1.2s ease forwards;
-    }
 
     /* ── Preset list ── */
 

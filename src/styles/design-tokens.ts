@@ -41,9 +41,9 @@ export const tokens = {
   colorBg:'#FFFFFF',
   colorBgDark: '#d9d9d9',
   colorText: '#414651',
-  colorTextMuted: 'var(--color-gray-light)',
+  colorTextMuted: '#999',
   colorBorder: '#cfcfcf',
-  colorDivider: '#e6e6e6',
+  colorDivider: '#e0e0e0',
 
 
   // --- Typography ---

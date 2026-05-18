@@ -5,6 +5,9 @@ import { Router } from '@vaadin/router';
 import { authService } from '../services/auth-service.js';
 import { applyDarkTheme, removeDarkTheme, isDarkTheme } from '../styles/dark-theme.js';
 
+import '@awesome.me/webawesome/dist/components/icon/icon.js';
+import '@awesome.me/webawesome/dist/components/button/button.js';
+
 
 @customElement('nav-bar')
 export class NavBar extends LitElement

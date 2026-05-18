@@ -422,7 +422,7 @@ export class PageEditor extends SignalWatcher(LitElement)
     }
 
     wa-split-panel::part(divider) {
-      background-color: rgb(0,0,0, 0.05);
+      background-color: var(--color-divider);
       backdrop-filter: blur(5px);
     }
 

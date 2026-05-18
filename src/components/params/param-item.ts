@@ -10,6 +10,7 @@ import { toVariableName } from '../../state/workspace.js';
 export class ParamItem extends LitElement
 {
   @property({ attribute: false }) param!: ScriptParam;
+  @property({ type: Boolean, reflect: true }) readonly = false;
 
   @state() private _editingLabel = false;
   @state() private _labelDraft = '';
@@ -81,9 +82,12 @@ export class ParamItem extends LitElement
   override connectedCallback()
   {
     super.connectedCallback();
-    this.setAttribute('draggable', 'true');
-    this.addEventListener('dragstart', this._onDragStart);
-    this.addEventListener('dragend', this._onDragEnd);
+    if (!this.readonly)
+    {
+      this.setAttribute('draggable', 'true');
+      this.addEventListener('dragstart', this._onDragStart);
+      this.addEventListener('dragend', this._onDragEnd);
+    }
   }
 
   override disconnectedCallback()
@@ -196,6 +200,10 @@ export class ParamItem extends LitElement
     }
 
     :host([dragging]) { opacity: 0.4; }
+
+    :host([readonly]) .grip { display: none; }
+    :host([readonly]) .actions { display: none; }
+    :host([readonly]) .label { pointer-events: none; }
 
     .grip {
       flex-shrink: 0;

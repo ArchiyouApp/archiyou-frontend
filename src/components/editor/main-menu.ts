@@ -4,8 +4,10 @@ import { msg } from '@lit/localize';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@awesome.me/webawesome/dist/components/tooltip/tooltip.js';
+import '@awesome.me/webawesome/dist/components/dialog/dialog.js';
 import './main-menu-file-menu.js';
 import './panel-info.js';
+import '../configurator/configurator.js';
 
 type MenuItem = 'info' | 'code' | 'history' | 'files' | 'templates' | 'help' | 'settings';
 
@@ -37,7 +39,25 @@ export class MainMenu extends LitElement
         ><wa-icon library="lucide" name="code" label="Code editor"></wa-icon></wa-button>
         <wa-tooltip for="btn-code" placement="right">${msg('Code editor')}</wa-tooltip>
 
+        <wa-button
+          id="btn-configurator"
+          appearance="plain"
+          @click=${this._openConfigurator}
+        ><wa-icon library="lucide" name="tv-minimal-play" label="Configurator"></wa-icon></wa-button>
+        <wa-tooltip for="btn-configurator" placement="right">${msg('Configurator')}</wa-tooltip>
+
       </div>
+
+      <!-- configurator dialog -->
+      <wa-dialog
+        class="configurator-dialog"
+        label=${msg('Configurator')}
+        style="--width: 80vw"
+        ?open=${this._configuratorOpen}
+        @wa-after-hide=${() => { this._configuratorOpen = false; }}
+      >
+        <page-configurator></page-configurator>
+      </wa-dialog>
 
       <!-- bottom: templates, help, settings -->
       <div class="bottom">
@@ -74,6 +94,7 @@ export class MainMenu extends LitElement
   @property({ type: String }) active: MenuItem | null = 'code';
 
   @state() private _active: MenuItem | null = 'code';
+  @state() private _configuratorOpen = false;
 
   // ── 3. Lifecycle ──
   override updated(changed: Map<string, unknown>)
@@ -85,6 +106,11 @@ export class MainMenu extends LitElement
   }
 
   // ── 4. Behaviour & Methods ──
+  private _openConfigurator()
+  {
+    this._configuratorOpen = true;
+  }
+
   private _select(item: MenuItem)
   {
     this._active = this._active === item ? null : item;
@@ -151,7 +177,26 @@ export class MainMenu extends LitElement
       color: var(--color-primary);
     }
 
+    .configurator-dialog::part(dialog)
+    {
+      height: 80vh;
+    }
 
+    .configurator-dialog::part(body)
+    {
+      padding: 0;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    page-configurator
+    {
+      flex: 1;
+      min-height: 0;
+    }
   `;
 }
 

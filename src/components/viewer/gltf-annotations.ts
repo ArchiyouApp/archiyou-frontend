@@ -1,34 +1,31 @@
 import * as THREE from 'three';
-import { Text } from 'troika-three-text';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   DIMENSION_LINE_COLOR,
   DIMENSION_ARROW_LENGTH,
   DIMENSION_ARROW_RADIUS,
-  DIMENSION_TEXT_SIZE,
-  DIMENSION_TEXT_COLOR,
-  DIMENSION_TEXT_BG_COLOR,
-  DIMENSION_TEXT_BG_PADDING,
 } from '../../settings.js';
 
 /**
- * Render archiyou dimension-line annotations carried in the GLB root `extras`.
+ * Render archiyou annotations carried in the GLB root `extras`.
  *
- * GLTFBuilder.addData() writes `{ annotations: DimensionLineData[] }` into the
- * glTF root extras. Three's GLTFLoader exposes the raw json at
- * gltf.parser.json — root extras live at gltf.parser.json.extras.
+ * GLTFBuilder.addData() writes `{ annotations: AnnotationData[] }` into the
+ * glTF root extras (Three's GLTFLoader exposes raw json at gltf.parser.json →
+ * root extras at gltf.parser.json.extras).
  *
- * The returned group is added as a child of `modelGroup` so it inherits the
- * same scale/position normalization the viewer applies to the model; geometry
- * is therefore built in raw model coordinates. Text/arrow sizes are
- * counter-scaled by `modelScale` so they read at a consistent on-screen size.
+ *  - dimension lines  → 3D line + arrowhead cones (added under modelGroup so
+ *                       they inherit the model normalization transform) PLUS
+ *                       an HTML overlay label for the value text.
+ *  - labels           → an HTML overlay element, optionally with a CSS leader
+ *                       line + arrow (screen-space length/angle).
  *
- * Returns the troika Text label objects so the caller can billboard them
- * toward the camera each frame and dispose them on unload.
+ * No troika / in-scene text: all text is HTML, styled via CSS in
+ * `viewer-labels-overlay`.
  */
 
 interface DimensionLineData
 {
+  type?: 'dimensionLine';
   start: [number, number, number];
   end: [number, number, number];
   dir?: [number, number, number];
@@ -40,19 +37,82 @@ interface DimensionLineData
   _labelPosition?: [number, number, number];
 }
 
+interface LabelData
+{
+  type: 'label';
+  position: [number, number, number];
+  value: string;
+  class?: string;
+  line?: boolean;
+  offset?: number;
+  angle?: number;
+  circle?: boolean;
+}
+
+type AnnotationItem = DimensionLineData | LabelData;
+
+/** A label rendered by the HTML overlay (anchor in modelGroup-local coords) */
+export interface HtmlLabelDef
+{
+  id: string;
+  text: string;
+  variant: 'label' | 'dimension';
+  anchorLocal: THREE.Vector3;
+  class?: string;
+  /** Optional CSS leader (screen space) */
+  line?: boolean;
+  offset?: number;
+  angle?: number;
+  circle?: boolean;
+}
+
+export interface AnnotationsResult
+{
+  htmlLabels: HtmlLabelDef[]; // projected to screen by the caller each frame
+}
+
 export async function applyAnnotations(
   gltf: GLTF,
   modelGroup: THREE.Object3D,
   modelScale: number,
-): Promise<Text[]>
+): Promise<AnnotationsResult>
 {
-  const extras = (gltf.parser?.json?.extras ?? {}) as { annotations?: DimensionLineData[] };
-  const dims = extras.annotations;
-  if (!Array.isArray(dims) || dims.length === 0) return [];
+  const extras = (gltf.parser?.json?.extras ?? {}) as { annotations?: AnnotationItem[] };
+  const anns = extras.annotations;
+  if (!Array.isArray(anns) || anns.length === 0) return { htmlLabels: [] };
 
-  // Counter-scale so text/arrows are ~constant in world space despite modelScale
+  const htmlLabels: HtmlLabelDef[] = [];
+  const dims: DimensionLineData[] = [];
+
+  anns.forEach((an, i) =>
+  {
+    if (an && (an as LabelData).type === 'label')
+    {
+      const l = an as LabelData;
+      if (!Array.isArray(l.position)) return;
+      htmlLabels.push({
+        id: `label-${i}`,
+        text: String(l.value ?? ''),
+        variant: 'label',
+        anchorLocal: new THREE.Vector3(...l.position),
+        class: l.class,
+        line: l.line,
+        offset: l.offset,
+        angle: l.angle,
+        circle: l.circle,
+      });
+    }
+    else
+    {
+      dims.push(an as DimensionLineData);
+    }
+  });
+
+  if (dims.length === 0) return { htmlLabels };
+
+  // 3D dimension-line geometry (line + arrowhead cones). Sizes are world units
+  // counter-scaled by the model fit-scale so they read consistently.
   const s = modelScale > 0 ? modelScale : 1;
-  const textSize = DIMENSION_TEXT_SIZE / s;
   const arrowLen = DIMENSION_ARROW_LENGTH / s;
   const arrowRad = DIMENSION_ARROW_RADIUS / s;
 
@@ -60,25 +120,22 @@ export async function applyAnnotations(
   group.name = 'Dimensions';
   group.userData.isViewerHelper = true; // excluded from scene tree
 
-  // toneMapped:false — annotations are UI overlays; AgX tone mapping would
-  // otherwise desaturate every color toward gray.
+  // toneMapped:false — annotation geometry is a UI overlay; AgX tone mapping
+  // would otherwise desaturate the color toward gray.
   const lineMat = new THREE.LineBasicMaterial({ color: DIMENSION_LINE_COLOR, toneMapped: false });
   const coneMat = new THREE.MeshBasicMaterial({ color: DIMENSION_LINE_COLOR, toneMapped: false });
   const coneGeo = new THREE.ConeGeometry(arrowRad, arrowLen, 12);
 
-  const labels: Text[] = [];
-
-  for (const d of dims)
+  dims.forEach((d, i) =>
   {
-    if (!d?.start || !d?.end) continue;
+    if (!d?.start || !d?.end) return;
 
     const a = new THREE.Vector3(...d.start);
     const b = new THREE.Vector3(...d.end);
     const dir = (d.dir ? new THREE.Vector3(...d.dir) : b.clone().sub(a)).normalize();
 
     // main line
-    const lineGeo = new THREE.BufferGeometry().setFromPoints([a, b]);
-    group.add(new THREE.Line(lineGeo, lineMat));
+    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), lineMat));
 
     // arrowheads at both ends (cone's +Y is its tip → orient to the line dir)
     const qEnd = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
@@ -94,55 +151,20 @@ export async function applyAnnotations(
     coneStart.quaternion.copy(qStart);
     group.add(coneStart);
 
-    // label — draws over the dimension line (depthTest off + render order)
-    const label = new Text();
-    label.text = _formatValue(d);
-    label.fontSize = textSize;
-    label.color = DIMENSION_TEXT_COLOR;
-    label.anchorX = 'center';
-    label.anchorY = 'middle';
-    label.material = new THREE.MeshBasicMaterial({ depthTest: false, toneMapped: false });
-    label.renderOrder = 3;
+    // value text → HTML overlay label at the midpoint / _labelPosition
     const lp = d._labelPosition
       ? new THREE.Vector3(...d._labelPosition)
       : a.clone().add(b).multiplyScalar(0.5);
-    label.position.copy(lp);
-    label.userData.isDimLabel = true;
-
-    // opaque background quad that occludes the line behind the text
-    const bg = new THREE.Mesh(
-      new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshBasicMaterial({
-        color: DIMENSION_TEXT_BG_COLOR,
-        depthTest: false,
-        depthWrite: false,
-        toneMapped: false,
-      }),
-    );
-    bg.renderOrder = 2; // behind the glyphs, in front of the line
-    bg.visible = false; // until sized from text bounds
-    label.add(bg);
-
-    label.sync(() =>
-    {
-      const tri = (label as unknown as { textRenderInfo?: { blockBounds: [number, number, number, number] } }).textRenderInfo;
-      if (!tri) return;
-      const [x0, y0, x1, y1] = tri.blockBounds;
-      const pad = textSize * DIMENSION_TEXT_BG_PADDING;
-      const w = (x1 - x0) + pad * 2;
-      const h = (y1 - y0) + pad * 2;
-      bg.geometry.dispose();
-      bg.geometry = new THREE.PlaneGeometry(w, h);
-      bg.position.set((x0 + x1) / 2, (y0 + y1) / 2, -textSize * 0.01);
-      bg.visible = true;
+    htmlLabels.push({
+      id: `dim-${i}`,
+      text: _formatValue(d),
+      variant: 'dimension',
+      anchorLocal: lp,
     });
-
-    group.add(label);
-    labels.push(label);
-  }
+  });
 
   modelGroup.add(group);
-  return labels;
+  return { htmlLabels };
 }
 
 function _formatValue(d: DimensionLineData): string

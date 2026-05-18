@@ -38,8 +38,7 @@
     "meshup": "workspace:*",
     "n8ao": "^1.10.1",
     "oidc-client-ts": "^3.1.0",
-    "three": "^0.171.0",
-    "troika-three-text": "^0.52.4"
+    "three": "^0.171.0"
   },
   "devDependencies": {
     "@lit/localize-tools": "^0.7.2",

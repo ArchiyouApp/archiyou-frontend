@@ -11,7 +11,9 @@ import type { ScriptOutputData } from '../../../devlibs/archiyou-core-next/src/e
 import type { SceneNodeData, SceneMaterialData } from '../../state/workspace.js';
 import { applyEdgeExtensions } from './gltf-edge-extensions.js';
 import { applyAnnotations } from './gltf-annotations.js';
-import type { Text } from 'troika-three-text';
+import type { HtmlLabelDef } from './gltf-annotations.js';
+import './viewer-labels-overlay.js';
+import type { ViewerLabelsOverlay, OverlayLabel, OverlayLabelPos } from './viewer-labels-overlay.js';
 import { VIEWER_BACKGROUND_COLOR } from '../../settings.js';
 import { VIEW_STYLES } from './view-styles.js';
 import type { ViewStyle, ViewStyleMaterialConfig } from './view-styles.js';
@@ -33,6 +35,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     return html`
       <canvas></canvas>
+      <viewer-labels-overlay></viewer-labels-overlay>
       <viewer-menu
         .activeStyleId=${this._activeStyleId}
         .arSupported=${this._arSupported}
@@ -129,7 +132,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
   @state() private _activeAnimationName: string | null = null;
   private _dirty = true;
   private _currentModel?: THREE.Object3D;
-  private _dimLabels: Text[] = [];
+  private _htmlLabels: HtmlLabelDef[] = [];
+  private _projV = new THREE.Vector3(); // reused for world→screen projection
   private _lastGlbOutput?: ScriptOutputData;
   private _pendingGlbOutput?: ScriptOutputData;
   private _hasFramedCamera = false;
@@ -861,9 +865,30 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // Render CAD hard edges from custom GLTF extensions
     await applyEdgeExtensions(gltf, model);
 
-    // Render dimension-line annotations (from GLB root extras) as 3D arrows + text
-    this._dimLabels = await applyAnnotations(gltf, model, scale);
-    this._dirty = true; // ensure a frame so labels billboard/appear
+    // Render annotations from GLB root extras: dimension lines as 3D arrows
+    // (geometry) + HTML overlay value text; labels as HTML overlay elements
+    // (optionally with a CSS leader line/arrow). Projected each frame.
+    const { htmlLabels } = await applyAnnotations(gltf, model, scale);
+    this._htmlLabels = htmlLabels;
+    const overlay = this.renderRoot.querySelector('viewer-labels-overlay') as ViewerLabelsOverlay | null;
+    if (overlay)
+    {
+      // dimension value text background = viewer background (kept in sync)
+      const bgHex = '#' + VIEWER_BACKGROUND_COLOR.toString(16).padStart(6, '0');
+      overlay.style.setProperty('--ay-dim-bg', bgHex);
+
+      overlay.labels = htmlLabels.map((l): OverlayLabel => ({
+        id: l.id,
+        text: l.text,
+        variant: l.variant,
+        class: l.class,
+        line: l.line,
+        offset: l.offset,
+        angle: l.angle,
+        circle: l.circle,
+      }));
+    }
+    this._dirty = true; // ensure a frame so labels appear/position
 
     // Ensure LineMaterial resolution is set for pixel-accurate line width
     this._resize();
@@ -951,9 +976,10 @@ export class ModelViewer extends SignalWatcher(LitElement)
         mats.forEach((mat) => mat.dispose());
       }
     });
-    // Troika Text needs explicit disposal (own geometry/material/atlas)
-    for (const l of this._dimLabels) l.dispose?.();
-    this._dimLabels = [];
+    // Clear HTML overlay labels (dimension text + shape labels)
+    this._htmlLabels = [];
+    const overlay = this.renderRoot.querySelector('viewer-labels-overlay') as ViewerLabelsOverlay | null;
+    if (overlay) overlay.labels = [];
 
     this._currentModel = undefined;
     this._mixer = undefined;
@@ -1031,16 +1057,42 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     if (this._dirty)
     {
-      // Billboard dimension labels to face the active camera
-      if (this._dimLabels.length)
-      {
-        const cam = this._isOrtho ? this._orthoCamera! : this._camera;
-        for (const l of this._dimLabels) l.quaternion.copy(cam.quaternion);
-      }
       this._renderer.render(this._scene, this._isOrtho ? this._orthoCamera! : this._camera);
+
+      // Project HTML overlay labels to screen
+      if (this._htmlLabels.length) this._updateLabelOverlay();
+
       this._dirty = false;
     }
   };
+
+  /** Project each HTML label's world anchor to screen px and push to the overlay */
+  private _updateLabelOverlay()
+  {
+    const overlay = this.renderRoot.querySelector('viewer-labels-overlay') as ViewerLabelsOverlay | null;
+    if (!overlay || !this._currentModel) return;
+
+    const cam = this._isOrtho ? this._orthoCamera! : this._camera;
+    const w = this.clientWidth;
+    const h = this.clientHeight;
+    if (!w || !h) return;
+
+    const positions: Record<string, OverlayLabelPos> = {};
+    for (const l of this._htmlLabels)
+    {
+      // anchor is in modelGroup-local coords → world → NDC → screen px
+      this._projV.copy(l.anchorLocal).applyMatrix4(this._currentModel.matrixWorld).project(cam);
+      const visible = this._projV.z < 1 &&
+        this._projV.x >= -1 && this._projV.x <= 1 &&
+        this._projV.y >= -1 && this._projV.y <= 1;
+      positions[l.id] = {
+        x: (this._projV.x * 0.5 + 0.5) * w,
+        y: (-this._projV.y * 0.5 + 0.5) * h,
+        visible,
+      };
+    }
+    overlay.setPositions(positions);
+  }
 
   // ── 10. Styles ──
   static override styles = css`

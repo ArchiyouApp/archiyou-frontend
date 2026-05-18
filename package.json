@@ -29,14 +29,17 @@
     "@codemirror/view": "^6.35.0",
     "@lit-labs/signals": "^0.2.0",
     "@lit/localize": "^0.12.2",
+    "@panzoom/panzoom": "^4.6.2",
     "@vaadin/router": "^1.7.5",
     "codemirror": "^6.0.1",
     "comlink": "^4.4.2",
     "lit": "^3.2.0",
+    "lucide-static": "^1.16.0",
     "meshup": "workspace:*",
     "n8ao": "^1.10.1",
     "oidc-client-ts": "^3.1.0",
-    "three": "^0.171.0"
+    "three": "^0.171.0",
+    "troika-three-text": "^0.52.4"
   },
   "devDependencies": {
     "@lit/localize-tools": "^0.7.2",

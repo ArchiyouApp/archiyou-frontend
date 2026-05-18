@@ -19,3 +19,17 @@ s.hide();
 c = circle(15).color('yellow');
 r = rect(20,20).color('green');
 `
+
+// Dimension lines (3D viewer).
+// Sizes are world units relative to the ~2-unit normalized model and are
+// counter-scaled by the model's fit-scale so they stay visually constant.
+export const DIMENSION_LINE_COLOR       = 0x222222; // line + arrowheads
+export const DIMENSION_ARROW_LENGTH     = 0.06;     // arrowhead cone length
+export const DIMENSION_ARROW_RADIUS     = 0.021;    // arrowhead cone base radius
+export const DIMENSION_TEXT_SIZE        = 0.055;    // value label font size
+export const DIMENSION_TEXT_COLOR       = 0x222222; // value label text color
+export const DIMENSION_TEXT_BG_COLOR    = 0xf1f5f9; // label background (covers the line)
+export const DIMENSION_TEXT_BG_PADDING  = 0.28;     // padding as a fraction of text size
+
+// 3D viewer
+export const VIEWER_BACKGROUND_COLOR = 0xf1f5f9; // scene + renderer clear color

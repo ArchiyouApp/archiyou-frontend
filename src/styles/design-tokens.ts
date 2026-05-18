@@ -73,6 +73,9 @@ export const tokens = {
   spaceLg: '16px',
   spaceXl: '24px',
   space2xl: '32px', 
+  space3xl: '48px',
+  space4xl: '64px',
+  space5xl: '96px',
 
   // --- Radius ---
   radiusSm: '4px',

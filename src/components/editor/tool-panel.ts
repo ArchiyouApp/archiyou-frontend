@@ -19,7 +19,7 @@ export class EditorToolPanel extends LitElement
 
     return html`
       <div class="panel-header">
-        <wa-icon name=${this.tool.icon}></wa-icon>
+        <wa-icon library="lucide" name=${this.tool.icon}></wa-icon>
         <span class="panel-title">${this.tool.name}</span>
         <span class="spacer"></span>
         <wa-button
@@ -27,7 +27,7 @@ export class EditorToolPanel extends LitElement
           class="close-btn"
           @click=${this._handleClose}
         >
-          <wa-icon name="xmark" label="Close"></wa-icon>
+          <wa-icon library="lucide" name="x" label="Close"></wa-icon>
         </wa-button>
       </div>
       <div class="panel-content">
@@ -65,10 +65,12 @@ export class EditorToolPanel extends LitElement
     .panel-header {
       display: flex;
       align-items: center;
-      gap: var(--space-sm, 8px);
-      padding: 0.35rem 1rem;
+      gap: var(--space-sm);
+      height: var(--space3xl);
+      padding: 0 var(--space-md);
       flex-shrink: 0;
       background: var(--color-gray);
+      border-bottom: 1px solid var(--color-border);
     }
 
     .panel-title {

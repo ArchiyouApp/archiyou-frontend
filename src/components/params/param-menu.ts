@@ -67,10 +67,10 @@ export class ParamMenu extends SignalWatcher(LitElement)
 
     return html`
       <div class="header" @click=${this._toggleCollapse}>
-        <wa-icon name="sliders"></wa-icon>
+        <wa-icon library="lucide" name="sliders-horizontal"></wa-icon>
         <span class="title">parameters</span>
         <span class="spacer"></span>
-        <wa-icon name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
+        <wa-icon library="lucide" name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
       </div>
 
       ${!collapsed ? html`
@@ -81,7 +81,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
           ${this._tabsOverflow ? html`
             <button class="tab-nav-btn" ?disabled=${!this._canScrollLeft}
                 @click=${() => this._scrollTabs('left')}>
-              <wa-icon name="chevron-left"></wa-icon>
+              <wa-icon library="lucide" name="chevron-left"></wa-icon>
             </button>` : nothing}
           <div class="tab-scroll-area">
             ${groups.map(g => this._renderTab(g))}
@@ -89,10 +89,10 @@ export class ParamMenu extends SignalWatcher(LitElement)
           ${this._tabsOverflow ? html`
             <button class="tab-nav-btn" ?disabled=${!this._canScrollRight}
                 @click=${() => this._scrollTabs('right')}>
-              <wa-icon name="chevron-right"></wa-icon>
+              <wa-icon library="lucide" name="chevron-right"></wa-icon>
             </button>` : nothing}
           <button class="add-tab-btn" title="Add group" @click=${this._addGroup}>
-            <wa-icon name="plus"></wa-icon>
+            <wa-icon library="lucide" name="plus"></wa-icon>
           </button>
         </div>
 
@@ -126,12 +126,12 @@ export class ParamMenu extends SignalWatcher(LitElement)
                   <button class="preset-save-confirm" title="Save preset"
                       @mousedown=${(e: Event) => e.preventDefault()}
                       @click=${this._commitPresetSave}>
-                    <wa-icon name="check"></wa-icon>
+                    <wa-icon library="lucide" name="check"></wa-icon>
                   </button>
                   <button class="preset-save-cancel" title="Cancel"
                       @mousedown=${(e: Event) => e.preventDefault()}
                       @click=${this._cancelPresetSave}>
-                    <wa-icon name="xmark"></wa-icon>
+                    <wa-icon library="lucide" name="x"></wa-icon>
                   </button>
                 </div>`
             : html`
@@ -140,14 +140,14 @@ export class ParamMenu extends SignalWatcher(LitElement)
                   <button class="save-preset-btn"
                       ?disabled=${params.length === 0}
                       @click=${this._startPresetSave}>
-                    <wa-icon name="bookmark"></wa-icon>
+                    <wa-icon library="lucide" name="bookmark"></wa-icon>
                     Save as preset
                   </button>
                 </div>`
           }
           <span class="add-bar-spacer"></span>
           <button class="add-btn" @click=${this._openAddMenu}>
-            <wa-icon name="plus"></wa-icon>
+            <wa-icon library="lucide" name="plus"></wa-icon>
             Add Parameter
           </button>
         </div>
@@ -201,11 +201,11 @@ export class ParamMenu extends SignalWatcher(LitElement)
               <span class="tab-confirm-label">Delete?</span>
               <button class="tab-action-btn confirm-yes" title="Confirm delete"
                   @click=${(e: Event) => { e.stopPropagation(); this._confirmDeleteTab(group); }}>
-                <wa-icon name="check"></wa-icon>
+                <wa-icon library="lucide" name="check"></wa-icon>
               </button>
               <button class="tab-action-btn confirm-no" title="Cancel"
                   @click=${(e: Event) => { e.stopPropagation(); this._deletingTab = null; }}>
-                <wa-icon name="xmark"></wa-icon>
+                <wa-icon library="lucide" name="x"></wa-icon>
               </button>`
           : html`
               ${isEditing
@@ -226,7 +226,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
                 ? html`
                     <button class="tab-action-btn tab-delete-btn" title="Delete group"
                         @click=${(e: Event) => { e.stopPropagation(); this._deletingTab = group; }}>
-                      <wa-icon name="xmark"></wa-icon>
+                      <wa-icon library="lucide" name="x"></wa-icon>
                     </button>`
                 : nothing
               }`
@@ -631,8 +631,9 @@ export class ParamMenu extends SignalWatcher(LitElement)
     .header {
       display: flex;
       align-items: center;
-      gap: var(--space-sm, 8px);
-      padding: 0.35rem 1rem;
+      gap: var(--space-sm);
+      height: var(--space3xl);
+      padding: 0 var(--space-md);
       flex-shrink: 0;
       user-select: none;
       cursor: pointer;
@@ -657,6 +658,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
       flex-shrink: 0;
       overflow: hidden;
       background: var(--color-gray-light, #f5f5f5);
+      padding: 0;
     }
 
     .tab-scroll-area {
@@ -699,11 +701,14 @@ export class ParamMenu extends SignalWatcher(LitElement)
       display: flex;
       align-items: center;
       gap: 4px;
-      padding: 4px 6px 4px 10px;
+      height: var(--space2xl);
+      width: max-content;
+      padding-left: var(--space-md);
+      padding-right: var(--space-md);
       cursor: pointer;
       font-size: var(--text-xs);
       font-weight: 500;
-      color: var(--color-gray-dark, #555);
+      color: var(--color-gray-dark);
       border-right: 1px solid var(--color-border);
       white-space: nowrap;
       user-select: none;
@@ -715,14 +720,14 @@ export class ParamMenu extends SignalWatcher(LitElement)
     }
 
     .tab.active {
-      color: var(--color-primary);
-      background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-      border-bottom: 2px solid var(--color-primary);
+      color: var(--color-gray-dark);
+      background: color-mix(in srgb, var(--color-gray-dark) 5%, transparent);
+      border-bottom: 2px solid color-mix(in srgb, var(--color-gray-dark) 25%, transparent);
     }
 
     .tab.drag-over {
-      background: color-mix(in srgb, var(--color-primary) 15%, transparent);
-      border-left: 2px solid var(--color-primary);
+      background: color-mix(in srgb, var(--color-gray-dark) 15%, transparent);
+      border-left: 2px solid var(--color-gray-dark);
     }
 
     .tab-label { flex-shrink: 0; }
@@ -731,7 +736,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
       font-family: var(--font-sans);
       font-size: var(--text-xs);
       width: 80px;
-      border: 1px solid var(--color-primary);
+      border: 1px solid var(--color-gray-dark);
       border-radius: var(--radius-sm, 4px);
       padding: 1px 4px;
       outline: none;
@@ -793,7 +798,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
       font-size: 11px;
     }
 
-    .add-tab-btn:hover { color: var(--color-primary); }
+    .add-tab-btn:hover { color: var(--color-gray-dark); }
 
     /* ── Param list ── */
 
@@ -804,7 +809,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
     }
 
     param-item.drag-over {
-      border-top: 2px solid var(--color-primary);
+      border-top: 2px solid var(--color-gray-dark);
     }
 
     .empty-list {
@@ -820,7 +825,6 @@ export class ParamMenu extends SignalWatcher(LitElement)
       align-items: center;
       gap: 8px;
       padding: 6px 12px;
-      border-top: 1px solid var(--color-border);
       flex-shrink: 0;
     }
 
@@ -834,16 +838,16 @@ export class ParamMenu extends SignalWatcher(LitElement)
       font-family: var(--font-sans);
       font-size: var(--text-xs);
       font-weight: 500;
-      color: var(--color-primary);
-      background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-      border: 1px solid var(--color-primary);
+      color: var(--color-gray-dark);
+      background: color-mix(in srgb, var(--color-gray-dark) 10%, transparent);
+      border: 1px solid var(--color-gray-dark);
       border-radius: var(--radius-sm, 4px);
       cursor: pointer;
       justify-content: center;
     }
 
     .add-btn:hover {
-      background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+      background: color-mix(in srgb, var(--color-gray-dark) 18%, transparent);
     }
 
     /* ── Save as preset ── */
@@ -890,7 +894,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
       font-size: var(--text-xs);
       color: var(--color-text);
       background: var(--color-bg, #fff);
-      border: 1px solid var(--color-primary);
+      border: 1px solid var(--color-gray-dark);
       border-radius: var(--radius-sm, 4px);
       padding: 4px 6px;
       outline: none;
@@ -913,9 +917,9 @@ export class ParamMenu extends SignalWatcher(LitElement)
       flex-shrink: 0;
     }
 
-    .preset-save-confirm { color: var(--color-primary); }
+    .preset-save-confirm { color: var(--color-gray-dark); }
     .preset-save-confirm:hover {
-      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+      background: color-mix(in srgb, var(--color-gray-dark) 12%, transparent);
     }
 
     .preset-save-cancel:hover {

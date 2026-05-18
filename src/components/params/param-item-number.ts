@@ -35,7 +35,7 @@ export class ParamItemNumber extends LitElement
                 />
 
                 <button class="step-btn" title="Decrement" @click=${this._decrement}>
-                    <wa-icon name="chevron-left"></wa-icon>
+                    <wa-icon library="lucide" name="chevron-left"></wa-icon>
                 </button>
 
                 <div class="num-unit">
@@ -57,7 +57,7 @@ export class ParamItemNumber extends LitElement
                 </div>
 
                 <button class="step-btn" title="Increment" @click=${this._increment}>
-                    <wa-icon name="chevron-right"></wa-icon>
+                    <wa-icon library="lucide" name="chevron-right"></wa-icon>
                 </button>
             </div>
         `;

@@ -3,10 +3,7 @@ import { customElement, property, query, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 import type { RouterLocation } from '@vaadin/router';
 
-import { loadArchiyouCore } from '../archiyou-core-loader';
-import { ArchiyouCoreApi } from '../workers/archiyou.core.worker';
-
-import type { Remote } from 'comlink';
+import { runScript, warmupWorker } from '../services/execution-service';
 
 import '../components/editor/main-menu.js';
 import '../components/editor/codebox.js';
@@ -18,9 +15,11 @@ import '../components/editor/toolbar.js';
 import '../components/editor/tool-panels.js';
 import '../components/editor/tools/scene-tool.js';
 import '../components/editor/tools/data-tool.js';
+import '../components/editor/tools/metrics-tool.js';
+import '../components/editor/tools/document-viewer.js';
 import type { ToolDef } from '../components/editor/toolbar.js';
 
-import { workspace, scriptParams, updateScriptCode, setExecutionResult, setExecuting, activeBottomPanel } from '../state/workspace';
+import { workspace, editorState, scriptParams, updateScriptCode, setExecutionResult, setExecuting, activeBottomPanel } from '../state/workspace';
 import type { ScriptParam } from '../state/workspace';
 import { RunnerScriptExecutionRequest } from '../../devlibs/archiyou-core-next/src/runner/types';
 
@@ -32,8 +31,10 @@ export class PageEditor extends SignalWatcher(LitElement)
   CONST_AUTORUN_MIN_SIZE = 20;   // minimum code length to trigger auto-run
 
   readonly TOOLS: ToolDef[] = [
-    { id: 'scene', icon: 'sitemap', name: 'Scene', exclusive: false, component: 'editor-scene-tool', width: 30, height: 50 },
-    { id: 'data',  icon: 'table',       name: 'Data',  exclusive: false, component: 'editor-data-tool',  width: 30, height: 50 },
+    { id: 'scene',   icon: 'network',    name: 'Scene',     exclusive: false, component: 'editor-scene-tool',    width: 30, height: 50 },
+    { id: 'data',    icon: 'table',      name: 'Data',      exclusive: false, component: 'editor-data-tool',     width: 30, height: 50 },
+    { id: 'metrics', icon: 'chart-bar',  name: 'Metrics',   exclusive: false, component: 'editor-metrics-tool',  width: 30, height: 50,  outputs: ['default/metrics/*/json'] },
+    { id: 'docs',    icon: 'file-text',  name: 'Documents', exclusive: true,  component: 'editor-document-tool', width: 40, height: 100, outputs: ['default/docs/*/svg'] },
   ];
 
   //// 
@@ -113,14 +114,12 @@ export class PageEditor extends SignalWatcher(LitElement)
     const saved = localStorage.getItem('editor:consoleSplitPosition');
     if (saved) this._consoleSplitPosition = Math.max(10, Math.min(95, parseFloat(saved)));
 
-    console.info('Editor::connectedCallback(): Webworker starting...');
-    loadArchiyouCore()
-      .then(w => { 
-          this._worker = w; 
-          console.info('Editor::connectedCallback(): Webworker ready'); 
-          // Do auto execute to show result directly
-          this.checkAutoRun();
-        })
+    console.info('Editor::connectedCallback(): Warming up worker…');
+    warmupWorker()
+      .then(() => {
+        console.info('Editor::connectedCallback(): Worker ready');
+        this.checkAutoRun();
+      })
       .catch(err => { console.error('Editor: worker init failed:', err); });
   }
 
@@ -133,7 +132,6 @@ export class PageEditor extends SignalWatcher(LitElement)
   private _code = '';
   private _codeChangeTimeout: number | null = null;
   private _paramExecTimeout: number | null = null;
-  private _worker: Remote<ArchiyouCoreApi> | null = null;
 
   // Methods 
 
@@ -178,15 +176,12 @@ export class PageEditor extends SignalWatcher(LitElement)
     }, this.CONST_AUTORUN_DELAY);
   }
 
-  /** Execute the current script in workspace */
-  async execute()
+  /** Build an execution request for the current script and params. */
+  private _buildRequest(outputs: string[], messages: string[] = ['info', 'geom', 'user', 'warn', 'error', 'exec']): RunnerScriptExecutionRequest
   {
-    const worker = this._worker ?? await loadArchiyouCore();
-
     const scriptData = workspace.get().editor.script?.toData() as any;
-    const params     = scriptParams.get();
+    const params = scriptParams.get();
 
-    // Inject param definitions into script data so the Runner's ParamManager knows about them
     scriptData.params = Object.fromEntries(
       params.map(p => [p.name, {
         name:    p.name,
@@ -197,28 +192,59 @@ export class PageEditor extends SignalWatcher(LitElement)
       }])
     );
 
-    // Current param values (value = interactive, falls back to definition default)
     const paramValues: Record<string, any> = Object.fromEntries(
       params.map(p => [p.name, p.value ?? p.defaultValue])
     );
 
-    const result = await worker.execute(
-      {
-        outputs:  ['default/model/glb', 'default/tables/*/json'],
-        messages: ['info', 'geom', 'user', 'warn', 'error', 'exec'],
-        script:   scriptData,
-        params:   paramValues,
-      } as RunnerScriptExecutionRequest
+    return {
+      outputs,
+      messages,
+      script: scriptData,
+      params: paramValues,
+    } as RunnerScriptExecutionRequest;
+  }
+
+  /** Execute the current script: produces model + tables.
+   *  Then triggers a separate lean run for any active tool-specific outputs. */
+  async execute()
+  {
+    const result = await runScript(
+      this._buildRequest(['default/model/glb', 'default/tables/*/json'])
     );
 
     if (result)
     {
       setExecutionResult(result);
+      await this._executeToolOutputs();
       return result;
     }
     else
     {
       console.error(`Execute failed without result. This should not happen!`);
+    }
+  }
+
+  /** Run a lean extra execute for any active tools that declare outputs (e.g. metrics, docs).
+   *  The results are merged into the current editorState result, avoiding a second heavy model export. */
+  private async _executeToolOutputs()
+  {
+    const toolOutputs = this._activeTools.flatMap(t => t.outputs ?? []);
+    if (toolOutputs.length === 0) return;
+
+    const extraResult = await runScript(
+      this._buildRequest(toolOutputs, ['error'])
+    );
+
+    if (extraResult?.outputs?.length)
+    {
+      const current = editorState.get().result;
+      if (current)
+      {
+        setExecutionResult({
+          ...current,
+          outputs: [...(current.outputs ?? []), ...extraResult.outputs],
+        });
+      }
     }
   }
 
@@ -285,6 +311,12 @@ export class PageEditor extends SignalWatcher(LitElement)
     {
       const base = tool.exclusive ? [] : this._activeTools.filter(t => !t.exclusive);
       this._activeTools = [...base, tool];
+      // If the newly active tool declares outputs and we already have a result,
+      // run a lean extra execute immediately to populate its data.
+      if (tool.outputs?.length && editorState.get().result)
+      {
+        this._executeToolOutputs();
+      }
     }
   }
 
@@ -390,7 +422,8 @@ export class PageEditor extends SignalWatcher(LitElement)
     }
 
     wa-split-panel::part(divider) {
-      background-color: var(--color-divider);
+      background-color: rgb(0,0,0, 0.05);
+      backdrop-filter: blur(5px);
     }
 
     wa-icon.split-grip,

@@ -12,11 +12,11 @@ const MESSAGE_TYPES: ConsoleMessageType[] = ['error', 'exec', 'geom', 'user', 'w
 
 const ICON_MAP: Record<ConsoleMessageType, string> =
 {
-  info:  'circle-info',
-  geom:  'draw-polygon',
+  info:  'info',
+  geom:  'shapes',
   user:  'user',
-  warn:  'triangle-exclamation',
-  error: 'circle-xmark',
+  warn:  'triangle-alert',
+  error: 'circle-x',
   exec:  'terminal',
 };
 
@@ -49,11 +49,11 @@ export class EditorConsole extends SignalWatcher(LitElement)
 
     return html`
       <div class="header" @click=${this._activate}>
-        <wa-icon name="terminal"></wa-icon>
+        <wa-icon library="lucide" name="terminal"></wa-icon>
         <span class="title">console</span>
         <span class="spacer"></span>
         <menu-badge .value=${messages.length} color="danger"></menu-badge>
-        <wa-icon name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
+        <wa-icon library="lucide" name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
       </div>
 
       ${!collapsed ? html`
@@ -64,7 +64,7 @@ export class EditorConsole extends SignalWatcher(LitElement)
               @click=${() => this._toggleFilter(type)}
               title="${TYPE_LABEL[type]}: ${counts[type]}"
             >
-              <wa-icon name=${ICON_MAP[type]}></wa-icon>
+              <wa-icon library="lucide" name=${ICON_MAP[type]}></wa-icon>
               <span class="count">${counts[type]}</span>
             </button>
           `)}
@@ -75,7 +75,7 @@ export class EditorConsole extends SignalWatcher(LitElement)
             ? html`<div class="empty">No messages</div>`
             : filtered.map(m => html`
                 <div class="message type-${m.type}">
-                  <wa-icon class="msg-icon" name=${ICON_MAP[m.type]}></wa-icon>
+                  <wa-icon class="msg-icon" library="lucide" name=${ICON_MAP[m.type]}></wa-icon>
                   <span class="msg-text">${m.message}</span>
                   <span class="msg-time">${m.time}</span>
                 </div>
@@ -125,8 +125,9 @@ export class EditorConsole extends SignalWatcher(LitElement)
     .header {
       display: flex;
       align-items: center;
-      gap: var(--space-sm, 8px);
-      padding: 0.35rem 1rem;
+      gap: var(--space-sm);
+      height: var(--space3xl);
+      padding: 0 var(--space-md);
       flex-shrink: 0;
       user-select: none;
       cursor: pointer;

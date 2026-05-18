@@ -23,7 +23,7 @@ export class ParamItem extends LitElement
   {
     return html`
       <span class="grip" title="Drag to reorder">
-        <wa-icon name="grip-lines"></wa-icon>
+        <wa-icon library="lucide" name="grip-horizontal"></wa-icon>
       </span>
 
       ${this._editingLabel
@@ -56,20 +56,20 @@ export class ParamItem extends LitElement
                 <span class="confirm-label">Delete?</span>
                 <button class="action-btn confirm-yes" title="Confirm delete"
                     @click=${this._confirmDelete}>
-                  <wa-icon name="check"></wa-icon>
+                  <wa-icon library="lucide" name="check"></wa-icon>
                 </button>
                 <button class="action-btn confirm-no" title="Cancel"
                     @click=${this._cancelDelete}>
-                  <wa-icon name="xmark"></wa-icon>
+                  <wa-icon library="lucide" name="x"></wa-icon>
                 </button>
               </span>`
           : html`
               <button class="action-btn" title="Edit" @click=${this._handleEdit}>
-                <wa-icon name="pen"></wa-icon>
+                <wa-icon library="lucide" name="pen"></wa-icon>
               </button>
               <button class="action-btn danger" title="Delete"
                   @click=${this._handleDelete}>
-                <wa-icon name="trash"></wa-icon>
+                <wa-icon library="lucide" name="trash-2"></wa-icon>
               </button>`
         }
       </span>
@@ -179,7 +179,9 @@ export class ParamItem extends LitElement
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 4px 8px 4px 4px;
+      padding-left: var(--space-md);
+      padding-right: var(--space-md);
+      height: var(--space2xl);
       font-family: var(--font-sans);
       font-size: var(--text-sm);
       border-bottom: 1px solid var(--color-border);

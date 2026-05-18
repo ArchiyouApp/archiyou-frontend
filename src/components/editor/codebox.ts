@@ -72,20 +72,20 @@ export class CodeBox extends SignalWatcher(LitElement)
     return html`
       <div class="wrapper">
         <div class="title-bar">
-          <wa-icon name="code"></wa-icon>
+          <wa-icon library="lucide" name="code"></wa-icon>
           <span class="title">code editor</span>
           <span class="state">
             ${workspace.get().editor.executing
-                ? html`<wa-icon name="cog" animation="spin-reverse" label="executing"></wa-icon>`
+                ? html`<wa-icon library="lucide" name="settings" animation="spin-reverse" label="executing"></wa-icon>`
                 : workspace.get().editor.result?.status === 'error'
                     ? html`
-                        <wa-icon class="error-icon" name="circle-xmark" label="error"></wa-icon>
+                        <wa-icon class="error-icon" library="lucide" name="circle-x" label="error"></wa-icon>
                         <span class="error-message" title=${this._fullErrorMessage(workspace.get().editor.result?.errors?.[0]?.message)}>
                           ${this._shortErrorMessage(workspace.get().editor.result?.errors?.[0])}
                         </span>`
                     : workspace.get().editor.result?.status === 'success'
                         ? html`
-                            <wa-icon class="success-icon" name="circle-check" label="success"></wa-icon>
+                            <wa-icon class="success-icon" library="lucide" name="circle-check" label="success"></wa-icon>
                             <span class="duration">${this._formatDuration(workspace.get().editor.result!.duration)}</span>`
                         : ''
             }
@@ -93,7 +93,7 @@ export class CodeBox extends SignalWatcher(LitElement)
           <span class="spacer"></span>
           <button class="execute-button" 
               @click=${this._handleRunClick} title="Run (Ctrl+Enter)">
-              <wa-icon name="play" variant="solid" label="Execute"></wa-icon>
+              <wa-icon library="lucide" name="play" label="Execute"></wa-icon>
           </button>
         </div>
         <div class="cm-container"></div>
@@ -295,8 +295,9 @@ export class CodeBox extends SignalWatcher(LitElement)
     .title-bar {
       display: flex;
       align-items: center;
-      gap: var(--space-sm, 8px);
-      padding: 0.35rem 1rem;
+      gap: var(--space-sm);
+      height: var(--space3xl);
+      padding: 0 var(--space-md);
       font-family: var(--font-sans);
       font-size: var(--text-sm);
       color: var(--color-text);

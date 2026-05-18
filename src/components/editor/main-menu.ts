@@ -26,7 +26,7 @@ export class MainMenu extends LitElement
           appearance="plain"
           class=${this._active === 'info' ? 'active' : ''}
           @click=${() => this._select('info')}
-        ><wa-icon name="circle-info" label="Info"></wa-icon></wa-button>
+        ><wa-icon library="lucide" name="info" label="Info"></wa-icon></wa-button>
         <wa-tooltip for="btn-info" placement="right">${msg('Info')}</wa-tooltip>
 
         <wa-button
@@ -34,7 +34,7 @@ export class MainMenu extends LitElement
           appearance="plain"
           class=${this._active === 'code' ? 'active' : ''}
           @click=${() => this._select('code')}
-        ><wa-icon name="code" label="Code editor"></wa-icon></wa-button>
+        ><wa-icon library="lucide" name="code" label="Code editor"></wa-icon></wa-button>
         <wa-tooltip for="btn-code" placement="right">${msg('Code editor')}</wa-tooltip>
 
       </div>
@@ -46,7 +46,7 @@ export class MainMenu extends LitElement
           appearance="plain"
           class=${this._active === 'templates' ? 'active' : ''}
           @click=${() => this._select('templates')}
-        ><wa-icon name="rocket" label="Templates"></wa-icon></wa-button>
+        ><wa-icon library="lucide" name="rocket" label="Templates"></wa-icon></wa-button>
         <wa-tooltip for="btn-templates" placement="right">${msg('Templates')}</wa-tooltip>
 
         <wa-button
@@ -54,7 +54,7 @@ export class MainMenu extends LitElement
           appearance="plain"
           class=${this._active === 'help' ? 'active' : ''}
           @click=${() => this._select('help')}
-        ><wa-icon name="circle-question" label="Help"></wa-icon></wa-button>
+        ><wa-icon library="lucide" name="circle-help" label="Help"></wa-icon></wa-button>
         <wa-tooltip for="btn-help" placement="right">${msg('Help')}</wa-tooltip>
 
         <wa-button
@@ -62,7 +62,7 @@ export class MainMenu extends LitElement
           appearance="plain"
           class=${this._active === 'settings' ? 'active' : ''}
           @click=${() => this._select('settings')}
-        ><wa-icon name="gear" label="Settings"></wa-icon></wa-button>
+        ><wa-icon library="lucide" name="settings" label="Settings"></wa-icon></wa-button>
         <wa-tooltip for="btn-settings" placement="right">${msg('Settings')}</wa-tooltip>
       </div>
 

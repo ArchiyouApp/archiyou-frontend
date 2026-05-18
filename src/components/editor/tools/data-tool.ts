@@ -97,7 +97,7 @@ export class EditorDataTool extends SignalWatcher(LitElement)
   {
     return html`
       <div class="empty-state">
-        <wa-icon name=${icon} variant="regular" class="empty-icon"></wa-icon>
+        <wa-icon library="lucide" name=${icon} class="empty-icon"></wa-icon>
         <span class="empty-msg">${message}</span>
       </div>
     `;

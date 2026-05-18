@@ -22,25 +22,25 @@ export class SideMenu extends LitElement
           appearance="plain"
           class=${this._active === 'info' ? 'active' : ''}
           @click=${() => this._select('info')}
-        ><wa-icon name="circle-info" label="Info"></wa-icon></wa-button>
+        ><wa-icon library="lucide" name="info" label="Info"></wa-icon></wa-button>
 
         <wa-button
           appearance="plain"
           class=${this._active === 'code' ? 'active' : ''}
           @click=${() => this._select('code')}
-        ><wa-icon name="code" label="Code editor"></wa-icon></wa-button>
+        ><wa-icon library="lucide" name="code" label="Code editor"></wa-icon></wa-button>
 
         <wa-button
           appearance="plain"
           class=${this._active === 'history' ? 'active' : ''}
           @click=${() => this._select('history')}
-        ><wa-icon name="clock-rotate-left" label="History"></wa-icon></wa-button>
+        ><wa-icon library="lucide" name="history" label="History"></wa-icon></wa-button>
 
         <wa-button
           appearance="plain"
           class=${this._active === 'files' ? 'active' : ''}
           @click=${() => this._select('files')}
-        ><wa-icon name="file-lines" label="Files"></wa-icon></wa-button>
+        ><wa-icon library="lucide" name="file-text" label="Files"></wa-icon></wa-button>
       </div>
 
       <!-- bottom: templates, help, settings -->
@@ -49,19 +49,19 @@ export class SideMenu extends LitElement
           appearance="plain"
           class=${this._active === 'templates' ? 'active' : ''}
           @click=${() => this._select('templates')}
-        ><wa-icon name="cube" label="Templates"></wa-icon></wa-button>
+        ><wa-icon library="lucide" name="box" label="Templates"></wa-icon></wa-button>
 
         <wa-button
           appearance="plain"
           class=${this._active === 'help' ? 'active' : ''}
           @click=${() => this._select('help')}
-        ><wa-icon name="circle-question" label="Help"></wa-icon></wa-button>
+        ><wa-icon library="lucide" name="circle-help" label="Help"></wa-icon></wa-button>
 
         <wa-button
           appearance="plain"
           class=${this._active === 'settings' ? 'active' : ''}
           @click=${() => this._select('settings')}
-        ><wa-icon name="gear" label="Settings"></wa-icon></wa-button>
+        ><wa-icon library="lucide" name="settings" label="Settings"></wa-icon></wa-button>
       </div>
     `;
   }

@@ -91,7 +91,7 @@ export const VIEW_STYLES: ViewStyle[] = [
   {
     id: 'wireframe',
     label: 'Wireframe',
-    icon: 'border-all',
+    icon: 'grid-2x2',
     description: 'Show only edges and lines, mesh surfaces hidden',
     background: 0x111827,
     shadows: false,
@@ -107,7 +107,7 @@ export const VIEW_STYLES: ViewStyle[] = [
   {
     id: 'blueprint',
     label: 'Blueprint',
-    icon: 'drafting-compass',
+    icon: 'compass',
     description: 'Technical blueprint look with navy background and construction grid',
     background: 0x0a1628,
     shadows: false,
@@ -128,7 +128,7 @@ export const VIEW_STYLES: ViewStyle[] = [
   {
     id: 'techdraw',
     label: 'Tech Draw',
-    icon: 'ruler-combined',
+    icon: 'ruler',
     description: 'Clean technical drawing: white surfaces, black edges',
     background: 0xfafafa,
     shadows: false,

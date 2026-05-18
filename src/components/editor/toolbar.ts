@@ -17,6 +17,8 @@ export interface ToolDef
   width: number;
   /** Requested panel height as a percentage of the tool-panels area when stacking */
   height: number;
+  /** Runner output paths this tool needs; only requested while the tool is active */
+  outputs?: string[];
 }
 
 @customElement('editor-toolbar')
@@ -34,7 +36,7 @@ export class EditorToolbar extends LitElement
             class=${this.activeIds.includes(tool.id) ? 'active' : ''}
             @click=${() => this._toggle(tool.id)}
           >
-            <wa-icon name=${tool.icon} label=${tool.name}></wa-icon>
+            <wa-icon library="lucide" name=${tool.icon} label=${tool.name}></wa-icon>
           </wa-button>
           <wa-tooltip for="tool-btn-${i}" placement="left">${msg(tool.name)}</wa-tooltip>
         `)}

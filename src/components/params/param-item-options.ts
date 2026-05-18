@@ -24,7 +24,7 @@ export class ParamItemOptions extends LitElement
                             title="Remove"
                             @click=${() => this._remove(opt)}
                         >
-                            <wa-icon name="xmark"></wa-icon>
+                            <wa-icon library="lucide" name="x"></wa-icon>
                         </button>
                     </span>
                 `)}
@@ -42,7 +42,7 @@ export class ParamItemOptions extends LitElement
                     : available.length > 0
                         ? html`
                             <button class="add-btn" title="Add option" @click=${this._startPick}>
-                                <wa-icon name="plus"></wa-icon>
+                                <wa-icon library="lucide" name="plus"></wa-icon>
                             </button>`
                         : nothing
                 }

@@ -103,13 +103,13 @@ export class ViewerMenu extends LitElement
         <!-- nav group -->
         <div class="group">
           <button class="icon-btn" title="Zoom in" @click=${() => this._emit('viewer-zoom-in')}>
-            <wa-icon name="magnifying-glass-plus"></wa-icon>
+            <wa-icon library="lucide" name="zoom-in"></wa-icon>
           </button>
           <button class="icon-btn" title="Zoom out" @click=${() => this._emit('viewer-zoom-out')}>
-            <wa-icon name="magnifying-glass-minus"></wa-icon>
+            <wa-icon library="lucide" name="zoom-out"></wa-icon>
           </button>
           <button class="icon-btn" title="Fit to view" @click=${() => this._emit('viewer-center')}>
-            <wa-icon name="expand"></wa-icon>
+            <wa-icon library="lucide" name="maximize"></wa-icon>
           </button>
         </div>
 
@@ -124,7 +124,7 @@ export class ViewerMenu extends LitElement
               title="View style"
               @click=${this._toggleStyles}
             >
-              <wa-icon name="palette"></wa-icon>
+              <wa-icon library="lucide" name="palette"></wa-icon>
             </button>
 
             ${this._stylesOpen ? html`
@@ -134,7 +134,7 @@ export class ViewerMenu extends LitElement
                     class="style-item ${s.id === this.activeStyleId ? 'active' : ''}"
                     @click=${() => this._selectStyle(s.id)}
                   >
-                    <wa-icon name=${s.icon}></wa-icon>
+                    <wa-icon library="lucide" name=${s.icon}></wa-icon>
                     <span>${s.label}</span>
                   </button>
                 `)}
@@ -150,7 +150,7 @@ export class ViewerMenu extends LitElement
                 title="Animations"
                 @click=${this._toggleAnim}
               >
-                <wa-icon name="film"></wa-icon>
+                <wa-icon library="lucide" name="film"></wa-icon>
               </button>
 
               ${this._animOpen ? html`
@@ -159,7 +159,7 @@ export class ViewerMenu extends LitElement
                     class="style-item ${this.activeAnimation === null ? 'active' : ''}"
                     @click=${() => this._selectAnimation(null)}
                   >
-                    <wa-icon name="stop"></wa-icon>
+                    <wa-icon library="lucide" name="square"></wa-icon>
                     <span>Default</span>
                   </button>
                   ${this.animations.map(name => html`
@@ -167,7 +167,7 @@ export class ViewerMenu extends LitElement
                       class="style-item ${name === this.activeAnimation ? 'active' : ''}"
                       @click=${() => this._selectAnimation(name)}
                     >
-                      <wa-icon name="play"></wa-icon>
+                      <wa-icon library="lucide" name="play"></wa-icon>
                       <span>${name}</span>
                     </button>
                   `)}
@@ -182,12 +182,12 @@ export class ViewerMenu extends LitElement
             title=${this.isOrtho ? 'Switch to Perspective' : 'Switch to Isometric'}
             @click=${() => this._emit('viewer-toggle-projection')}
           >
-            <wa-icon name="cube"></wa-icon>
+            <wa-icon library="lucide" name="box"></wa-icon>
           </button>
 
           <!-- render: placeholder for future -->
           <button class="icon-btn disabled" title="Render (coming soon)" disabled>
-            <wa-icon name="camera"></wa-icon>
+            <wa-icon library="lucide" name="camera"></wa-icon>
           </button>
 
           <!-- AR mode -->
@@ -197,7 +197,7 @@ export class ViewerMenu extends LitElement
             ?disabled=${!this.arSupported}
             @click=${() => this.arSupported && this._emit('viewer-toggle-ar')}
           >
-            <wa-icon name="vr-cardboard"></wa-icon>
+            <wa-icon library="lucide" name="glasses"></wa-icon>
           </button>
         </div>
       </aside>

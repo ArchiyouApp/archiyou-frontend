@@ -10,6 +10,9 @@ import { workspace, hiddenNodes, setSceneTree, clearSceneState } from '../../sta
 import type { ScriptOutputData } from '../../../devlibs/archiyou-core-next/src/execution/types.js';
 import type { SceneNodeData, SceneMaterialData } from '../../state/workspace.js';
 import { applyEdgeExtensions } from './gltf-edge-extensions.js';
+import { applyAnnotations } from './gltf-annotations.js';
+import type { Text } from 'troika-three-text';
+import { VIEWER_BACKGROUND_COLOR } from '../../settings.js';
 import { VIEW_STYLES } from './view-styles.js';
 import type { ViewStyle, ViewStyleMaterialConfig } from './view-styles.js';
 import './viewer-menu.js';
@@ -126,6 +129,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
   @state() private _activeAnimationName: string | null = null;
   private _dirty = true;
   private _currentModel?: THREE.Object3D;
+  private _dimLabels: Text[] = [];
   private _lastGlbOutput?: ScriptOutputData;
   private _pendingGlbOutput?: ScriptOutputData;
   private _hasFramedCamera = false;
@@ -159,14 +163,14 @@ export class ModelViewer extends SignalWatcher(LitElement)
     r.toneMappingExposure = 1.0;
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.VSMShadowMap;
-    r.setClearColor(0xf1f5f9);
+    r.setClearColor(VIEWER_BACKGROUND_COLOR);
     this._renderer = r;
   }
 
   private _initScene()
   {
     this._scene = new THREE.Scene();
-    this._scene.background = new THREE.Color(0xf1f5f9);
+    this._scene.background = new THREE.Color(VIEWER_BACKGROUND_COLOR);
 
     // Image-based lighting from a procedural studio-style room environment
     const pmrem = new THREE.PMREMGenerator(this._renderer);
@@ -449,7 +453,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._restoreStyleOverrides();
 
     // Background + renderer
-    const bg = style.background ?? 0xf1f5f9;
+    const bg = style.background ?? VIEWER_BACKGROUND_COLOR;
     this._scene.background = new THREE.Color(bg);
     this._renderer.setClearColor(bg);
 
@@ -857,6 +861,10 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // Render CAD hard edges from custom GLTF extensions
     await applyEdgeExtensions(gltf, model);
 
+    // Render dimension-line annotations (from GLB root extras) as 3D arrows + text
+    this._dimLabels = await applyAnnotations(gltf, model, scale);
+    this._dirty = true; // ensure a frame so labels billboard/appear
+
     // Ensure LineMaterial resolution is set for pixel-accurate line width
     this._resize();
 
@@ -943,6 +951,10 @@ export class ModelViewer extends SignalWatcher(LitElement)
         mats.forEach((mat) => mat.dispose());
       }
     });
+    // Troika Text needs explicit disposal (own geometry/material/atlas)
+    for (const l of this._dimLabels) l.dispose?.();
+    this._dimLabels = [];
+
     this._currentModel = undefined;
     this._mixer = undefined;
     this._animationClips = [];
@@ -1019,6 +1031,12 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     if (this._dirty)
     {
+      // Billboard dimension labels to face the active camera
+      if (this._dimLabels.length)
+      {
+        const cam = this._isOrtho ? this._orthoCamera! : this._camera;
+        for (const l of this._dimLabels) l.quaternion.copy(cam.quaternion);
+      }
       this._renderer.render(this._scene, this._isOrtho ? this._orthoCamera! : this._camera);
       this._dirty = false;
     }

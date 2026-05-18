@@ -34,6 +34,7 @@ export class NavBar extends LitElement
 
       <wa-button appearance="plain" @click=${this._toggleTheme}>
         <wa-icon
+          library="lucide"
           name=${this._dark ? 'sun' : 'moon'}
           label=${this._dark ? msg('Light mode') : msg('Dark mode')}
         ></wa-icon>

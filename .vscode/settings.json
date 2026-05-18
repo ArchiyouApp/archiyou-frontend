@@ -3,6 +3,10 @@
         "pnpm": true,
         "git fsck": true,
         "git add": true,
-        "git commit": true
+        "git commit": true,
+        "/^node -e \"const p = require\\('\\./node_modules/lucide-static/package\\.json'\\); console\\.log\\(p\\.version\\)\" && ls node_modules/lucide-static/icons/ \\| head -10 && ls node_modules/lucide-static/icons/ \\| wc -l$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
     }
 }

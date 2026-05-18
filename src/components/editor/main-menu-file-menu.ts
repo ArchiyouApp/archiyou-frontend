@@ -19,7 +19,7 @@ export class MainMenuFileMenu extends LitElement
 
         <!-- hamburger button -->
         <wa-button slot="trigger" appearance="plain" class="trigger">
-            <wa-icon name="bars" label="Menu"></wa-icon>
+            <wa-icon library="lucide" name="menu" label="Menu"></wa-icon>
         </wa-button>
 
         <wa-dropdown-item value="new">${msg('New')}</wa-dropdown-item>
@@ -42,17 +42,17 @@ export class MainMenuFileMenu extends LitElement
         <wa-divider></wa-divider>
 
         <wa-dropdown-item value="changelog">
-          <wa-icon slot="icon" name="layer-group"></wa-icon>
+          <wa-icon slot="icon" library="lucide" name="layers"></wa-icon>
           ${msg('Changelog')}
         </wa-dropdown-item>
 
         <wa-dropdown-item value="support">
-          <wa-icon slot="icon" name="circle-question"></wa-icon>
+          <wa-icon slot="icon" library="lucide" name="circle-help"></wa-icon>
           ${msg('Support')}
         </wa-dropdown-item>
 
         <wa-dropdown-item value="api">
-          <wa-icon slot="icon" name="cube"></wa-icon>
+          <wa-icon slot="icon" library="lucide" name="box"></wa-icon>
           ${msg('API')}
         </wa-dropdown-item>
 

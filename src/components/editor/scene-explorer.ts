@@ -164,6 +164,7 @@ export class SceneExplorer extends SignalWatcher(LitElement)
       user-select: none;
       cursor: pointer;
       background: var(--color-gray);
+      border-bottom: 1px solid var(--color-border);
     }
 
     .title {

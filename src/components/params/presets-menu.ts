@@ -39,13 +39,13 @@ export class PresetsMenu extends SignalWatcher(LitElement)
 
     return html`
       <div class="header" @click=${this._toggleCollapse}>
-        <wa-icon name="bookmark"></wa-icon>
+        <wa-icon library="lucide" name="bookmark"></wa-icon>
         <span class="title">presets</span>
         ${count > 0 ? html`
           <menu-badge .value=${count} .attention=${this._badgeFlashing}></menu-badge>
         ` : nothing}
         <span class="spacer"></span>
-        <wa-icon name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
+        <wa-icon library="lucide" name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
       </div>
 
       ${!collapsed ? html`
@@ -97,7 +97,7 @@ export class PresetsMenu extends SignalWatcher(LitElement)
 
     return html`
       <div class="preset-row">
-        <wa-icon class="preset-icon" name="bookmark"></wa-icon>
+        <wa-icon class="preset-icon" library="lucide" name="bookmark"></wa-icon>
 
         ${isRenaming
           ? html`
@@ -124,21 +124,21 @@ export class PresetsMenu extends SignalWatcher(LitElement)
               <span class="confirm-label">Delete?</span>
               <button class="action-btn confirm-yes" title="Confirm delete"
                   @click=${(e: Event) => { e.stopPropagation(); this._confirmDelete(preset.name); }}>
-                <wa-icon name="check"></wa-icon>
+                <wa-icon library="lucide" name="check"></wa-icon>
               </button>
               <button class="action-btn" title="Cancel"
                   @click=${(e: Event) => { e.stopPropagation(); this._deletingPreset = null; }}>
-                <wa-icon name="xmark"></wa-icon>
+                <wa-icon library="lucide" name="x"></wa-icon>
               </button>`
           : html`
               <button class="action-btn activate-btn" title="Apply preset"
                   @click=${(e: Event) => { e.stopPropagation(); activatePreset(preset.name); }}>
-                <wa-icon name="play"></wa-icon>
+                <wa-icon library="lucide" name="play"></wa-icon>
                 Apply
               </button>
               <button class="action-btn danger" title="Delete preset"
                   @click=${(e: Event) => { e.stopPropagation(); this._deletingPreset = preset.name; }}>
-                <wa-icon name="trash"></wa-icon>
+                <wa-icon library="lucide" name="trash-2"></wa-icon>
               </button>`
         }
       </div>
@@ -217,8 +217,9 @@ export class PresetsMenu extends SignalWatcher(LitElement)
     .header {
       display: flex;
       align-items: center;
-      gap: var(--space-sm, 8px);
-      padding: 0.35rem 1rem;
+      gap: var(--space-sm);
+      height: var(--space3xl);
+      padding: 0 var(--space-md);
       flex-shrink: 0;
       user-select: none;
       cursor: pointer;

@@ -30,7 +30,7 @@ export class ParamItemList extends LitElement
                                     title="Remove"
                                     @click=${() => this._removeAt(i)}
                                 >
-                                    <wa-icon name="xmark"></wa-icon>
+                                    <wa-icon library="lucide" name="x"></wa-icon>
                                 </button>
                             </span>
                         `)}
@@ -46,7 +46,7 @@ export class ParamItemList extends LitElement
                         @keydown=${this._onKeydown}
                     />
                     <button class="add-btn" title="Add item" @click=${this._add}>
-                        <wa-icon name="plus"></wa-icon>
+                        <wa-icon library="lucide" name="plus"></wa-icon>
                     </button>
                 </div>
             </div>

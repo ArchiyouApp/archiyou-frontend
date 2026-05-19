@@ -106,11 +106,6 @@ async function _attachEdgeLines(
         dedupedVerts.push(ax, ay, az, bx, by, bz);
     }
 
-    // Log all deduped edges so we can verify they are box corner-edges, not face diagonals
-    for (let i = 0; i < dedupedVerts.length; i += 6)
-    {
-        const r = (v: number) => v.toFixed(3);
-    }
     if (!dedupedVerts.length) return;
 
     // Push mesh faces slightly back so lines win the depth test (no z-fighting)

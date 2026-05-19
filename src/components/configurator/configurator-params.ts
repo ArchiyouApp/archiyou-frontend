@@ -15,11 +15,10 @@ import '../params/param-item-options.js';
 import '../params/param-item-list.js';
 
 import {
-  scriptParams,
   paramMenuCollapsed,
   setParamMenuCollapsed,
-  updateParam,
 } from '../../state/workspace.js';
+import { configuratorParams, setConfiguratorValue } from '../../state/configurator.js';
 
 import type { ScriptParam, ParamValueChangeDetail } from '../../state/workspace.js';
 
@@ -30,7 +29,7 @@ export class ConfiguratorParams extends SignalWatcher(LitElement)
   override render()
   {
     const collapsed = paramMenuCollapsed.get();
-    const params    = scriptParams.get();
+    const params    = configuratorParams.get();
     const groups    = this._groups(params);
 
     return html`
@@ -72,10 +71,11 @@ export class ConfiguratorParams extends SignalWatcher(LitElement)
     const groups: string[] = [];
     for (const p of params)
     {
-      if (!seen.has(p.group))
+      const g = p.group ?? 'main';
+      if (!seen.has(g))
       {
-        seen.add(p.group);
-        groups.push(p.group);
+        seen.add(g);
+        groups.push(g);
       }
     }
     // 'main' first
@@ -91,8 +91,8 @@ export class ConfiguratorParams extends SignalWatcher(LitElement)
   private _renderGroup(group: string, params: ScriptParam[])
   {
     const groupParams = params
-      .filter(p => p.group === group)
-      .sort((a, b) => a.order - b.order);
+      .filter(p => (p.group ?? 'main') === group)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
     return groupParams.map(p => html`
       <param-item .param=${p} readonly>
@@ -121,12 +121,8 @@ export class ConfiguratorParams extends SignalWatcher(LitElement)
 
   private _handleParamValueChange(e: CustomEvent<ParamValueChangeDetail>)
   {
-    const { id, value, units, options } = e.detail;
-    const updates: Partial<ScriptParam> = {};
-    if (value   !== undefined) updates.value   = value;
-    if (units   !== undefined) updates.units   = units;
-    if (options !== undefined) updates.options = options;
-    updateParam(id, updates);
+    const { id, value } = e.detail;
+    if (value !== undefined) setConfiguratorValue(id, value);
 
     this.dispatchEvent(new CustomEvent('configurator-params-changed', {
       bubbles:  true,

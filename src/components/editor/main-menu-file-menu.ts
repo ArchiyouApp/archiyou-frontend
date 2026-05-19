@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement } from 'lit/decorators.js';
 import { msg } from '@lit/localize';
+import { Router } from '@vaadin/router';
 
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
@@ -22,8 +23,13 @@ export class MainMenuFileMenu extends LitElement
             <wa-icon library="lucide" name="menu" label="Menu"></wa-icon>
         </wa-button>
 
+        <wa-dropdown-item value="back">
+          <wa-icon slot="icon" library="lucide" name="arrow-left"></wa-icon>
+          ${msg('Back to file browser')}
+        </wa-dropdown-item>
+
+        <wa-divider></wa-divider>
         <wa-dropdown-item value="new">${msg('New')}</wa-dropdown-item>
-        <wa-dropdown-item value="open">${msg('Open file browser')}</wa-dropdown-item>
         <wa-dropdown-item value="save">${msg('Save')}</wa-dropdown-item>
 
         <wa-divider></wa-divider>
@@ -37,6 +43,9 @@ export class MainMenuFileMenu extends LitElement
 
         <wa-dropdown-item value="share">
           ${msg('Share script')}
+        </wa-dropdown-item>
+        <wa-dropdown-item value="publish">
+          ${msg('Publish as configurator')}
         </wa-dropdown-item>
 
         <wa-divider></wa-divider>
@@ -70,6 +79,13 @@ export class MainMenuFileMenu extends LitElement
   private _handleSelect(e: CustomEvent)
   {
     const value = (e.detail.item as { value: string }).value;
+
+    if (value === 'back')
+    {
+      Router.go('/browser');
+      return;
+    }
+
     this.dispatchEvent(new CustomEvent('menu-action', {
       detail: value,
       bubbles: true,

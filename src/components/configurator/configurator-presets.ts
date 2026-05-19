@@ -6,11 +6,10 @@ import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 
 import {
-  scriptPresets,
   presetMenuCollapsed,
   setPresetMenuCollapsed,
-  activatePreset,
 } from '../../state/workspace.js';
+import { configuratorPresets, applyConfiguratorPreset } from '../../state/configurator.js';
 
 @customElement('configurator-presets')
 export class ConfiguratorPresets extends SignalWatcher(LitElement)
@@ -19,7 +18,7 @@ export class ConfiguratorPresets extends SignalWatcher(LitElement)
   override render()
   {
     const collapsed = presetMenuCollapsed.get();
-    const presets   = scriptPresets.get();
+    const presets   = configuratorPresets.get();
 
     return html`
       <div class="header" @click=${this._toggleCollapse}>
@@ -37,7 +36,7 @@ export class ConfiguratorPresets extends SignalWatcher(LitElement)
                 <wa-button
                   size="small"
                   appearance="outlined"
-                  @click=${() => activatePreset(p.name)}
+                  @click=${() => applyConfiguratorPreset(p.name)}
                 >${p.name}</wa-button>
               `)
           }

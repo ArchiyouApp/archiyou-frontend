@@ -103,7 +103,7 @@ export class ParamItem extends LitElement
   {
     if (this._dragLocked) { e.preventDefault(); return; }
     e.dataTransfer!.effectAllowed = 'move';
-    e.dataTransfer!.setData('text/plain', this.param.id);
+    e.dataTransfer!.setData('text/plain', this.param.id ?? '');
     this.setAttribute('dragging', '');
     this._confirmingDelete = false;
   };
@@ -132,7 +132,7 @@ export class ParamItem extends LitElement
     if (trimmed && trimmed !== this.param.name)
     {
       this.dispatchEvent(new CustomEvent<{ id: string; name: string }>('param-rename', {
-        detail: { id: this.param.id, name: trimmed },
+        detail: { id: this.param.id ?? '', name: trimmed },
         bubbles: true,
         composed: true,
       }));
@@ -165,7 +165,7 @@ export class ParamItem extends LitElement
   private _confirmDelete()
   {
     this.dispatchEvent(new CustomEvent<string>('param-delete', {
-      detail: this.param.id,
+      detail: this.param.id ?? '',
       bubbles: true,
       composed: true,
     }));
@@ -183,8 +183,8 @@ export class ParamItem extends LitElement
       display: flex;
       align-items: center;
       gap: 6px;
-      padding-left: var(--space-md);
-      padding-right: var(--space-md);
+      padding-left: var(--space-lg);
+      padding-right: var(--space-lg);
       height: var(--space2xl);
       font-family: var(--font-sans);
       font-size: var(--text-sm);

@@ -10,7 +10,7 @@ import '@awesome.me/webawesome/dist/components/option/option.js';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import { editorState } from '../../../state/workspace.js';
+import { executionResult } from '../../../state/workspace.js';
 
 type SvgMap = Record<string, string>;
 
@@ -20,7 +20,7 @@ export class EditorDocumentTool extends SignalWatcher(LitElement)
   // ── 1. Render ──
   override render()
   {
-    const result = editorState.get().result;
+    const result = executionResult.get();
 
     if (!result)
     {
@@ -134,7 +134,7 @@ export class EditorDocumentTool extends SignalWatcher(LitElement)
 
   private _buildSvgMap(): SvgMap
   {
-    const outputs = editorState.get().result?.outputs ?? [];
+    const outputs = executionResult.get()?.outputs ?? [];
     return outputs
       .filter(o => o.path.category === 'docs' && o.path.format === 'svg' && typeof o.output === 'string')
       .reduce<SvgMap>((map, o) =>

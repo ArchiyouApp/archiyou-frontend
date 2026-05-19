@@ -3,7 +3,7 @@
  */
 
 // Overlay menus — percentages of viewport preferred; px accepted too
-export const OVERLAY_MENU_WIDTH  = '30vw';
+export const OVERLAY_MENU_WIDTH  = '40vw';
 export const OVERLAY_MENU_HEIGHT = '50vh';
 
 // Parameter tabs
@@ -31,3 +31,34 @@ export const DIMENSION_ARROW_RADIUS     = 0.01;    // arrowhead cone base radius
 
 // 3D viewer
 export const VIEWER_BACKGROUND_COLOR = 0xf1f5f9; // scene + renderer clear color
+
+// ── File Manager ──────────────────────────────────────────────────────────────
+
+/**
+ * Pipe-separated list of dile-editor toolbar items to disable.
+ * Available: bold, italic, code_mark, link, removeLink, image,
+ *            unordered_list, ordered_list, lift, paragraph,
+ *            h1, h2, h3, h4, code, undo, redo
+ */
+export const FILE_MANAGER_DISABLED_TOOLBAR_ITEMS = 'image|h4|bold|italic|code|code_mark';
+
+/**
+ * Predefined tags that users can select in the file manager.
+ * Only these tags are allowed to ensure consistent categorisation.
+ */
+export const SCRIPT_PREDEFINED_TAGS: string[] = [
+  'architecture',
+  'parametric',
+  'geometry',
+  'building',
+  'furniture',
+  'visualization',
+  'tool',
+  'example',
+  'template',
+  'product',
+  'structure',
+  'interior',
+  'landscape',
+  'mechanical',
+];

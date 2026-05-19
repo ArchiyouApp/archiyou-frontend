@@ -2,7 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 
-import { editorState } from '../../state/workspace.js';
+import { editorScript } from '../../state/workspace.js';
 
 @customElement('configurator-header')
 export class ConfiguratorHeader extends SignalWatcher(LitElement)
@@ -10,7 +10,7 @@ export class ConfiguratorHeader extends SignalWatcher(LitElement)
   // ── 1. Render ──
   override render()
   {
-    const script = editorState.get().script;
+    const script = editorScript.get();
     const name    = script?.published?.title ?? script?.name ?? 'Untitled';
     const author  = script?.author ?? '—';
     const version = script?.published?.version ?? '—';

@@ -6,7 +6,6 @@ import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@awesome.me/webawesome/dist/components/tooltip/tooltip.js';
 import '@awesome.me/webawesome/dist/components/dialog/dialog.js';
 import './main-menu-file-menu.js';
-import './panel-info.js';
 import '../configurator/configurator.js';
 
 type MenuItem = 'info' | 'code' | 'history' | 'files' | 'templates' | 'help' | 'settings';
@@ -23,14 +22,6 @@ export class MainMenu extends LitElement
 
       <!-- sections -->
       <div class="sections">
-        <wa-button
-          id="btn-info"
-          appearance="plain"
-          class=${this._active === 'info' ? 'active' : ''}
-          @click=${() => this._select('info')}
-        ><wa-icon library="lucide" name="info" label="Info"></wa-icon></wa-button>
-        <wa-tooltip for="btn-info" placement="right">${msg('Info')}</wa-tooltip>
-
         <wa-button
           id="btn-code"
           appearance="plain"
@@ -51,7 +42,7 @@ export class MainMenu extends LitElement
       <!-- configurator dialog -->
       <wa-dialog
         class="configurator-dialog"
-        label=${msg('Configurator')}
+        label=${msg('configurator')}
         style="--width: 80vw"
         ?open=${this._configuratorOpen}
         @wa-after-hide=${() => { this._configuratorOpen = false; }}
@@ -86,7 +77,7 @@ export class MainMenu extends LitElement
         <wa-tooltip for="btn-settings" placement="right">${msg('Settings')}</wa-tooltip>
       </div>
 
-      <panel-info ?hidden=${this._active !== 'info'}></panel-info>
+      <!-- configurator dialog -->
     `;
   }
 
@@ -140,21 +131,6 @@ export class MainMenu extends LitElement
       z-index: 20;
     }
 
-    panel-info {
-      position: absolute;
-      top: 0;
-      left: 100%;
-      height: 100%;
-      width: 320px;
-      border-right: 1px solid var(--color-border);
-      z-index: 20;
-      box-shadow: var(--shadow-lg, 4px 0 16px rgba(0,0,0,0.15));
-    }
-
-    panel-info[hidden] {
-      display: none;
-    }
-
     .sections {
       display: flex;
       flex-direction: column;
@@ -180,6 +156,17 @@ export class MainMenu extends LitElement
     .configurator-dialog::part(dialog)
     {
       height: 80vh;
+    }
+
+    .configurator-dialog::part(header)
+    {
+      padding-block-start: 0; /* hack ugly margin top */
+    }
+
+    .configurator-dialog::part(title) 
+    {
+      font-size: var(--text-sm);
+      line-height: var(--text-sm);
     }
 
     .configurator-dialog::part(body)

@@ -4,7 +4,7 @@ import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import { editorState } from '../../../state/workspace.js';
+import { executionResult } from '../../../state/workspace.js';
 import type { Metric } from '../../../../devlibs/archiyou-core-next/src/calc/types.js';
 import './metric-card.js';
 
@@ -14,7 +14,7 @@ export class EditorMetricsTool extends SignalWatcher(LitElement)
   // ── 1. Render ──
   override render()
   {
-    const result = editorState.get().result;
+    const result = executionResult.get();
 
     if (!result)
     {
@@ -40,7 +40,7 @@ export class EditorMetricsTool extends SignalWatcher(LitElement)
   // ── 4. Behaviour & Methods ──
   private _collectMetrics(): Metric[]
   {
-    const outputs = editorState.get().result?.outputs ?? [];
+    const outputs = executionResult.get()?.outputs ?? [];
     const metrics: Metric[] = [];
 
     outputs

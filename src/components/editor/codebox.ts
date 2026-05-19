@@ -27,7 +27,7 @@ import { autocompletion } from '@codemirror/autocomplete';
 import { archiyouCompletions } from './completions.js';
 
 import { SignalWatcher } from '@lit-labs/signals';
-import { workspace } from '../../state/workspace.js';
+import { executing, executionResult } from '../../state/workspace.js';
 
 const lightTheme = EditorView.theme({}, { dark: false });
 const themeCompartment = new Compartment();
@@ -75,18 +75,18 @@ export class CodeBox extends SignalWatcher(LitElement)
           <wa-icon library="lucide" name="code"></wa-icon>
           <span class="title">code editor</span>
           <span class="state">
-            ${workspace.get().editor.executing
+            ${executing.get()
                 ? html`<wa-icon library="lucide" name="settings" animation="spin-reverse" label="executing"></wa-icon>`
-                : workspace.get().editor.result?.status === 'error'
+                : executionResult.get()?.status === 'error'
                     ? html`
                         <wa-icon class="error-icon" library="lucide" name="circle-x" label="error"></wa-icon>
-                        <span class="error-message" title=${this._fullErrorMessage(workspace.get().editor.result?.errors?.[0]?.message)}>
-                          ${this._shortErrorMessage(workspace.get().editor.result?.errors?.[0])}
+                        <span class="error-message" title=${this._fullErrorMessage(executionResult.get()?.errors?.[0]?.message)}>
+                          ${this._shortErrorMessage(executionResult.get()?.errors?.[0])}
                         </span>`
-                    : workspace.get().editor.result?.status === 'success'
+                    : executionResult.get()?.status === 'success'
                         ? html`
                             <wa-icon class="success-icon" library="lucide" name="circle-check" label="success"></wa-icon>
-                            <span class="duration">${this._formatDuration(workspace.get().editor.result!.duration)}</span>`
+                            <span class="duration">${this._formatDuration(executionResult.get()!.duration)}</span>`
                         : ''
             }
           </span>
@@ -167,7 +167,7 @@ export class CodeBox extends SignalWatcher(LitElement)
     this._skipNextUpdate = false;
 
     // Sync error-line highlight whenever the execution result signal changes
-    const result = workspace.get().editor.result;
+    const result = executionResult.get();
     if (result !== this._lastAppliedResult)
     {
       this._lastAppliedResult = result;
@@ -187,7 +187,7 @@ export class CodeBox extends SignalWatcher(LitElement)
   // ── 4. Behaviour & Methods ──
   private _view: EditorView | null = null;
   private _skipNextUpdate = false;
-  private _lastAppliedResult: ReturnType<typeof workspace.get>['editor']['result'] | undefined = undefined;
+  private _lastAppliedResult: ReturnType<typeof executionResult.get> | undefined = undefined;
   private _darkMQ = window.matchMedia('(prefers-color-scheme: dark)');
 
   private _currentTheme()
@@ -234,7 +234,7 @@ export class CodeBox extends SignalWatcher(LitElement)
   }
 
   /** Dispatch the error-line effect to the CodeMirror editor. */
-  private _applyErrorHighlight(result: ReturnType<typeof workspace.get>['editor']['result'])
+  private _applyErrorHighlight(result: ReturnType<typeof executionResult.get>)
   {
     if (!this._view) return;
     if (result?.status !== 'error') {

@@ -6,7 +6,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { workspace, hiddenNodes, setSceneTree, clearSceneState } from '../../state/workspace.js';
+import { executionResult, hiddenNodes, setSceneTree, clearSceneState } from '../../state/workspace.js';
 import type { ScriptOutputData } from '../../../devlibs/archiyou-core-next/src/execution/types.js';
 import type { SceneNodeData, SceneMaterialData } from '../../state/workspace.js';
 import { applyEdgeExtensions } from './gltf-edge-extensions.js';
@@ -29,7 +29,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
   override render()
   {
     // Read signals so SignalWatcher tracks them and re-renders on change
-    this._pendingGlbOutput = workspace.get().editor.result?.outputs
+    this._pendingGlbOutput = executionResult.get()?.outputs
       ?.find(o => o.path.requestedPath === 'default/model/glb');
     this._pendingHiddenNodes = hiddenNodes.get();
 
@@ -76,7 +76,6 @@ export class ModelViewer extends SignalWatcher(LitElement)
   override updated(_changed: Map<string, unknown>)
   {
     const glbOutput = this._pendingGlbOutput;
-    console.log('==== GLB Output changed:', glbOutput);
     if (glbOutput && glbOutput !== this._lastGlbOutput && this._renderer)
     {
       this._lastGlbOutput = glbOutput;
@@ -232,6 +231,22 @@ export class ModelViewer extends SignalWatcher(LitElement)
     c.maxDistance = 50;
     c.target.set(0, 0.5, 0);
     c.update();
+
+    // Belt-and-suspenders: mark dirty on any camera change event, in addition
+    // to the controls.update() return-value check in the render loop.
+    c.addEventListener('change', () => { this._dirty = true; });
+
+    // On Linux/GTK, switching from a pointer-drag to a scroll wheel can fire
+    // `pointercancel`, which releases browser pointer-capture without notifying
+    // OrbitControls. OrbitControls leaves its internal `state` set to ROTATE/PAN,
+    // and its wheel handler silently returns early while state !== _STATE.NONE (-1).
+    // Resetting state here unblocks wheel events immediately.
+    canvas.addEventListener('pointercancel', () =>
+    {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (c as any).state = -1; // _STATE.NONE = -1 in Three.js r0.171
+    });
+
     this._controls = c;
   }
 
@@ -1108,6 +1123,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
       display: block;
       width: 100%;
       height: 100%;
+      touch-action: none; /* prevent browser from capturing scroll/gesture events away from OrbitControls */
     }
 
     viewer-menu {

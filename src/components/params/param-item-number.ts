@@ -5,6 +5,7 @@ import { live } from 'lit/directives/live.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import type { ScriptParam } from '../../state/workspace.js';
+import { paramMin, paramMax, paramStep, paramValue } from '../../state/workspace.js';
 
 const MODEL_UNITS = ['mm', 'cm', 'dm', 'm', 'km', 'inch', 'feet', 'yd', 'mi'] as const;
 
@@ -15,9 +16,9 @@ export class ParamItemNumber extends LitElement
 
     override render()
     {
-        const min  = this.param.min  ?? 0;
-        const max  = this.param.max  ?? 100;
-        const step = this.param.step ?? 1;
+        const min  = paramMin(this.param);
+        const max  = paramMax(this.param);
+        const step = paramStep(this.param);
 
         return html`
             <div class="wrap"
@@ -85,8 +86,8 @@ export class ParamItemNumber extends LitElement
 
     private _syncValue()
     {
-        const v = this.param?.value ?? this.param?.defaultValue;
-        this._value = (v !== undefined && v !== null) ? Number(v) : (this.param?.min ?? 0);
+        const v = this.param ? paramValue(this.param) : undefined;
+        this._value = (v !== undefined && v !== null) ? Number(v) : (this.param ? paramMin(this.param) : 0);
     }
 
     private _onSlider(e: InputEvent)
@@ -98,9 +99,9 @@ export class ParamItemNumber extends LitElement
     private _onNumber(e: Event)
     {
         const input = e.target as HTMLInputElement;
-        const min   = this.param.min  ?? 0;
-        const max   = this.param.max  ?? 100;
-        const step  = this.param.step ?? 1;
+        const min   = paramMin(this.param);
+        const max   = paramMax(this.param);
+        const step  = paramStep(this.param);
         const clamped = Math.max(min, Math.min(max, Number(input.value)));
         const snapped = Math.round((clamped - min) / step) * step + min;
         this._value      = snapped;
@@ -120,16 +121,16 @@ export class ParamItemNumber extends LitElement
 
     private _decrement()
     {
-        const step = this.param.step ?? 1;
-        const min  = this.param.min  ?? 0;
+        const step = paramStep(this.param);
+        const min  = paramMin(this.param);
         this._value = Math.max(min, this._value - step);
         this._dispatchValue(this._value);
     }
 
     private _increment()
     {
-        const step = this.param.step ?? 1;
-        const max  = this.param.max  ?? 100;
+        const step = paramStep(this.param);
+        const max  = paramMax(this.param);
         this._value = Math.min(max, this._value + step);
         this._dispatchValue(this._value);
     }

@@ -16,7 +16,8 @@ import {
   scriptParams,
   paramMenuCollapsed,
   setParamMenuCollapsed,
-  addParam,
+  addParamDirect,
+  updateParamDirect,
   updateParam,
   deleteParam,
   reorderParams,
@@ -27,8 +28,7 @@ import {
 
 import { PARAM_TAB_NAME_MAX_LENGTH } from '../../settings';
 
-import type { ScriptParam, ParamValueChangeDetail } from '../../state/workspace';
-import type { ParamDefineDetail } from './param-define-menu';
+import type { ScriptParam, ScriptParamData, ParamValueChangeDetail, ParamSpec } from '../../state/workspace';
 
 @customElement('param-menu')
 export class ParamMenu extends SignalWatcher(LitElement)
@@ -166,15 +166,15 @@ export class ParamMenu extends SignalWatcher(LitElement)
 
   private _groups(): string[]
   {
-    const set = new Set(['main', ...scriptParams.get().map(p => p.group), ...this._pendingGroups]);
+    const set = new Set(['main', ...scriptParams.get().map(p => p.group ?? 'main'), ...this._pendingGroups]);
     return [...set];
   }
 
   private _paramsForGroup(group: string): ScriptParam[]
   {
     return scriptParams.get()
-      .filter(p => p.group === group)
-      .sort((a, b) => a.order - b.order);
+      .filter(p => (p.group ?? 'main') === group)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }
 
   // ── Tab rendering ──
@@ -395,7 +395,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
     // Move all params in this group to 'main' then remove from pendingGroups
     const params = this._paramsForGroup(group);
     const mainParams = this._paramsForGroup('main');
-    params.forEach((p, i) => updateParam(p.id, { group: 'main', order: mainParams.length + i }));
+    params.forEach((p, i) => updateParam(p.id!, { group: 'main', order: mainParams.length + i }));
 
     if (this._pendingGroups.has(group))
     {
@@ -434,7 +434,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
     const reordered = [...params];
     const [moved] = reordered.splice(sourceIdx, 1);
     reordered.splice(targetIdx, 0, moved);
-    reorderParams(this._activeTab, reordered.map(p => p.id));
+    reorderParams(this._activeTab, reordered.map(p => p.id!).filter(Boolean));
   }
 
   private _onParamDragLeave(e: DragEvent)
@@ -451,7 +451,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
   private _onParamValueChange(e: CustomEvent<ParamValueChangeDetail>)
   {
     const { id, value, units, options } = e.detail;
-    const updates: Partial<ScriptParam> = {};
+    const updates: ParamSpec = {};
     if (value   !== undefined) updates.value   = value;
     if (units   !== undefined) updates.units   = units;
     if (options !== undefined) updates.options = options;
@@ -487,36 +487,23 @@ export class ParamMenu extends SignalWatcher(LitElement)
     this._defineMenuOpen = true;
   }
 
-  private _handleParamDefine(e: CustomEvent<ParamDefineDetail>)
+  private _handleParamDefine(e: CustomEvent<ScriptParamData>)
   {
     this._defineMenuOpen = false;
     const d = e.detail;
-
-    const fields = {
-      name:         d.name,
-      type:         d.type,
-      group:        d.group,
-      defaultValue: d.defaultValue,
-      min:          d.min,
-      max:          d.max,
-      step:         d.step,
-      minLength:    d.minLength,
-      maxLength:    d.maxLength,
-      options:      d.options,
-      listItemType: d.listItemType,
-    };
+    const group = d.group ?? 'main';
 
     if (d.id)
     {
-      updateParam(d.id, fields);
-      this._activeTab = d.group;
+      updateParamDirect(d.id, d);
     }
     else
     {
-      const params = this._paramsForGroup(d.group);
-      addParam({ id: crypto.randomUUID(), order: params.length, ...fields } as any);
-      this._activeTab = d.group;
+      const order = this._paramsForGroup(group).length;
+      addParamDirect({ ...d, id: crypto.randomUUID(), order });
     }
+
+    this._activeTab = group;
     this._editingParam = null;
   }
 
@@ -813,7 +800,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
     }
 
     .empty-list {
-      padding: 10px 16px;
+      padding: var(--space-lg);
       color: var(--color-text-gray);
       font-size: var(--text-xs);
     }
@@ -824,7 +811,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 6px 12px;
+      padding: var(--space-lg);
       flex-shrink: 0;
     }
 

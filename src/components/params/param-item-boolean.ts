@@ -2,6 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
 import type { ScriptParam } from '../../state/workspace.js';
+import { paramValue } from '../../state/workspace.js';
 
 @customElement('param-item-boolean')
 export class ParamItemBoolean extends LitElement
@@ -33,12 +34,12 @@ export class ParamItemBoolean extends LitElement
     override connectedCallback()
     {
         super.connectedCallback();
-        this._checked = Boolean(this.param?.value ?? this.param?.defaultValue);
+        this._checked = Boolean(this.param ? paramValue(this.param) : false);
     }
 
     override updated(changed: Map<string, unknown>)
     {
-        if (changed.has('param')) this._checked = Boolean(this.param?.value ?? this.param?.defaultValue);
+        if (changed.has('param')) this._checked = Boolean(this.param ? paramValue(this.param) : false);
     }
 
     // ── 4. Behaviour ──

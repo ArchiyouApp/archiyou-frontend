@@ -19,6 +19,7 @@ export const tokens = {
 
   colorAccent: '#ffe200',  
   colorSuccess: '#16a34a',
+  colorWarning: '#f59e0b',
   colorAlert: '#f10827',
   colorDanger:  '#dc2626',
 

@@ -1,4 +1,4 @@
-import { LitElement, html, css, nothing } from 'lit';
+import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 
@@ -6,7 +6,7 @@ import '@awesome.me/webawesome/dist/components/select/select.js';
 import '@awesome.me/webawesome/dist/components/option/option.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import { editorState } from '../../../state/workspace.js';
+import { executionResult } from '../../../state/workspace.js';
 
 type DataRow = Record<string, any>;
 type TableMap = Record<string, DataRow[]>;
@@ -17,7 +17,7 @@ export class EditorDataTool extends SignalWatcher(LitElement)
   // ── 1. Render ──
   override render()
   {
-    const result = editorState.get().result;
+    const result = executionResult.get();
 
     if (!result)
     {
@@ -82,7 +82,7 @@ export class EditorDataTool extends SignalWatcher(LitElement)
   // ── 4. Behaviour & Methods ──
   private _buildTableMap(): TableMap
   {
-    const outputs = editorState.get().result?.outputs ?? [];
+    const outputs = executionResult.get()?.outputs ?? [];
     return outputs
       .filter(o => o.path.category === 'tables' && Array.isArray(o.output))
       .reduce<TableMap>((map, o) =>

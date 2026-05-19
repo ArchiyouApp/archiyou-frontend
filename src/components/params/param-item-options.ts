@@ -4,6 +4,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import type { ScriptParam } from '../../state/workspace.js';
+import { paramValue, paramOptions } from '../../state/workspace.js';
 
 @customElement('param-item-options')
 export class ParamItemOptions extends LitElement
@@ -12,7 +13,7 @@ export class ParamItemOptions extends LitElement
 
     override render()
     {
-        const available = (this.param?.options ?? []).filter(o => !this._selected.includes(o));
+        const available = (this.param ? paramOptions(this.param) : []).filter(o => !this._selected.includes(o));
 
         return html`
             <div class="wrap">
@@ -61,12 +62,12 @@ export class ParamItemOptions extends LitElement
     override connectedCallback()
     {
         super.connectedCallback();
-        this._selected = (this.param?.value as string[]) ?? [];
+        this._selected = (this.param ? paramValue(this.param) : []) as string[] ?? [];
     }
 
     override updated(changed: Map<string, unknown>)
     {
-        if (changed.has('param')) this._selected = (this.param?.value as string[]) ?? [];
+        if (changed.has('param')) this._selected = (this.param ? paramValue(this.param) : []) as string[] ?? [];
         if (changed.has('_picking') && this._picking)
         {
             this.updateComplete.then(() =>

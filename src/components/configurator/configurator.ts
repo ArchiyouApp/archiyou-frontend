@@ -5,8 +5,8 @@ import { SignalWatcher } from '@lit-labs/signals';
 import '@awesome.me/webawesome/dist/components/split-panel/split-panel.js';
 
 import { runScript, warmupWorker } from '../../services/execution-service.js';
-import { workspace, scriptParams, setExecutionResult, setExecuting } from '../../state/workspace.js';
-import type { ScriptParam } from '../../state/workspace.js';
+import { editorScript, setExecutionResult, setExecuting } from '../../state/workspace.js';
+import { configuratorParams, configuratorValueFor } from '../../state/configurator.js';
 import type { RunnerScriptExecutionRequest } from '../../../devlibs/archiyou-core-next/src/runner/types.js';
 
 import '../viewer/model-viewer.js';
@@ -97,21 +97,13 @@ export class PageConfigurator extends SignalWatcher(LitElement)
 
   private _buildRequest(): RunnerScriptExecutionRequest
   {
-    const scriptData = workspace.get().editor.script?.toData() as any;
-    const params = scriptParams.get();
-
-    scriptData.params = Object.fromEntries(
-      params.map(p => [p.name, {
-        name:    p.name,
-        schema:  this._buildParamSchema(p),
-        default: p.defaultValue,
-        order:   p.order,
-        ...(p.units !== undefined && { units: p.units }),
-      }])
-    );
+    // Definitions come from the core active script (already canonical via
+    // toData()); values are the configurator's runtime overrides.
+    const scriptData = editorScript.get()?.toData() as any;
+    const params = configuratorParams.get();
 
     const paramValues: Record<string, any> = Object.fromEntries(
-      params.map(p => [p.name, p.value ?? p.defaultValue])
+      params.map(p => [p.name, configuratorValueFor(p)])
     );
 
     return {
@@ -122,32 +114,6 @@ export class PageConfigurator extends SignalWatcher(LitElement)
     } as RunnerScriptExecutionRequest;
   }
 
-  private _buildParamSchema(p: ScriptParam): Record<string, unknown>
-  {
-    const schema: Record<string, unknown> = { type: p.type };
-
-    if (p.type === 'number')
-    {
-      if (p.min  !== undefined) schema.minimum    = p.min;
-      if (p.max  !== undefined) schema.maximum    = p.max;
-      if (p.step !== undefined) schema.multipleOf = p.step;
-    }
-    else if (p.type === 'text')
-    {
-      if (p.minLength !== undefined) schema.minLength = p.minLength;
-      if (p.maxLength !== undefined) schema.maxLength = p.maxLength;
-    }
-    else if (p.type === 'options')
-    {
-      schema.enum = p.options ?? [];
-    }
-    else if (p.type === 'list')
-    {
-      schema.items = { type: p.listItemType ?? 'string' };
-    }
-
-    return schema;
-  }
 
   // ── 5. Styles ──
   static override styles = css`
@@ -157,6 +123,7 @@ export class PageConfigurator extends SignalWatcher(LitElement)
       flex-direction: column;
       height: 100%;
       overflow: hidden;
+      background: var(--color-bg);
     }
 
     wa-split-panel

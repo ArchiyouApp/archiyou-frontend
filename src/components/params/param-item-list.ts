@@ -4,6 +4,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import type { ScriptParam } from '../../state/workspace.js';
+import { paramValue, paramListItemType } from '../../state/workspace.js';
 
 @customElement('param-item-list')
 export class ParamItemList extends LitElement
@@ -12,11 +13,10 @@ export class ParamItemList extends LitElement
 
     override render()
     {
-        const items: any[] = Array.isArray(this.param?.value ?? this.param?.defaultValue)
-            ? (this.param.value ?? this.param.defaultValue)
-            : [];
+        const v = this.param ? paramValue(this.param) : undefined;
+        const items: any[] = Array.isArray(v) ? v : [];
 
-        const itemType = this.param?.listItemType ?? 'string';
+        const itemType = this.param ? paramListItemType(this.param) : 'string';
 
         return html`
             <div class="wrap">
@@ -62,9 +62,8 @@ export class ParamItemList extends LitElement
 
     private _removeAt(index: number)
     {
-        const items: any[] = Array.isArray(this.param?.value ?? this.param?.defaultValue)
-            ? [...(this.param.value ?? this.param.defaultValue)]
-            : [];
+        const cur = this.param ? paramValue(this.param) : undefined;
+        const items: any[] = Array.isArray(cur) ? [...cur] : [];
 
         this._dispatchItems(items.filter((_, i) => i !== index));
     }
@@ -74,9 +73,8 @@ export class ParamItemList extends LitElement
         const raw = this._draft.trim();
         if (!raw) return;
 
-        const items: any[] = Array.isArray(this.param?.value ?? this.param?.defaultValue)
-            ? [...(this.param.value ?? this.param.defaultValue)]
-            : [];
+        const cur = this.param ? paramValue(this.param) : undefined;
+        const items: any[] = Array.isArray(cur) ? [...cur] : [];
 
         this._draft = '';
         this._dispatchItems([...items, this._parseItem(raw)]);
@@ -90,7 +88,7 @@ export class ParamItemList extends LitElement
 
     private _parseItem(raw: string): any
     {
-        const type = this.param?.listItemType ?? 'string';
+        const type = this.param ? paramListItemType(this.param) : 'string';
         if (type === 'number')  return Number(raw);
         if (type === 'boolean') return raw.toLowerCase() !== 'false' && raw !== '0';
         return raw;

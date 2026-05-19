@@ -17,7 +17,7 @@ import type { RunnerScriptExecutionRequest, RunnerScriptExecutionResult } from '
  * Execute a script request in the shared Archiyou core worker.
  * Lazily initialises the worker on the first call.
  */
-export async function runScript(request: RunnerScriptExecutionRequest): Promise<RunnerScriptExecutionResult>
+export async function runScript(request: RunnerScriptExecutionRequest): Promise<RunnerScriptExecutionResult | undefined>
 {
   const worker = await loadArchiyouCore();
   return worker.execute(request);

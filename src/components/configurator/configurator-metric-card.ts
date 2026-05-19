@@ -41,19 +41,22 @@ export class ConfiguratorMetricCard extends LitElement
     {
       display: block;
       flex-shrink: 0;
+      height: 100%;
     }
 
     .card
     {
       display: flex;
       flex-direction: column;
+      justify-content: center;
       gap: var(--space-xs);
       padding: var(--space-sm) var(--space-md);
       background: var(--color-bg-elevated);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-md, 8px);
+      border-right: 1px solid var(--color-border);
       min-width: 120px;
       max-width: 180px;
+      height: 100%;
+      box-sizing: border-box;
     }
 
     .header

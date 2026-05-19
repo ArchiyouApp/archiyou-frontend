@@ -4,6 +4,9 @@
  * Provides completions for:
  *  - top-level Modeler functions (box, sphere, line, sketch, …)
  *  - instance methods on the shapes they return (SmartSolid, SmartMesh, SmartCurve, …)
+ *
+ * Shape class data is auto-generated — run:
+ *   cd devlibs/archiyou-core-next && pnpm run generate:completions
  */
 
 import {
@@ -12,391 +15,150 @@ import {
   type Completion,
 } from '@codemirror/autocomplete';
 
-/* ------------------------------------------------------------------ */
-/*  Type descriptors                                                    */
-/* ------------------------------------------------------------------ */
-
-interface MethodInfo {
-  label: string;
-  detail: string;
-  info?: string;
-  type: 'function' | 'property';
-}
-
-interface ShapeClassInfo {
-  label: string;
-  detail: string;
-  statics?: MethodInfo[];
-  members: MethodInfo[];
-}
+import {
+  type MethodInfo,
+  modelerFunctions as autoModelerFunctions,
+  shapeClasses,
+} from './completions-data.generated';
 
 /* ------------------------------------------------------------------ */
-/*  Modeler top-level global functions                                  */
+/*  Sketch-forwarded global commands (not static Modeler methods)      */
 /* ------------------------------------------------------------------ */
 
-const modelerFunctions: MethodInfo[] = [
-  // Meta
-  { label: 'mode',          detail: '(m?): ModelMode',                                           type: 'function', info: 'Get/set model mode: mesh or brep' },
-  { label: 'units',         detail: '(u?): ModelUnits',                                          type: 'function', info: 'Get/set model units (e.g. mm, cm, inch)' },
+/**
+ * These are injected into global scope at runtime via MODELER_METHODS_INTO_GLOBAL
+ * but do not exist as methods on the Modeler class — they're delegated to the
+ * active Sketch at execution time.  Keep this short supplement in sync with
+ * the MODELER_METHODS_INTO_GLOBAL list in archiyou-core-next/src/constants.ts.
+ */
+const sketchForwardedFunctions: MethodInfo[] = [
+  { label: 'isTemp',       detail: '(): any',                                   type: 'function', info: 'Mark shapes as temporary (hidden from output)' },
+  { label: 'moveTo',       detail: '(...coords): this',                          type: 'function', info: 'Move sketch cursor to position' },
+  { label: 'lineTo',       detail: '(...coords): this',                          type: 'function', info: 'Draw a line to position' },
+  { label: 'splineTo',     detail: '(...coords): this',                          type: 'function', info: 'Draw a spline to position' },
+  { label: 'arcTo',        detail: '(mid, end): this',                           type: 'function', info: 'Draw an arc through mid to end' },
+  { label: 'rectTo',       detail: '(...coords): this',                          type: 'function', info: 'Draw a rectangle to position' },
+  { label: 'circleTo',     detail: '(...coords): this',                          type: 'function', info: 'Draw a circle' },
+  { label: 'mirror',       detail: '(dir, pos?): this',                          type: 'function', info: 'Mirror sketch' },
+  { label: 'offset',       detail: '(distance): this',                           type: 'function', info: 'Offset sketch' },
+  { label: 'offsetted',    detail: '(distance): this',                           type: 'function', info: 'Returns an offset copy' },
+  { label: 'fillet',       detail: '(radius, at?): this',                        type: 'function', info: 'Fillet sketch corners' },
+  { label: 'chamfer',      detail: '(distance?, edges?): this',                  type: 'function', info: 'Chamfer sketch corners' },
+  { label: 'thicken',      detail: '(amount, direction?): this',                 type: 'function', info: 'Thicken a face or shell' },
+  { label: 'thickened',    detail: '(amount, direction?): this',                 type: 'function', info: 'Returns a thickened copy' },
+  { label: 'combine',      detail: '(): this',                                   type: 'function', info: 'Combine sketch segments' },
+  { label: 'close',        detail: '(): this',                                   type: 'function', info: 'Close sketch' },
+  { label: 'importSketch', detail: '(sketch): this',                             type: 'function', info: 'Import an existing sketch' },
+];
 
-  // Pointlikes
-  { label: 'point',         detail: '(xp?, y?, z?): Point',                                      type: 'function', info: 'Creates a 2D/3D Point' },
-  { label: 'vector',        detail: '(xp?, y?, z?): Vector',                                     type: 'function', info: 'Creates a 2D/3D Vector' },
-  { label: 'vertex',        detail: '(xp?, y?, z?): Vertex',                                     type: 'function', info: 'Creates a Vertex' },
+/** All top-level global functions: auto-generated from Modeler.ts + sketch forwarding supplement. */
+const modelerFunctions: MethodInfo[] = [...autoModelerFunctions, ...sketchForwardedFunctions];
 
-  // Linear shapes
-  { label: 'line',          detail: '(start, end): SmartCurve | SmartEdge',                      type: 'function', info: 'Creates a Line' },
-  { label: 'arc',           detail: '(start, mid, end): SmartCurve | SmartEdge',                 type: 'function', info: 'Creates an Arc through start, mid and end' },
-  { label: 'spline',        detail: '(...points): SmartCurve | SmartEdge',                       type: 'function', info: 'Creates a Spline through given Points' },
-  { label: 'polyline',      detail: '(points, ...args): SmartCurve | SmartWire',                 type: 'function', info: 'Creates a Polyline through multiple Points' },
-  { label: 'spiral',        detail: '(...args): SmartWire',                                      type: 'function', info: '2D Spiral — brep only' },
-  { label: 'helix',         detail: '(...args): SmartWire',                                      type: 'function', info: 'Helix — brep only' },
+/* ------------------------------------------------------------------ */
+/*  Factory → shape class mapping (mesh mode default)                  */
+/* ------------------------------------------------------------------ */
 
-  // Closed 2D shapes
-  { label: 'rect',          detail: '(width?, depth?, center?): SmartCurve | SmartWire',         type: 'function', info: 'Creates a rectangular Curve' },
-  { label: 'rectBetween',   detail: '(from, to): SmartCurve | SmartFace',                        type: 'function', info: 'Creates a rectangle between two Points' },
-  { label: 'circle',        detail: '(radius?, center?): SmartCurve | SmartEdge',                type: 'function', info: 'Creates a circular Curve' },
-  { label: 'plane',         detail: '(...args): SmartFace',                                      type: 'function', info: 'Creates a planar Face — brep only' },
-  { label: 'planeBetween',  detail: '(...args): SmartFace',                                      type: 'function', info: 'Creates a planar Face between two Points — brep only' },
-  { label: 'basePlane',     detail: '(...args): SmartFace',                                      type: 'function', info: 'Creates a base plane along a main axis — brep only' },
-
+/** Maps every factory function name to its default Smart* class (mesh mode). */
+const FACTORY_RETURN_TYPES: Record<string, string> = {
   // 3D shapes
-  { label: 'box',           detail: '(width?, depth?, height?, position?): SmartMesh | SmartSolid',  type: 'function', info: 'Creates a Box shape' },
-  { label: 'cube',          detail: '(width?, depth?, height?, position?): SmartMesh | SmartSolid',  type: 'function', info: 'Alias for box()' },
-  { label: 'boxBetween',    detail: '(from, to): SmartMesh | SmartSolid',                        type: 'function', info: 'Creates a Box between two Points' },
-  { label: 'sphere',        detail: '(radius?, position?): SmartMesh | SmartSolid',              type: 'function', info: 'Creates a Sphere' },
-  { label: 'cone',          detail: '(...args): SmartSolid',                                     type: 'function', info: 'Creates a Cone — brep only' },
-  { label: 'cylinder',      detail: '(radius?, height?, position?): SmartMesh | SmartSolid',     type: 'function', info: 'Creates a Cylinder' },
+  box:          'SmartMesh',
+  cube:         'SmartMesh',
+  boxBetween:   'SmartMesh',
+  sphere:       'SmartMesh',
+  cylinder:     'SmartMesh',
+  cone:         'SmartSolid',
+  // 2D curves / wires
+  line:         'SmartCurve',
+  arc:          'SmartCurve',
+  spline:       'SmartCurve',
+  polyline:     'SmartCurve',
+  spiral:       'SmartCurve',
+  helix:        'SmartCurve',
+  rect:         'SmartCurve',
+  rectBetween:  'SmartCurve',
+  circle:       'SmartCurve',
+  // Faces (brep-only, mesh-mode falls back)
+  plane:        'SmartFace',
+  planeBetween: 'SmartFace',
+  basePlane:    'SmartFace',
+  // Sketch
+  sketch:       'Sketch',
+  // Math types
+  point:        'Point',
+  vertex:       'Point',
+  vector:       'Vector',
+  // Collections / scene
+  all:          'SmartShapeCollection',
+  collection:   'SmartShapeCollection',
+  layerShapes:  'SmartShapeCollection',
+};
 
-  // Sketch & scene
-  { label: 'sketch',        detail: '(plane?, yAxis?): Sketch',                                  type: 'function', info: 'Starts a 2D Sketch on a given plane' },
-  { label: 'layer',         detail: '(name?): SmartSceneNode',                                   type: 'function', info: 'Creates or activates a named layer' },
-  { label: 'layerShapes',   detail: '(): SmartShapeCollection',                                  type: 'function', info: 'Returns all shapes in the active layer' },
-  { label: 'all',           detail: '(): SmartShapeCollection',                                  type: 'function', info: 'Returns all shapes in the scene' },
-  { label: 'collection',    detail: '(...args): SmartShapeCollection',                           type: 'function', info: 'Creates a SmartShapeCollection' },
-  { label: 'select',        detail: '(selectionString): any',                                    type: 'function', info: 'Select shapes by a selection string (sketch/brep only)' },
-  { label: 'atVertices',    detail: '(): any',                                                   type: 'function', info: 'Operate at vertices (sketch/brep only)' },
+/**
+ * Scans the document text for variable assignments like:
+ *   `let b = box(10, 10, 10)` · `const s = sphere(50)` · `c = line(...)`
+ * and returns a map from variable name → inferred shape class name.
+ */
+function buildScopeTypeMap(docText: string): Map<string, string>
+{
+  const map = new Map<string, string>();
+  const re = /\b(?:(?:let|const|var)\s+)?([a-zA-Z_$]\w*)\s*=\s*([a-z_$]\w*)\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(docText)) !== null)
+  {
+    const [, varName, fnName] = m;
+    const resolved = FACTORY_RETURN_TYPES[fnName];
+    if (resolved) map.set(varName, resolved);
+  }
+  return map;
+}
 
-  // Sketch drawing commands (forwarded from active sketch)
-  { label: 'moveTo',        detail: '(...coords): this',                                         type: 'function', info: 'Move sketch cursor to position' },
-  { label: 'lineTo',        detail: '(...coords): this',                                         type: 'function', info: 'Draw a line to position' },
-  { label: 'splineTo',      detail: '(...coords): this',                                         type: 'function', info: 'Draw a spline to position' },
-  { label: 'arcTo',         detail: '(mid, end): this',                                          type: 'function', info: 'Draw an arc through mid to end' },
-  { label: 'rectTo',        detail: '(...coords): this',                                         type: 'function', info: 'Draw a rectangle to position' },
-  { label: 'circleTo',      detail: '(...coords): this',                                         type: 'function', info: 'Draw a circle' },
-  { label: 'mirror',        detail: '(dir, pos?): this',                                         type: 'function', info: 'Mirror sketch' },
-  { label: 'offset',        detail: '(distance): this',                                          type: 'function', info: 'Offset sketch' },
-  { label: 'offsetted',     detail: '(distance): this',                                          type: 'function', info: 'Returns an offset copy' },
-  { label: 'fillet',        detail: '(radius, at?): this',                                       type: 'function', info: 'Fillet sketch corners' },
-  { label: 'chamfer',       detail: '(distance?, edges?): this',                                 type: 'function', info: 'Chamfer sketch corners' },
-  { label: 'thicken',       detail: '(amount, direction?): this',                                type: 'function', info: 'Thicken a face or shell' },
-  { label: 'thickened',     detail: '(amount, direction?): this',                                type: 'function', info: 'Returns a thickened copy' },
-  { label: 'combine',       detail: '(): this',                                                  type: 'function', info: 'Combine sketch segments' },
-  { label: 'close',         detail: '(): this',                                                  type: 'function', info: 'Close sketch' },
-  { label: 'importSketch',  detail: '(sketch): this',                                            type: 'function', info: 'Import an existing sketch' },
-];
+/**
+ * Given the text before a `.`, extracts the root expression of the method
+ * chain — i.e., the part before the first top-level `.`.
+ *
+ * Examples:
+ *   `b`                          → `b`
+ *   `box(10, 10, 10)`            → `box(10, 10, 10)`
+ *   `b.color('red')`             → `b`
+ *   `box(10).color('red')`       → `box(10)`
+ *   `const x = sphere(50)`       → `sphere(50)`   ← assignment stripped
+ */
+function extractChainRoot(textBefore: string): string
+{
+  // Take the last statement (after last newline or semicolon)
+  const parts = textBefore.split(/[;\n]/);
+  const lastStatement = (parts[parts.length - 1] ?? '').trim();
 
-/* ------------------------------------------------------------------ */
-/*  Common shape members (Shape base class)                            */
-/* ------------------------------------------------------------------ */
+  // Strip a leading assignment: `let x =`, `const x =`, `x =` (but not `==`)
+  const afterAssign = lastStatement.replace(
+    /^(?:(?:let|const|var)\s+)?[a-zA-Z_$]\w*\s*=(?!=)\s*/,
+    '',
+  );
 
-const shapeCommonMembers: MethodInfo[] = [
-  // Transform
-  { label: 'move',          detail: '(vector, ...args): this',       type: 'function' },
-  { label: 'moveX',         detail: '(distance): this',              type: 'function' },
-  { label: 'moveY',         detail: '(distance): this',              type: 'function' },
-  { label: 'moveZ',         detail: '(distance): this',              type: 'function' },
-  { label: 'moveTo',        detail: '(to, ...args): this',           type: 'function' },
-  { label: 'moveToX',       detail: '(x, pivot?): this',             type: 'function' },
-  { label: 'moveToY',       detail: '(y, pivot?): this',             type: 'function' },
-  { label: 'moveToZ',       detail: '(z, pivot?): this',             type: 'function' },
-  { label: 'rotate',        detail: '(r, ...args): this',            type: 'function' },
-  { label: 'rotateX',       detail: '(deg, pivot?): this',           type: 'function' },
-  { label: 'rotateY',       detail: '(deg, pivot?): this',           type: 'function' },
-  { label: 'rotateZ',       detail: '(deg, pivot?): this',           type: 'function' },
-  { label: 'rotateAround',  detail: '(angle, axis?, pivot?): this',  type: 'function' },
-  { label: 'scale',         detail: '(factor?, pivot?): this',       type: 'function' },
-  { label: 'mirror',        detail: '(dir, pos?): this',             type: 'function' },
-  // Info
-  { label: 'bbox',          detail: '(): Bbox',                      type: 'function' },
-  { label: 'obbox',         detail: '(): OBbox | null',              type: 'function' },
-  { label: 'center',        detail: '(): Point',                     type: 'function' },
-  { label: 'area',          detail: '(): number',                    type: 'function' },
-  { label: 'volume',        detail: '(): number',                    type: 'function' },
-  { label: 'length',        detail: '(): number',                    type: 'function' },
-  { label: 'is2D',          detail: '(): boolean',                   type: 'function' },
-  { label: 'is3D',          detail: '(): boolean',                   type: 'function' },
-  { label: 'valid',         detail: '(): boolean',                   type: 'function' },
-  // Sub-shapes
-  { label: 'vertices',      detail: '(): ShapeCollection',           type: 'function' },
-  { label: 'edges',         detail: '(): ShapeCollection',           type: 'function' },
-  { label: 'wires',         detail: '(): ShapeCollection',           type: 'function' },
-  { label: 'faces',         detail: '(): ShapeCollection',           type: 'function' },
-  { label: 'shells',        detail: '(): ShapeCollection',           type: 'function' },
-  { label: 'solids',        detail: '(): ShapeCollection',           type: 'function' },
-  // Copy / style
-  { label: 'copy',          detail: '(): this',                      type: 'function' },
-  { label: 'clone',         detail: '(): AnyShape',                  type: 'function' },
-  { label: 'color',         detail: '(value): this',                 type: 'function' },
-  { label: 'attr',          detail: '(key?, value?): any | this',    type: 'function' },
-  { label: 'attribute',     detail: '(key?, value?): any | this',    type: 'function' },
-];
+  // Walk to the first top-level `.` (not inside parens / brackets)
+  let depth = 0;
+  for (let i = 0; i < afterAssign.length; i++)
+  {
+    const c = afterAssign[i];
+    if (c === '(' || c === '[') { depth++; continue; }
+    if (c === ')' || c === ']') { depth--; continue; }
+    if (c === '.' && depth === 0 && i > 0) return afterAssign.slice(0, i).trim();
+  }
+  return afterAssign.trim();
+}
 
-/* ------------------------------------------------------------------ */
-/*  Per-shape class descriptors                                        */
-/* ------------------------------------------------------------------ */
-
-const shapeClasses: ShapeClassInfo[] = [
-  {
-    label: 'SmartSolid',
-    detail: 'brep Solid shape',
-    members: [
-      ...shapeCommonMembers,
-      { label: 'fillet',        detail: '(radius?, at?): this',                       type: 'function' },
-      { label: 'filleted',      detail: '(radius?, edges?): SmartSolid',              type: 'function' },
-      { label: 'chamfer',       detail: '(distance?, edges?): this',                  type: 'function' },
-      { label: 'chamfered',     detail: '(distance?, edges?): SmartSolid',            type: 'function' },
-      { label: 'bevel',         detail: '(distance?, edges?): SmartSolid',            type: 'function' },
-      { label: 'thicken',       detail: '(amount, direction?): SmartSolid',           type: 'function' },
-      { label: 'solidType',     detail: '(): string',                                 type: 'function' },
-    ],
-  },
-  {
-    label: 'SmartMesh',
-    detail: 'mesh geometry shape',
-    members: [
-      ...shapeCommonMembers,
-      { label: 'union',         detail: '(other: SmartMesh): this',                  type: 'function' },
-      { label: 'add',           detail: '(other: SmartMesh): this',                  type: 'function' },
-      { label: 'difference',    detail: '(other: SmartMesh): this',                  type: 'function' },
-      { label: 'subtract',      detail: '(other: SmartMesh): this',                  type: 'function' },
-      { label: 'intersection',  detail: '(other: SmartMesh): this',                  type: 'function' },
-      { label: 'hull',          detail: '(): SmartMesh | undefined',                 type: 'function' },
-      { label: 'triangulate',   detail: '(): this',                                   type: 'function' },
-      { label: 'smooth',        detail: '(lambda, mu, iter, preserveBounds): this',  type: 'function' },
-      { label: 'inverse',       detail: '(): this',                                   type: 'function' },
-      { label: 'positions',     detail: '(): Array<Point>',                           type: 'function' },
-      { label: 'normals',       detail: '(): Array<Vector>',                          type: 'function' },
-      { label: 'polygons',      detail: '(): Array<Polygon>',                         type: 'function' },
-      { label: 'row',           detail: '(count, spacing, dir?): Collection',         type: 'function' },
-      { label: 'grid',          detail: '(cx?, cy?, cz?, spacing?): Collection',      type: 'function' },
-      { label: 'toSTLBinary',   detail: '(): Uint8Array | undefined',                 type: 'function' },
-      { label: 'toSTLAscii',    detail: '(): string | undefined',                    type: 'function' },
-      { label: 'toGLTF',        detail: '(up?): string | undefined',                 type: 'function' },
-      { label: 'metadata',      detail: 'Record<string, any>',                        type: 'property' },
-    ],
-  },
-  {
-    label: 'SmartCurve',
-    detail: 'mesh-mode curve / wire',
-    members: [
-      ...shapeCommonMembers,
-      { label: 'reverse',       detail: '(): this',                                   type: 'function' },
-      { label: 'close',         detail: '(): this',                                   type: 'function' },
-      { label: 'fillet',        detail: '(radius, at?): this | null',                 type: 'function' },
-      { label: 'offset',        detail: '(distance, cornerType?): SmartCurve | null', type: 'function' },
-      { label: 'trim',          detail: '(t0, t1): Array<SmartCurve>',                type: 'function' },
-      { label: 'split',         detail: '(t): [SmartCurve, SmartCurve] | null',       type: 'function' },
-      { label: 'intersect',     detail: '(other): Array<Point> | null',               type: 'function' },
-      { label: 'extrude',       detail: '(length, direction?): SmartMesh | null',     type: 'function' },
-      { label: 'extend',        detail: '(length, side?): this',                      type: 'function' },
-      { label: 'isClosed',      detail: '(): boolean',                                type: 'function' },
-      { label: 'isPlanar',      detail: '(): boolean',                                type: 'function' },
-      { label: 'start',         detail: '(): Point',                                  type: 'function' },
-      { label: 'end',           detail: '(): Point',                                  type: 'function' },
-      { label: 'normal',        detail: '(): Vector | null',                           type: 'function' },
-      { label: 'tessellate',    detail: '(tol?): Array<Point>',                       type: 'function' },
-      { label: 'controlPoints', detail: '(): Array<Point>',                           type: 'function' },
-      { label: 'toPolygon',     detail: '(tol?): Polygon | undefined',                type: 'function' },
-      { label: 'toMesh',        detail: '(tol?): SmartMesh | undefined',              type: 'function' },
-      { label: 'toGLTF',        detail: '(up?): string',                              type: 'function' },
-      { label: 'toSVG',         detail: '(plane?): string',                           type: 'function' },
-      { label: 'metadata',      detail: 'Record<string, any>',                        type: 'property' },
-    ],
-  },
-  {
-    label: 'SmartEdge',
-    detail: 'brep Edge',
-    members: [
-      ...shapeCommonMembers,
-      { label: 'reverse',       detail: '(): this',                                   type: 'function' },
-      { label: 'extrude',       detail: '(length, direction?): SmartFace | null',     type: 'function' },
-      { label: 'extend',        detail: '(length, side?): this',                      type: 'function' },
-      { label: 'fillet',        detail: '(radius): this',                             type: 'function' },
-      { label: 'isClosed',      detail: '(): boolean',                                type: 'function' },
-      { label: 'start',         detail: '(): Point',                                  type: 'function' },
-      { label: 'end',           detail: '(): Point',                                  type: 'function' },
-    ],
-  },
-  {
-    label: 'SmartWire',
-    detail: 'brep Wire',
-    members: [
-      ...shapeCommonMembers,
-      { label: 'reverse',       detail: '(): this',                                   type: 'function' },
-      { label: 'close',         detail: '(): this',                                   type: 'function' },
-      { label: 'fillet',        detail: '(radius, at?): this',                        type: 'function' },
-      { label: 'offset',        detail: '(distance): this',                           type: 'function' },
-      { label: 'extrude',       detail: '(length, direction?): SmartFace | null',     type: 'function' },
-      { label: 'extend',        detail: '(length, side?): this',                      type: 'function' },
-      { label: 'isClosed',      detail: '(): boolean',                                type: 'function' },
-      { label: 'start',         detail: '(): Point',                                  type: 'function' },
-      { label: 'end',           detail: '(): Point',                                  type: 'function' },
-      { label: 'normal',        detail: '(): Vector | null',                           type: 'function' },
-    ],
-  },
-  {
-    label: 'SmartFace',
-    detail: 'brep Face',
-    members: [
-      ...shapeCommonMembers,
-      { label: 'extrude',       detail: '(length, direction?): SmartSolid | null',    type: 'function' },
-      { label: 'thicken',       detail: '(amount, direction?): SmartSolid',           type: 'function' },
-      { label: 'flip',          detail: '(): this',                                   type: 'function' },
-      { label: 'normal',        detail: '(): Vector',                                 type: 'function' },
-    ],
-  },
-  {
-    label: 'SmartShapeCollection',
-    detail: 'collection of Smart* shapes',
-    members: [
-      { label: 'all',           detail: '(): Array<AnySmartShape>',                   type: 'function' },
-      { label: 'vertices',      detail: '(): SmartShapeCollection',                   type: 'function' },
-      { label: 'edges',         detail: '(): SmartShapeCollection',                   type: 'function' },
-      { label: 'wires',         detail: '(): SmartShapeCollection',                   type: 'function' },
-      { label: 'faces',         detail: '(): SmartShapeCollection',                   type: 'function' },
-      { label: 'shells',        detail: '(): SmartShapeCollection',                   type: 'function' },
-      { label: 'solids',        detail: '(): SmartShapeCollection',                   type: 'function' },
-      { label: 'extrude',       detail: '(amount?, direction?): SmartShapeCollection', type: 'function' },
-      { label: 'fillet',        detail: '(radius, at?): SmartShapeCollection',        type: 'function' },
-      { label: 'thicken',       detail: '(amount, direction?): SmartShapeCollection', type: 'function' },
-      { label: 'select',        detail: '(selectString): SmartShapeCollection',       type: 'function' },
-      { label: 'visible',       detail: '(): SmartShapeCollection',                   type: 'function' },
-      { label: 'find',          detail: '(fn): AnySmartShape | undefined',            type: 'function' },
-      { label: 'every',         detail: '(fn): boolean',                              type: 'function' },
-      { label: 'area',          detail: '(): number',                                 type: 'function' },
-      { label: 'volume',        detail: '(): number',                                 type: 'function' },
-      { label: 'lowestType',    detail: '(): string | undefined',                     type: 'function' },
-      { label: 'is2D',          detail: '(): boolean',                                type: 'function' },
-      { label: 'is3D',          detail: '(): boolean',                                type: 'function' },
-      { label: 'project',       detail: '(planeNormal?, all?): SmartShapeCollection', type: 'function' },
-      { label: 'elevation',     detail: '(side?, all?): SmartShapeCollection',        type: 'function' },
-      { label: 'isometry',      detail: '(viewpoint?, showHidden?): SmartShapeCollection', type: 'function' },
-      { label: 'iso',           detail: '(viewpoint?, showHidden?): SmartShapeCollection', type: 'function' },
-      { label: 'intersections', detail: '(others): SmartShapeCollection',             type: 'function' },
-      { label: 'intersecting',  detail: '(other): SmartShapeCollection',              type: 'function' },
-      { label: 'alignByPoints', detail: '(sourcePoints, targetPoints, withScale?): this', type: 'function' },
-      { label: 'length',        detail: 'number',                                     type: 'property' },
-    ],
-  },
-  {
-    label: 'Sketch',
-    detail: '2D sketch on a plane',
-    members: [
-      { label: 'moveTo',        detail: '(...coords): this',                          type: 'function' },
-      { label: 'lineTo',        detail: '(...coords): this',                          type: 'function' },
-      { label: 'arcTo',         detail: '(mid, end): this',                           type: 'function' },
-      { label: 'polyline',      detail: '(points): this',                             type: 'function' },
-      { label: 'curveTo',       detail: '(points): this',                             type: 'function' },
-      { label: 'close',         detail: '(): this',                                   type: 'function' },
-      { label: 'combine',       detail: '(): this',                                   type: 'function' },
-      { label: 'offset',        detail: '(distance): this',                           type: 'function' },
-      { label: 'extend',        detail: '(length, side?): this',                      type: 'function' },
-      { label: 'rotate',        detail: '(angle, pivot): this',                       type: 'function' },
-      { label: 'translate',     detail: '(vecOrX, dy?, dz?): this',                   type: 'function' },
-      { label: 'extrude',       detail: '(length): SmartMesh | null',                 type: 'function' },
-      { label: 'sweep',         detail: '(path: SmartCurve): SmartMesh | null',       type: 'function' },
-      { label: 'loft',          detail: '(other: Sketch): SmartMesh | null',          type: 'function' },
-      { label: 'end',           detail: '(): SmartShapeCollection',                   type: 'function' },
-      { label: 'toCurves',      detail: '(): SmartShapeCollection',                   type: 'function' },
-      { label: 'copy',          detail: '(): this',                                   type: 'function' },
-    ],
-  },
-  {
-    label: 'Point',
-    detail: '3D point',
-    statics: [
-      { label: 'from',          detail: '(x, y?, z?): Point',                         type: 'function' },
-    ],
-    members: [
-      { label: 'x',             detail: 'number',                                     type: 'property' },
-      { label: 'y',             detail: 'number',                                     type: 'property' },
-      { label: 'z',             detail: 'number',                                     type: 'property' },
-      { label: 'copy',          detail: '(): Point',                                  type: 'function' },
-      { label: 'move',          detail: '(offset): Point',                            type: 'function' },
-      { label: 'distance',      detail: '(to): number',                               type: 'function' },
-      { label: 'round',         detail: '(tolerance?): Point',                        type: 'function' },
-      { label: 'toArray',       detail: '(): [number, number, number?]',              type: 'function' },
-      { label: 'toVector',      detail: '(): Vector',                                 type: 'function' },
-      { label: 'toString',      detail: '(): string',                                 type: 'function' },
-    ],
-  },
-  {
-    label: 'Vector',
-    detail: '3D vector',
-    statics: [
-      { label: 'from',          detail: '(x, y?, z?): Vector',                        type: 'function' },
-    ],
-    members: [
-      { label: 'x',             detail: 'number',                                     type: 'property' },
-      { label: 'y',             detail: 'number',                                     type: 'property' },
-      { label: 'z',             detail: 'number',                                     type: 'property' },
-      { label: 'length',        detail: '(): number',                                 type: 'function' },
-      { label: 'angle',         detail: '(other): number',                            type: 'function' },
-      { label: 'abs',           detail: '(): Vector',                                 type: 'function' },
-      { label: 'add',           detail: '(other): Vector',                            type: 'function' },
-      { label: 'subtract',      detail: '(other): Vector',                            type: 'function' },
-      { label: 'scale',         detail: '(scalar): Vector',                           type: 'function' },
-      { label: 'normalize',     detail: '(): Vector',                                 type: 'function' },
-      { label: 'cross',         detail: '(other): Vector',                            type: 'function' },
-      { label: 'dot',           detail: '(other): number',                            type: 'function' },
-      { label: 'reverse',       detail: '(): Vector',                                 type: 'function' },
-      { label: 'copy',          detail: '(): Vector',                                 type: 'function' },
-      { label: 'rotate',        detail: '(axis, angle): Vector',                      type: 'function' },
-      { label: 'toPoint',       detail: '(): Point',                                  type: 'function' },
-      { label: 'toString',      detail: '(): string',                                 type: 'function' },
-    ],
-  },
-  {
-    label: 'Bbox',
-    detail: 'axis-aligned bounding box',
-    statics: [
-      { label: 'fromMesh',      detail: '(m): Bbox',                                  type: 'function' },
-    ],
-    members: [
-      { label: 'min',           detail: '(): Point',                                  type: 'function' },
-      { label: 'max',           detail: '(): Point',                                  type: 'function' },
-      { label: 'center',        detail: '(): Point',                                  type: 'function' },
-      { label: 'size',          detail: '(): Point',                                  type: 'function' },
-      { label: 'width',         detail: '(): number',                                 type: 'function' },
-      { label: 'depth',         detail: '(): number',                                 type: 'function' },
-      { label: 'height',        detail: '(): number',                                 type: 'function' },
-      { label: 'is1D',          detail: '(): boolean',                                type: 'function' },
-      { label: 'is2D',          detail: '(): boolean',                                type: 'function' },
-      { label: 'is3D',          detail: '(): boolean',                                type: 'function' },
-    ],
-  },
-  {
-    label: 'OBbox',
-    detail: 'oriented bounding box',
-    statics: [
-      { label: 'fromPoints',    detail: '(points): OBbox',                            type: 'function' },
-      { label: 'fromMesh',      detail: '(m): OBbox',                                 type: 'function' },
-    ],
-    members: [
-      { label: 'axes',          detail: '(): [Vector, Vector, Vector]',               type: 'function' },
-      { label: 'halfExtents',   detail: '(): [number, number, number]',               type: 'function' },
-      { label: 'center',        detail: '(): Point',                                  type: 'function' },
-      { label: 'min',           detail: '(): Point',                                  type: 'function' },
-      { label: 'max',           detail: '(): Point',                                  type: 'function' },
-      { label: 'size',          detail: '(): Point',                                  type: 'function' },
-      { label: 'width',         detail: '(): number',                                 type: 'function' },
-      { label: 'depth',         detail: '(): number',                                 type: 'function' },
-      { label: 'height',        detail: '(): number',                                 type: 'function' },
-      { label: 'corners',       detail: '(): Array<Point>',                           type: 'function' },
-    ],
-  },
-];
+/**
+ * Resolves the inferred shape class of an expression root.
+ *  - Plain identifier  → scope-map lookup
+ *  - Call expression   → FACTORY_RETURN_TYPES lookup
+ */
+function resolveType(root: string, scopeMap: Map<string, string>): string | null
+{
+  if (/^[a-zA-Z_$]\w*$/.test(root)) return scopeMap.get(root) ?? null;
+  const callMatch = root.match(/^([a-z_$]\w*)\s*\(/);
+  if (callMatch) return FACTORY_RETURN_TYPES[callMatch[1]] ?? null;
+  return null;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Build flat lookup maps for fast completion                         */
@@ -508,13 +270,19 @@ export function archiyouCompletions(
     }
   }
 
-  // expr. → instance member completions
+  // expr. → type-aware instance member completions
   const memberMatch = context.matchBefore(/\.\w*$/);
   if (memberMatch)
   {
+    const docText = context.state.doc.toString();
+    const textBefore = docText.slice(0, memberMatch.from);
+    const scopeMap = buildScopeTypeMap(docText);
+    const root = extractChainRoot(textBefore);
+    const resolvedType = resolveType(root, scopeMap);
+    const options = resolvedType ? (memberMap.get(resolvedType) ?? allMembers) : allMembers;
     return {
       from: memberMatch.from + 1,
-      options: allMembers,
+      options,
       validFor: /^\w*$/,
     };
   }

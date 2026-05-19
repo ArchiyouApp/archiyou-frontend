@@ -31,9 +31,9 @@ export const routes: Route[] = [
         action: (_ctx, commands) => commands.redirect('/editor'),
       },
       {
-        path: 'workspace',
-        component: 'page-workspace',
-        action: async () => { await import('../../pages/workspace.js'); },
+        path: 'browser',
+        component: 'page-browser',
+        action: async () => { await import('../../pages/browser.js'); },
       },
       {
         path: 'editor/:scriptId?',

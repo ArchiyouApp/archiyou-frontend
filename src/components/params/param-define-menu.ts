@@ -4,10 +4,10 @@ import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import { scriptParams } from '../../state/workspace.js';
-import type { ScriptParam } from '../../state/workspace.js';
+import { ScriptParam, scriptParams } from '../../state/workspace.js';
+import { paramMin, paramMax, paramStep, paramMinLength, paramMaxLength, paramOptions, paramListItemType } from '../../state/workspace.js';
+import type { ScriptParamData, ScriptParamType } from '../../state/workspace.js';
 import { OVERLAY_MENU_WIDTH, OVERLAY_MENU_HEIGHT, PARAM_DESCRIPTION_MAX_LENGTH } from '../../settings.js';
-import { PARAM_TYPE_SCHEMAS } from '../../../devlibs/archiyou-core-next/src/execution/ScriptParam.js';
 
 type ParamType = 'number' | 'boolean' | 'text' | 'options' | 'list';
 
@@ -21,26 +21,7 @@ const TYPE_ICONS: Record<ParamType, string> = {
     list:    'list',
 };
 
-export interface ParamDefineDetail
-{
-    id?:           string;
-    name:          string;
-    description?:  string;
-    type:          string;
-    group:         string;
-    defaultValue?: any;
-    // number
-    min?:          number;
-    max?:          number;
-    step?:         number;
-    // text
-    minLength?:    number;
-    maxLength?:    number;
-    // options
-    options?:      string[];
-    // list
-    listItemType?: 'string' | 'number' | 'boolean';
-}
+
 
 @customElement('param-define-menu')
 export class ParamDefineMenu extends SignalWatcher(LitElement)
@@ -385,28 +366,28 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
 
     private _applySchemaDefaults(t: ParamType)
     {
-        const s = PARAM_TYPE_SCHEMAS[t] as any;
-        if (!s) return;
+        const p = ScriptParam.fromType(t as ScriptParamType);
+        const s = p.schema as any;
 
         switch (t)
         {
             case 'number':
-                this._defaultNum  = String(s.default      ?? 0);
+                this._defaultNum  = String(p.default      ?? s.default      ?? 0);
                 this._min         = String(s.minimum       ?? 0);
                 this._max         = String(s.maximum       ?? 100);
                 this._step        = String(s.multipleOf    ?? 1);
                 break;
             case 'boolean':
-                this._defaultBool = s.default ?? false;
+                this._defaultBool = p.default ?? false;
                 break;
             case 'text':
-                this._defaultText = s.default   ?? '';
+                this._defaultText = p.default   ?? '';
                 this._minLength   = String(s.minLength ?? 0);
-                this._maxLength   = String(s.maxLength ?? 256);
+                this._maxLength   = String(s.maxLength !== undefined ? s.maxLength : 256);
                 break;
             case 'options':
                 this._options       = [...(s.enum ?? [])];
-                this._defaultOption = s.default ?? '';
+                this._defaultOption = p.default ?? '';
                 this._optionDraft   = '';
                 break;
             case 'list':
@@ -433,28 +414,28 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
             switch (this._type)
             {
                 case 'number':
-                    this._defaultNum = p.defaultValue?.toString() ?? '';
-                    this._min        = p.min?.toString()          ?? '';
-                    this._max        = p.max?.toString()          ?? '';
-                    this._step       = p.step?.toString()         ?? '';
+                    this._defaultNum = p.default?.toString()       ?? '';
+                    this._min        = paramMin(p).toString();
+                    this._max        = paramMax(p).toString();
+                    this._step       = paramStep(p).toString();
                     break;
                 case 'boolean':
-                    this._defaultBool = p.defaultValue ?? false;
+                    this._defaultBool = p.default ?? false;
                     break;
                 case 'text':
-                    this._defaultText = p.defaultValue ?? '';
-                    this._minLength   = p.minLength?.toString() ?? '';
-                    this._maxLength   = p.maxLength?.toString() ?? '';
+                    this._defaultText = p.default ?? '';
+                    this._minLength   = paramMinLength(p).toString();
+                    this._maxLength   = paramMaxLength(p)?.toString() ?? '';
                     break;
                 case 'options':
-                    this._options       = [...(p.options ?? [])];
-                    this._defaultOption = p.defaultValue ?? '';
+                    this._options       = [...paramOptions(p)];
+                    this._defaultOption = p.default ?? '';
                     this._optionDraft   = '';
                     break;
                 case 'list':
-                    this._listItemType = p.listItemType ?? 'string';
-                    this._defaultItems = Array.isArray(p.defaultValue)
-                        ? p.defaultValue.join(', ')
+                    this._listItemType = paramListItemType(p);
+                    this._defaultItems = Array.isArray(p.default)
+                        ? p.default.join(', ')
                         : '';
                     break;
             }
@@ -520,66 +501,70 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
             ? (this._newGroupName.trim() || 'main')
             : this._group;
 
-        const detail: ParamDefineDetail = {
-            ...(this.editParam ? { id: this.editParam.id } : {}),
-            name,
-            description: this._description.trim() || undefined,
-            type:  this._type,
-            group: resolvedGroup,
-            ...this._buildTypeDetail(),
-        };
+        // Build a canonical ScriptParam from form state
+        const base = this.editParam
+            ? ScriptParam.fromData({ ...this.editParam.toData(), type: this._type } as any)
+            : ScriptParam.fromType(this._type as ScriptParamType);
 
-        this.dispatchEvent(new CustomEvent<ParamDefineDetail>('param-define', {
-            detail,
+        base.name        = name.toUpperCase();
+        base.description = this._description.trim() || undefined;
+        base.group       = resolvedGroup;
+        if (this.editParam?.id) base.id = this.editParam.id;
+
+        this._applyFormToSchema(base);
+
+        this.dispatchEvent(new CustomEvent<ScriptParamData>('param-define', {
+            detail:   base.toData(),
             bubbles:  true,
             composed: true,
         }));
     }
 
-    private _buildTypeDetail(): Partial<ParamDefineDetail>
+    private _applyFormToSchema(p: ScriptParam): void
     {
+        const s = p.schema as any;
+
         switch (this._type)
         {
             case 'number':
-                return {
-                    defaultValue: this._defaultNum !== '' ? Number(this._defaultNum) : undefined,
-                    min:          this._min   !== '' ? Number(this._min)   : undefined,
-                    max:          this._max   !== '' ? Number(this._max)   : undefined,
-                    step:         this._step  !== '' ? Number(this._step)  : undefined,
-                };
+                p.default      = this._defaultNum !== '' ? Number(this._defaultNum) : p.default;
+                s.default      = p.default;
+                s.minimum      = this._min   !== '' ? Number(this._min)   : s.minimum;
+                s.maximum      = this._max   !== '' ? Number(this._max)   : s.maximum;
+                s.multipleOf   = this._step  !== '' ? Number(this._step)  : s.multipleOf;
+                break;
 
             case 'boolean':
-                return { defaultValue: this._defaultBool };
+                p.default = this._defaultBool;
+                s.default = this._defaultBool;
+                break;
 
             case 'text':
-                return {
-                    defaultValue: this._defaultText !== '' ? this._defaultText : undefined,
-                    minLength:    this._minLength !== '' ? Number(this._minLength) : undefined,
-                    maxLength:    this._maxLength !== '' ? Number(this._maxLength) : undefined,
-                };
+                p.default  = this._defaultText !== '' ? this._defaultText : p.default;
+                s.default  = p.default;
+                s.minLength = this._minLength !== '' ? Number(this._minLength) : s.minLength;
+                s.maxLength = this._maxLength !== '' ? Number(this._maxLength) : s.maxLength;
+                break;
 
             case 'options':
-                return {
-                    options:      this._options,
-                    defaultValue: this._defaultOption || this._options[0],
-                };
+                s.enum     = this._options;
+                p.default  = this._defaultOption || this._options[0];
+                s.default  = p.default;
+                break;
 
             case 'list':
             {
-                const raw    = this._defaultItems.split(',').map(s => s.trim()).filter(Boolean);
+                s.items = { type: this._listItemType };
+                const raw    = this._defaultItems.split(',').map(v => v.trim()).filter(Boolean);
                 const parsed = this._listItemType === 'number'
                     ? raw.map(Number)
                     : this._listItemType === 'boolean'
                         ? raw.map(v => v.toLowerCase() === 'true')
                         : raw;
-                return {
-                    listItemType: this._listItemType,
-                    defaultValue: parsed.length > 0 ? parsed : undefined,
-                };
+                p.default = parsed.length > 0 ? parsed : p.default;
+                s.default = p.default;
+                break;
             }
-
-            default:
-                return {};
         }
     }
 

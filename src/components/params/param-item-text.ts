@@ -3,6 +3,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 
 import type { ScriptParam } from '../../state/workspace.js';
+import { paramValue, paramMinLength, paramMaxLength } from '../../state/workspace.js';
 
 @customElement('param-item-text')
 export class ParamItemText extends LitElement
@@ -17,7 +18,7 @@ export class ParamItemText extends LitElement
                     type="text"
                     class="input ${this._error ? 'invalid' : ''}"
                     .value=${this._value}
-                    maxlength=${ifDefined(this.param.maxLength)}
+                    maxlength=${ifDefined(paramMaxLength(this.param))}
                     placeholder="Enter text…"
                     @input=${this._onInput}
                     @blur=${this._onBlur}
@@ -38,12 +39,12 @@ export class ParamItemText extends LitElement
     override connectedCallback()
     {
         super.connectedCallback();
-        this._value = String(this.param?.value ?? this.param?.defaultValue ?? '');
+        this._value = String((this.param ? paramValue(this.param) : '') ?? '');
     }
 
     override updated(changed: Map<string, unknown>)
     {
-        if (changed.has('param')) this._value = String(this.param?.value ?? this.param?.defaultValue ?? '');
+        if (changed.has('param')) this._value = String((this.param ? paramValue(this.param) : '') ?? '');
     }
 
     // ── 4. Behaviour ──
@@ -51,8 +52,8 @@ export class ParamItemText extends LitElement
     private _onInput(e: InputEvent)
     {
         const val    = (e.target as HTMLInputElement).value;
-        const minLen = this.param.minLength ?? 0;
-        const maxLen = this.param.maxLength;
+        const minLen = paramMinLength(this.param);
+        const maxLen = paramMaxLength(this.param);
 
         this._value = val;
 
@@ -79,11 +80,11 @@ export class ParamItemText extends LitElement
     private _onBlur(e: FocusEvent)
     {
         const val    = (e.target as HTMLInputElement).value;
-        const minLen = this.param.minLength ?? 0;
+        const minLen = paramMinLength(this.param);
 
         if (val.length < minLen)
         {
-            this._value = String(this.param.defaultValue ?? '');
+            this._value = String(this.param.default ?? '');
             this._error = '';
         }
     }

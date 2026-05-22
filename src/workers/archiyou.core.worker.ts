@@ -3,6 +3,7 @@ import * as Comlink from 'comlink';
 console.log('archiyou.core.worker: module loaded');
 
 import { Runner } from '../../devlibs/archiyou-core-next/src/runner/Runner';
+import { Script } from '../../devlibs/archiyou-core-next/src/execution/Script';
 import type { RunnerScriptExecutionRequest, RunnerScriptExecutionResult } from '../../devlibs/archiyou-core-next/src/runner/types';
 
 let runner: Runner | null = null;
@@ -31,9 +32,20 @@ const api = {
     }
   },
   // Execute a script and return the result
-  async execute(req:RunnerScriptExecutionRequest): Promise<RunnerScriptExecutionResult> 
-  { 
+  async execute(req:RunnerScriptExecutionRequest): Promise<RunnerScriptExecutionResult>
+  {
     if(!runner) throw new Error('Archiyou.core.worker.ts: Runner not initialized');
+
+    // Hydrate any local component scripts the main thread sent along and
+    // link them on the Runner so $component('./name') can resolve them.
+    if (Array.isArray(req.componentScripts))
+    {
+      const hydrated = req.componentScripts
+        .map(d => Script.fromData(d))
+        .filter((s): s is Script => s !== null);
+      runner.linkComponentScripts(hydrated);
+    }
+
     return runner.execute(req); // return raw result for maximum flexibility
   },
 };

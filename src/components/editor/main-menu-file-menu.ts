@@ -30,6 +30,10 @@ export class MainMenuFileMenu extends LitElement
 
         <wa-divider></wa-divider>
         <wa-dropdown-item value="new">${msg('New')}</wa-dropdown-item>
+        <wa-dropdown-item value="open-script">
+          <wa-icon slot="icon" library="lucide" name="folder-open"></wa-icon>
+          ${msg('Open script')}
+        </wa-dropdown-item>
         <wa-dropdown-item value="save">${msg('Save')}</wa-dropdown-item>
 
         <wa-divider></wa-divider>

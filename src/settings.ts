@@ -11,18 +11,38 @@ export const PARAM_TAB_NAME_MAX_LENGTH       = 15;
 export const PARAM_DESCRIPTION_MAX_LENGTH    = 128;
 
 // Editor
-export const EDITOR_START_SCRIPT = `// Welcome to Archiyou!
-b = box(10,10,10).color('red');
-s = sphere(5).color('blue').move(5,5,5);
-b.subtract(s);
-s.hide();
-c = circle(15).color('yellow');
-r = rect(20,20).color('green');
-`
+import { ScriptParamType } from '../devlibs/archiyou-core-next/src/execution/types';
+import type { ScriptData } from '../devlibs/archiyou-core-next/src/execution/types';
+
+
+export const EDITOR_START_SCRIPT: ScriptData = 
+{
+  name: 'untitled',
+  code: `// Welcome to Archiyou!
+myMainBox = box($SIZE).color('red');
+// do a subtract
+myMainBox.subtract(
+      box(50)
+        .moveTo(
+          myMainBox.bbox().corner('rightbacktop')
+        )
+        .hide()
+    )
+
+
+`,
+  params: {
+    SIZE: {
+      type: ScriptParamType.number,
+      label: 'Size',
+      default: 50,
+      schema: { type: 'number', minimum: 0, maximum: 100, multipleOf: 1, default: 50 },
+    },
+  },
+};
 
 // Dimension lines (3D viewer) — the in-scene line + arrowhead cones.
-// Sizes are world units relative to the ~2-unit normalized model and are
-// counter-scaled by the model's fit-scale so they stay visually constant.
+// Sizes are world units in viewer/model space.
 // The value text is an HTML overlay label, styled via CSS in
 // `viewer-labels-overlay` (not configured here).
 export const DIMENSION_LINE_COLOR       = 0x222222; // line + arrowheads
@@ -31,6 +51,19 @@ export const DIMENSION_ARROW_RADIUS     = 0.01;    // arrowhead cone base radius
 
 // 3D viewer
 export const VIEWER_BACKGROUND_COLOR = 0xf1f5f9; // scene + renderer clear color
+export const VIEWER_AUTO_FRAME_ON_FIRST_LOAD = true;
+
+// Grid (world units)
+export const VIEWER_GRID_SIZE      = 100; // gets overriden
+export const VIEWER_GRID_DIVISIONS = 1;
+
+// Origin UCS / navigation gizmo
+export const VIEWER_GIZMO_AXIS_LENGTH    = 0.6;    // positive-arm length, world units (base scale)
+export const VIEWER_GIZMO_SCENE_FRACTION = 0.40;   // gizmo arm length as fraction of scene radius
+export const VIEWER_GIZMO_COLOR_X        = 0xFF0000; // red   (+X)
+export const VIEWER_GIZMO_COLOR_Y        = 0x00FF00; // green (+Y)
+export const VIEWER_GIZMO_COLOR_Z        = 0x0000FF; // blue  (+Z)
+export const VIEWER_GIZMO_LABEL_SIZE     = 0.14;   // sprite scale, world units
 
 // ── File Manager ──────────────────────────────────────────────────────────────
 

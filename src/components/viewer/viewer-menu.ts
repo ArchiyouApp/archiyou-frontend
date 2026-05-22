@@ -11,6 +11,8 @@ export class ViewerMenu extends LitElement
   @property({ type: Boolean }) arSupported = false;
   @property({ type: Boolean }) arActive = false;
   @property({ type: Boolean }) isOrtho = false;
+  @property({ type: Boolean }) gridVisible = true;
+  @property({ type: Boolean }) gizmoVisible = true;
   @property({ type: Array }) animations: string[] = [];
   @property() activeAnimation: string | null = null;
 
@@ -183,6 +185,24 @@ export class ViewerMenu extends LitElement
             @click=${() => this._emit('viewer-toggle-projection')}
           >
             <wa-icon library="lucide" name="box"></wa-icon>
+          </button>
+
+          <!-- grid toggle -->
+          <button
+            class="icon-btn ${this.gridVisible ? 'active' : ''}"
+            title=${this.gridVisible ? 'Hide grid' : 'Show grid'}
+            @click=${() => this._emit('viewer-toggle-grid')}
+          >
+            <wa-icon library="lucide" name="grid-3x3"></wa-icon>
+          </button>
+
+          <!-- gizmo toggle -->
+          <button
+            class="icon-btn ${this.gizmoVisible ? 'active' : ''}"
+            title=${this.gizmoVisible ? 'Hide UCS gizmo' : 'Show UCS gizmo'}
+            @click=${() => this._emit('viewer-toggle-gizmo')}
+          >
+            <wa-icon library="lucide" name="axis-3d"></wa-icon>
           </button>
 
           <!-- render: placeholder for future -->

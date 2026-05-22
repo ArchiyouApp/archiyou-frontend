@@ -18,9 +18,10 @@ import '../components/editor/tools/metrics-tool.js';
 import '../components/editor/tools/document-viewer.js';
 import '../components/editor/tools/console-tool.js';
 import '../components/editor/file-manager.js';
+import '../components/editor/script-manager.js';
 import type { ToolDef } from '../components/editor/toolbar.js';
 
-import { editorScript, executing, executionResult, scriptParams, updateScriptCode, setExecutionResult, setExecuting, paramValue } from '../state/workspace';
+import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, deleteScriptById } from '../state/workspace';
 import { RunnerScriptExecutionRequest } from '../../devlibs/archiyou-core-next/src/runner/types';
 
 @customElement('page-editor')
@@ -83,6 +84,12 @@ export class PageEditor extends SignalWatcher(LitElement)
         .activeIds=${this._activeTools.map(t => t.id)}
         @tool-toggle=${this._handleToolToggle}
       ></editor-toolbar>
+      <script-manager
+        ?open=${this._showScriptManager}
+        @script-manager-open=${this._handleScriptManagerOpen}
+        @script-manager-cancel=${this._handleScriptManagerCancel}
+        @script-delete=${this._handleScriptDelete}
+      ></script-manager>
     `;
   }
 
@@ -91,6 +98,7 @@ export class PageEditor extends SignalWatcher(LitElement)
 
   @state() private _activeSection: 'info' | 'code' | 'history' | 'files' | 'templates' | 'help' | 'settings' | null = 'code';
   @state() private _activeTools: ToolDef[] = [];
+  @state() private _showScriptManager = false;
 
 
 
@@ -102,6 +110,8 @@ export class PageEditor extends SignalWatcher(LitElement)
     const sceneTool = this.TOOLS.find(t => t.id === 'scene');
     if (sceneTool) this._activeTools = [sceneTool];
 
+    this._consumeNewQueryParam();
+
     console.info('Editor::connectedCallback(): Warming up worker…');
     warmupWorker()
       .then(() => {
@@ -109,6 +119,30 @@ export class PageEditor extends SignalWatcher(LitElement)
         this.checkAutoRun();
       })
       .catch(err => { console.error('Editor: worker init failed:', err); });
+  }
+
+  override willUpdate(changed: Map<string, unknown>)
+  {
+    // Also handle in-place navigation to /editor?new (Vaadin Router may
+    // re-resolve the route without a full re-mount).
+    if (changed.has('location')) this._consumeNewQueryParam();
+  }
+
+  /** If the URL has a `new` query param, archive the active script,
+   *  create a fresh one, then clean the URL so a refresh doesn't repeat. */
+  private _consumeNewQueryParam()
+  {
+    try
+    {
+      const params = new URL(window.location.href).searchParams;
+      if (!params.has('new')) return;
+      createNewScript();
+      history.replaceState(null, '', '/editor');
+    }
+    catch (err)
+    {
+      console.warn('Editor::_consumeNewQueryParam():', err);
+    }
   }
 
   // Internal state
@@ -164,18 +198,27 @@ export class PageEditor extends SignalWatcher(LitElement)
   {
     // The active script already serialises its canonical params (with schema,
     // default, order, units, _value) via toData().
-    const scriptData = editorScript.get()?.toData() as any;
+    const active = editorScript.get();
+    const scriptData = active?.toData() as any;
     const params = scriptParams.get();
 
     const paramValues: Record<string, any> = Object.fromEntries(
       params.map(p => [p.name, paramValue(p)])
     );
 
+    // Forward the local library (excluding the active script) so the Runner
+    // can resolve $component('./name') against linked scripts. Sent as
+    // ScriptData[] — structured-clone-safe over the Comlink boundary.
+    const componentScripts = scripts.get()
+      .filter(s => s.fileId !== active?.fileId)
+      .map(s => s.toData());
+
     return {
       outputs,
       messages,
       script: scriptData,
       params: paramValues,
+      componentScripts,
     } as RunnerScriptExecutionRequest;
   }
 
@@ -226,11 +269,47 @@ export class PageEditor extends SignalWatcher(LitElement)
 
   private _handleMenuAction(e: CustomEvent<string>)
   {
+    const value = e.detail;
+
+    if (value === 'new')
+    {
+      // Call directly: Vaadin Router skips re-resolving when the path is
+      // unchanged (same /editor route), so a Router.go('/editor?new') won't
+      // reliably re-trigger willUpdate. The URL-based ?new entry point still
+      // works on first mount via _consumeNewQueryParam.
+      createNewScript();
+      return;
+    }
+
+    if (value === 'open-script')
+    {
+      this._showScriptManager = true;
+      return;
+    }
+
     this.dispatchEvent(new CustomEvent('editor-action', {
-      detail: e.detail,
+      detail: value,
       bubbles: true,
       composed: true,
     }));
+  }
+
+  private _handleScriptManagerOpen(e: CustomEvent<string>)
+  {
+    openScript(e.detail);
+    this._showScriptManager = false;
+    // Run the freshly-opened script so the viewer/params reflect it immediately.
+    this._handleExecute();
+  }
+
+  private _handleScriptManagerCancel()
+  {
+    this._showScriptManager = false;
+  }
+
+  private _handleScriptDelete(e: CustomEvent<string>)
+  {
+    deleteScriptById(e.detail);
   }
 
   private _handleMenuSelect(e: CustomEvent<'info' | 'code' | 'history' | 'files' | 'templates' | 'help' | 'settings' | null>)

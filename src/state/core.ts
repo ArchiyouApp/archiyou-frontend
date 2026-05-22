@@ -5,6 +5,11 @@
  * latest scripts, and execution status (executing + result). Param definitions
  * and presets live ON the active `Script` (canonical model); the editor authors
  * them (see editor.ts) and the configurator derives from them.
+ *
+ * Scripts are constructed exclusively via `Script.fromData()`. The active
+ * script (`editorScript`) is also represented in the `scripts` collection
+ * with the **same JS instance** (matched by `fileId`) — so in-place edits to
+ * the active script automatically show up in the list without copying.
  */
 
 import { signal, computed } from '@lit-labs/signals';
@@ -17,36 +22,87 @@ import type { UserState, WorkspaceCoreState } from './types';
 
 //// LOCAL STORAGE ////
 
-const SCRIPT_STORAGE_KEY = 'archiyou:editor:script';
+const SCRIPT_STORAGE_KEY  = 'archiyou:editor:script';
+const SCRIPTS_STORAGE_KEY = 'archiyou:editor:scripts';
+
+/** The canonical data payload for a fresh editor script. */
+function _freshScriptData(): Record<string, any>
+{
+  return EDITOR_START_SCRIPT;
+}
+
+/** Build a fresh Script via the sanctioned factory; fall back to a
+ *  minimal `{ code }` payload if param validation fails so the editor
+ *  never boots with a null active script. */
+function _freshScript(): Script
+{
+  const script = Script.fromData(_freshScriptData());
+  if (script) return script;
+
+  console.warn('core.ts: fresh script failed to validate with default params; falling back to code-only payload');
+  const fallback = Script.fromData({ name: EDITOR_START_SCRIPT.name, code: EDITOR_START_SCRIPT.code });
+  if (!fallback) throw new Error('core.ts: _freshScript() — even the code-only fallback failed to validate.');
+  return fallback;
+}
 
 /** Load the persisted active script from localStorage (handles legacy shapes). */
 function _loadPersistedScript(): Script
 {
-  const fresh = () => new Script('anonymous', 'Untitled', EDITOR_START_SCRIPT);
-
   try
   {
     const raw = localStorage.getItem(SCRIPT_STORAGE_KEY);
-    if (!raw) return fresh();
+    if (!raw) return _freshScript();
 
     const data = JSON.parse(raw);
 
     // Legacy: plain code string
-    if (typeof data === 'string') return new Script('anonymous', 'Untitled', data);
+    if (typeof data === 'string')
+    {
+      const s = Script.fromData({ name: EDITOR_START_SCRIPT.name, code: data });
+      return s ?? _freshScript();
+    }
 
     // Legacy: { code, params: [...] } — old flat params are incompatible, drop them
     if (Array.isArray(data.params))
-      return new Script('anonymous', 'Untitled', data.code ?? EDITOR_START_SCRIPT);
+    {
+      const s = Script.fromData({
+        name: EDITOR_START_SCRIPT.name,
+        code: data.code ?? EDITOR_START_SCRIPT.code,
+      });
+      return s ?? _freshScript();
+    }
 
     // Canonical ScriptData
-    const loaded = new Script().fromData(data);
-    return (loaded instanceof Script) ? loaded : fresh();
+    const loaded = Script.fromData(data);
+    return (loaded instanceof Script) ? loaded : _freshScript();
   }
-  catch { return fresh(); }
+  catch { return _freshScript(); }
 }
 
-/** Persist the active script (code + canonical params + presets) to localStorage. */
-export function saveCore(): void
+/** Load the persisted scripts collection (best-effort: skips invalid entries). */
+function _loadPersistedScripts(): Script[]
+{
+  try
+  {
+    const raw = localStorage.getItem(SCRIPTS_STORAGE_KEY);
+    if (!raw) return [];
+
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data)) return [];
+
+    const out: Script[] = [];
+    for (const entry of data)
+    {
+      const s = Script.fromData(entry);
+      if (s) out.push(s);
+    }
+    return out;
+  }
+  catch { return []; }
+}
+
+/** Persist the active script. Cheap — runs on every keystroke. */
+export function saveActive(): void
 {
   try
   {
@@ -57,6 +113,26 @@ export function saveCore(): void
   catch { /* storage unavailable – silently ignore */ }
 }
 
+/** Persist the scripts collection. Only call on lifecycle events
+ *  (archive / open / delete) to avoid serialising the whole library
+ *  on every keystroke. */
+export function saveCollection(): void
+{
+  try
+  {
+    const list = scripts.get();
+    localStorage.setItem(SCRIPTS_STORAGE_KEY, JSON.stringify(list.map(s => s.toData())));
+  }
+  catch { /* storage unavailable – silently ignore */ }
+}
+
+/** Persist active + collection. */
+export function saveCore(): void
+{
+  saveActive();
+  saveCollection();
+}
+
 //// SIGNALS ////
 
 export const userState = signal<UserState>({
@@ -64,8 +140,19 @@ export const userState = signal<UserState>({
   name: null,
 });
 
-export const editorScript     = signal<Script | null>(_loadPersistedScript());
-export const scripts          = signal<Script[]>([]);   // all latest scripts (populated later)
+// Hydration: load collection first, then active, then ensure the active
+// script is represented in the collection (upsert by fileId in memory) so
+// the on-disk collection's possibly-stale twin gets corrected on next save.
+const _initialScripts = _loadPersistedScripts();
+const _initialActive  = _loadPersistedScript();
+{
+  const idx = _initialScripts.findIndex(s => s.fileId === _initialActive.fileId);
+  if (idx >= 0) _initialScripts[idx] = _initialActive;
+  else          _initialScripts.push(_initialActive);
+}
+
+export const editorScript     = signal<Script | null>(_initialActive);
+export const scripts          = signal<Script[]>(_initialScripts);
 export const executing        = signal<boolean>(false);
 export const executionResult  = signal<RunnerScriptExecutionResult | null>(null);
 
@@ -89,20 +176,98 @@ export function bumpScript(): void
   editorScript.set(editorScript.get());
 }
 
-/** Create a new empty script and select it. Returns the new script. */
-export function createScript(name: string = 'Untitled'): Script
+/** Trigger reactivity after mutating the scripts array in place. */
+export function bumpScripts(): void
 {
-  const script = new Script(undefined, name);
-  editorScript.set(script);
-  saveCore();
-  return script;
+  scripts.set([...scripts.get()]);
+}
+
+/** Upsert a script into the collection by fileId (mutates the array). */
+function _upsertScript(s: Script): void
+{
+  const list = scripts.get();
+  const idx = list.findIndex(x => x.fileId === s.fileId);
+  if (idx >= 0) list[idx] = s;
+  else          list.push(s);
+}
+
+/** Archive the given script into the collection (no-op for null). */
+function _archiveScript(s: Script | null): void
+{
+  if (!s) return;
+  _upsertScript(s);
+  bumpScripts();
+}
+
+/** Archive current active, create a fresh default script, set as active. */
+export function createNewScript(): Script
+{
+  _archiveScript(editorScript.get());
+
+  const fresh = _freshScript();
+  _upsertScript(fresh);   // also represent the new active in the collection
+  editorScript.set(fresh);
+  bumpScripts();
+  saveActive();
+  saveCollection();
+  return fresh;
+}
+
+/** Open a script from the collection by fileId.
+ *  Archives the current active first; the opened script stays in the list. */
+export function openScript(fileId: string): Script | null
+{
+  const list = scripts.get();
+  const target = list.find(s => s.fileId === fileId);
+  if (!target) return null;
+
+  _archiveScript(editorScript.get());   // ensure current is in the list
+  editorScript.set(target);
+  saveActive();
+  saveCollection();
+  return target;
+}
+
+/** Remove a script from the collection by fileId. If it was the active one,
+ *  fall back to the next entry or a fresh script. */
+export function deleteScriptById(fileId: string): void
+{
+  const list = scripts.get();
+  const filtered = list.filter(s => s.fileId !== fileId);
+  scripts.set(filtered);
+
+  const active = editorScript.get();
+  if (active && active.fileId === fileId)
+  {
+    if (filtered.length > 0)
+    {
+      editorScript.set(filtered[filtered.length - 1]);
+    }
+    else
+    {
+      const fresh = _freshScript();
+      _upsertScript(fresh);
+      editorScript.set(fresh);
+      bumpScripts();
+    }
+    saveActive();
+  }
+
+  saveCollection();
+}
+
+/** Create a new empty script and select it. Returns the new script.
+ *  Kept as a thin alias for backwards compatibility. */
+export function createScript(_name?: string): Script
+{
+  return createNewScript();
 }
 
 /** Replace the active script. */
 export function setScript(script: Script | null): void
 {
   editorScript.set(script);
-  saveCore();
+  saveActive();
 }
 
 /** Update the code of the active script and persist it. */
@@ -112,7 +277,7 @@ export function updateScriptCode(code: string): void
   if (!script) return;
   script.code = code;
   script.updated = new Date();
-  saveCore();
+  saveActive();
   editorScript.set(script);
 }
 
@@ -122,7 +287,7 @@ export function updateScriptName(name: string): void
   const script = editorScript.get();
   if (!script) return;
   script.name = name.toLowerCase();
-  saveCore();
+  saveActive();
   editorScript.set(script);
 }
 
@@ -137,7 +302,7 @@ export function updateScriptMeta(
   if (meta.details !== undefined)     script.details     = meta.details;
   if (meta.tags !== undefined)        script.tags        = [...meta.tags];
   script.updated = new Date();
-  saveCore();
+  saveActive();
   editorScript.set(script);
 }
 
@@ -156,4 +321,17 @@ export function setExecuting(value: boolean): void
 export function setScripts(list: Script[]): void
 {
   scripts.set(list);
+  saveCollection();
+}
+
+/** Returns true if another script in the collection already uses this name.
+ *  Comparison is case-insensitive. Pass the current script's `fileId` to
+ *  `ignoreFileId` so renaming a script to its own name does not collide. */
+export function isScriptNameTaken(name: string, ignoreFileId?: string): boolean
+{
+  const target = (name ?? '').trim().toLowerCase();
+  if (!target) return false;
+  return scripts.get().some(s =>
+    s.fileId !== ignoreFileId && (s.name ?? '').toLowerCase() === target,
+  );
 }

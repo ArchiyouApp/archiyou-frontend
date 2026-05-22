@@ -14,10 +14,24 @@ import { applyAnnotations } from './gltf-annotations.js';
 import type { HtmlLabelDef } from './gltf-annotations.js';
 import './viewer-labels-overlay.js';
 import type { ViewerLabelsOverlay, OverlayLabel, OverlayLabelPos } from './viewer-labels-overlay.js';
-import { VIEWER_BACKGROUND_COLOR } from '../../settings.js';
+import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR, VIEWER_GRID_SIZE,
+  VIEWER_GIZMO_AXIS_LENGTH, VIEWER_GIZMO_SCENE_FRACTION, VIEWER_GIZMO_COLOR_X, VIEWER_GIZMO_COLOR_Y,
+  VIEWER_GIZMO_COLOR_Z, VIEWER_GIZMO_LABEL_SIZE } from '../../settings.js';
 import { VIEW_STYLES } from './view-styles.js';
 import type { ViewStyle, ViewStyleMaterialConfig } from './view-styles.js';
 import './viewer-menu.js';
+
+/** Round a raw step size up to the nearest "nice" number (1, 2, 5, 10, 20, …). */
+function _niceGridStep(rawStep: number): number
+{
+  if (rawStep <= 0) return 1;
+  const power = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const norm  = rawStep / power;
+  if (norm < 1.5) return power;
+  if (norm < 3.5) return 2 * power;
+  if (norm < 7.5) return 5 * power;
+  return 10 * power;
+}
 
 /**
  * <model-viewer> — Three.js GLTF viewer with IBL, spotlight shadows, and AgX tone mapping.
@@ -41,6 +55,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
         .arSupported=${this._arSupported}
         .arActive=${this._arActive}
         .isOrtho=${this._isOrtho}
+        .gridVisible=${this._gridVisible}
+        .gizmoVisible=${this._gizmoVisible}
         .animations=${this._animationClips.map(c => c.name)}
         .activeAnimation=${this._activeAnimationName}
         @viewer-zoom-in=${this._zoomIn}
@@ -52,6 +68,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
           this._playAnimation((e as CustomEvent<{ name: string | null }>).detail.name)}
         @viewer-toggle-ar=${this._toggleAR}
         @viewer-toggle-projection=${this._toggleProjection}
+        @viewer-toggle-grid=${this._toggleGrid}
+        @viewer-toggle-gizmo=${this._toggleGizmo}
       ></viewer-menu>
     `;
   }
@@ -64,10 +82,13 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._initScene();
     this._initLights();
     this._initGround();
+    this._initGizmo();
     this._initControls(canvas);
     this._initLoaders();
     this._initAR();
     this._loop();
+
+    canvas.addEventListener('pointerdown', this._hitTestGizmo);
 
     this._resizeObserver = new ResizeObserver(() => this._resize());
     this._resizeObserver.observe(this);
@@ -108,6 +129,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
   @state() private _arSupported = false;
   @state() private _arActive = false;
   @state() private _isOrtho = false;
+  @state() private _gridVisible = true;
+  @state() private _gizmoVisible = true;
 
   // Three.js scene objects
   private _renderer!: THREE.WebGLRenderer;
@@ -119,6 +142,10 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _spotlight!: THREE.SpotLight;
   private _hemiLight?: THREE.HemisphereLight;
   private _gridHelper?: THREE.GridHelper;
+  private _appliedGridSize?: number;
+  private _appliedGridDivisions?: number;
+  private _appliedGridColor?: number;
+  private _gizmoGroup?: THREE.Group;
   private _roomEnvTexture?: THREE.Texture;
 
   // Model / animation
@@ -150,6 +177,15 @@ export class ModelViewer extends SignalWatcher(LitElement)
   // Node visibility (driven by hiddenNodes signal)
   private _pendingHiddenNodes: ReadonlySet<string> = new Set();
   private _lastAppliedHiddenNodes?: ReadonlySet<string>;
+
+  // Camera tween state for smooth axis-snap
+  private _cameraTween?: {
+    from: THREE.Vector3;
+    to: THREE.Vector3;
+    upTarget: THREE.Vector3;
+    t: number;
+    duration: number;
+  };
 
   // ── 5. Initialisation helpers ──
 
@@ -278,25 +314,49 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
   private _zoomIn = () =>
   {
-    const dir = this._camera.position.clone().sub(this._controls.target);
-    const dist = dir.length();
-    const newDist = Math.max(this._controls.minDistance, dist * 0.8);
-    this._camera.position.copy(
-      this._controls.target.clone().add(dir.normalize().multiplyScalar(newDist)),
-    );
-    this._controls.update();
+    if (this._isOrtho && this._orthoCamera)
+    {
+      const factor = 0.8;
+      this._orthoCamera.left   *= factor;
+      this._orthoCamera.right  *= factor;
+      this._orthoCamera.top    *= factor;
+      this._orthoCamera.bottom *= factor;
+      this._orthoCamera.updateProjectionMatrix();
+    }
+    else
+    {
+      const dir = this._camera.position.clone().sub(this._controls.target);
+      const dist = dir.length();
+      const newDist = Math.max(this._controls.minDistance, dist * 0.8);
+      this._camera.position.copy(
+        this._controls.target.clone().add(dir.normalize().multiplyScalar(newDist)),
+      );
+      this._controls.update();
+    }
     this._dirty = true;
   };
 
   private _zoomOut = () =>
   {
-    const dir = this._camera.position.clone().sub(this._controls.target);
-    const dist = dir.length();
-    const newDist = Math.min(this._controls.maxDistance, dist * 1.25);
-    this._camera.position.copy(
-      this._controls.target.clone().add(dir.normalize().multiplyScalar(newDist)),
-    );
-    this._controls.update();
+    if (this._isOrtho && this._orthoCamera)
+    {
+      const factor = 1.25;
+      this._orthoCamera.left   *= factor;
+      this._orthoCamera.right  *= factor;
+      this._orthoCamera.top    *= factor;
+      this._orthoCamera.bottom *= factor;
+      this._orthoCamera.updateProjectionMatrix();
+    }
+    else
+    {
+      const dir = this._camera.position.clone().sub(this._controls.target);
+      const dist = dir.length();
+      const newDist = Math.min(this._controls.maxDistance, dist * 1.25);
+      this._camera.position.copy(
+        this._controls.target.clone().add(dir.normalize().multiplyScalar(newDist)),
+      );
+      this._controls.update();
+    }
     this._dirty = true;
   };
 
@@ -314,6 +374,30 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._dirty = true;
     }
   };
+
+  private _updateCameraRangesForObject(obj: THREE.Object3D, framedDistance?: number)
+  {
+    const box = new THREE.Box3().setFromObject(obj);
+    if (box.isEmpty()) return;
+
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z, 1);
+    const currentDistance = this._camera.position.distanceTo(this._controls.target);
+    const baseDistance = Math.max(framedDistance ?? 0, currentDistance, maxDim);
+
+    this._controls.minDistance = Math.max(maxDim * 0.001, 0.01);
+    this._controls.maxDistance = Math.max(baseDistance * 10, maxDim * 20);
+
+    this._camera.near = Math.max(baseDistance * 0.001, 0.001);
+    this._camera.far = Math.max(baseDistance * 50, maxDim * 50, this._camera.near + 1);
+    this._camera.updateProjectionMatrix();
+
+    if (this._isOrtho)
+    {
+      this._buildOrthoFromPersp();
+      this._controls.object = this._orthoCamera!;
+    }
+  }
 
   private _playAnimation(name: string | null)
   {
@@ -463,6 +547,242 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._dirty = true;
   };
 
+  private _toggleGrid = () =>
+  {
+    this._gridVisible = !this._gridVisible;
+    this._updateGrid();
+    this._dirty = true;
+  };
+
+  private _toggleGizmo = () =>
+  {
+    this._gizmoVisible = !this._gizmoVisible;
+    if (this._gizmoGroup) this._gizmoGroup.visible = this._gizmoVisible;
+    this._dirty = true;
+  };
+
+  /**
+   * Build the GridHelper from the current model bounding box on first load,
+   * then keep the same geometry for the session so the grid doesn't jump.
+   * Only the colour is allowed to change (driven by the active view style).
+   */
+  private _updateGrid()
+  {
+    const style = VIEW_STYLES.find(s => s.id === this._activeStyleId);
+
+    if (!style?.grid?.visible || !this._gridVisible)
+    {
+      if (this._gridHelper) this._gridHelper.visible = false;
+      return;
+    }
+
+    const color    = style.grid.color ?? 0x888888;
+
+    // ── Geometry: only compute once (first call that has a model or falls back to default) ──
+    if (!this._appliedGridSize)
+    {
+      let sceneRadius = VIEWER_GRID_SIZE * 0.5;
+      if (this._currentModel)
+      {
+        const box = new THREE.Box3().setFromObject(this._currentModel);
+        if (!box.isEmpty())
+        {
+          const sz = box.getSize(new THREE.Vector3());
+          sceneRadius = Math.max(Math.max(sz.x, sz.z) * 0.5, 0.5);
+        }
+      }
+
+      const cellStep   = _niceGridStep(sceneRadius * 2 / 10);
+      const gridRadius = Math.ceil((sceneRadius * 6) / cellStep) * cellStep;
+      const size       = gridRadius * 4;
+      const divisions  = Math.round(size / cellStep);
+
+      this._gridHelper = new THREE.GridHelper(size, divisions, color, color);
+      this._gridHelper.userData.isViewerHelper = true;
+      this._scene.add(this._gridHelper);
+      this._appliedGridSize      = size;
+      this._appliedGridDivisions = divisions;
+      this._appliedGridColor     = color;
+
+      // Scale the gizmo so its arm length = sceneRadius × VIEWER_GIZMO_SCENE_FRACTION
+      if (this._gizmoGroup)
+      {
+        const targetLength = sceneRadius * VIEWER_GIZMO_SCENE_FRACTION;
+        const s = targetLength / VIEWER_GIZMO_AXIS_LENGTH;
+        this._gizmoGroup.scale.setScalar(s);
+      }
+      return;
+    }
+
+    // ── Grid already built: just show it and update colour if style changed ──
+    if (!this._gridHelper)
+    {
+      // Geometry params known — recreate with existing values (e.g. after dispose)
+      this._gridHelper = new THREE.GridHelper(
+        this._appliedGridSize,
+        this._appliedGridDivisions!,
+        color, color,
+      );
+      this._gridHelper.userData.isViewerHelper = true;
+      this._scene.add(this._gridHelper);
+      this._appliedGridColor = color;
+      return;
+    }
+
+    this._gridHelper.visible = true;
+
+    if (this._appliedGridColor !== color)
+    {
+      // Swap colours without rebuilding geometry
+      const mats = Array.isArray(this._gridHelper.material)
+        ? this._gridHelper.material as THREE.Material[]
+        : [this._gridHelper.material as THREE.Material];
+      mats.forEach(m => (m as THREE.LineBasicMaterial).color.setHex(color));
+      this._appliedGridColor = color;
+    }
+  }
+
+  private _initGizmo()
+  {
+    this._gizmoGroup = new THREE.Group();
+    this._gizmoGroup.userData.isViewerHelper = true;
+
+    // label is the CAD-space name (Z=up system); axis is the Three.js geometric axis
+    // Three.js Y (up) = CAD Z (up);  Three.js Z (depth) = CAD Y
+    const axes: Array<{ axis: 'x' | 'y' | 'z'; label: string; dir: THREE.Vector3; color: number }> = [
+      { axis: 'x', label: 'X', dir: new THREE.Vector3(1, 0, 0), color: VIEWER_GIZMO_COLOR_X },
+      { axis: 'y', label: 'Z', dir: new THREE.Vector3(0, 1, 0), color: VIEWER_GIZMO_COLOR_Z },
+      { axis: 'z', label: 'Y', dir: new THREE.Vector3(0, 0, 1), color: VIEWER_GIZMO_COLOR_Y },
+    ];
+
+    const L = VIEWER_GIZMO_AXIS_LENGTH;
+
+    for (const { axis, label, dir, color } of axes)
+    {
+      // positive solid line
+      const posGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), dir.clone().multiplyScalar(L)]);
+      const posMat = new THREE.LineBasicMaterial({ color, depthTest: false });
+      const posLine = new THREE.Line(posGeo, posMat);
+      posLine.renderOrder = 999;
+      posLine.userData.isViewerHelper = true;
+      this._gizmoGroup.add(posLine);
+
+      // negative dashed line
+      const negGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), dir.clone().multiplyScalar(-L)]);
+      const negMat = new THREE.LineDashedMaterial({ color, dashSize: 0.06, gapSize: 0.04, depthTest: false });
+      const negLine = new THREE.Line(negGeo, negMat);
+      negLine.computeLineDistances();
+      negLine.renderOrder = 999;
+      negLine.userData.isViewerHelper = true;
+      this._gizmoGroup.add(negLine);
+
+      // positive arrowhead cone (clickable handle)
+      const coneH = L * 0.18;
+      const coneR = L * 0.055;
+      const coneGeo = new THREE.ConeGeometry(coneR, coneH, 8);
+      const coneMat = new THREE.MeshBasicMaterial({ color, depthTest: false });
+      const cone = new THREE.Mesh(coneGeo, coneMat);
+      // place tip at L, base at L - coneH
+      cone.position.copy(dir.clone().multiplyScalar(L - coneH / 2));
+      // orient cone along the axis
+      if (axis === 'x') cone.rotation.z = -Math.PI / 2;
+      else if (axis === 'z') cone.rotation.x = Math.PI / 2;
+      cone.renderOrder = 999;
+      cone.userData = { isViewerHelper: true, isGizmoHandle: true, axis, negative: false };
+      this._gizmoGroup.add(cone);
+
+      // negative arrowhead (clickable handle)
+      const coneNegGeo = new THREE.ConeGeometry(coneR, coneH, 8);
+      const coneNeg = new THREE.Mesh(coneNegGeo, coneMat.clone());
+      coneNeg.position.copy(dir.clone().multiplyScalar(-(L - coneH / 2)));
+      if (axis === 'x') coneNeg.rotation.z = Math.PI / 2;
+      else if (axis === 'z') coneNeg.rotation.x = -Math.PI / 2;
+      else coneNeg.rotation.z = Math.PI; // -Y
+      coneNeg.renderOrder = 999;
+      coneNeg.userData = { isViewerHelper: true, isGizmoHandle: true, axis, negative: true };
+      this._gizmoGroup.add(coneNeg);
+
+      // label sprite
+      const canvas = document.createElement('canvas');
+      canvas.width = 64; canvas.height = 64;
+      const ctx = canvas.getContext('2d')!;
+      ctx.clearRect(0, 0, 64, 64);
+      ctx.fillStyle = `#${color.toString(16).padStart(6, '0')}`;
+      ctx.font = 'bold 42px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, 32, 32);
+      const tex = new THREE.CanvasTexture(canvas);
+      const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+      const sprite = new THREE.Sprite(spriteMat);
+      sprite.scale.setScalar(VIEWER_GIZMO_LABEL_SIZE);
+      sprite.position.copy(dir.clone().multiplyScalar(L + VIEWER_GIZMO_LABEL_SIZE * 0.7));
+      sprite.renderOrder = 999;
+      sprite.userData.isViewerHelper = true;
+      this._gizmoGroup.add(sprite);
+    }
+
+    // small origin sphere
+    const originGeo = new THREE.SphereGeometry(L * 0.06, 8, 8);
+    const originMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
+    const originSphere = new THREE.Mesh(originGeo, originMat);
+    originSphere.renderOrder = 999;
+    originSphere.userData.isViewerHelper = true;
+    this._gizmoGroup.add(originSphere);
+
+    this._scene.add(this._gizmoGroup);
+  }
+
+  private _hitTestGizmo = (e: PointerEvent) =>
+  {
+    if (!this._gizmoGroup) return;
+    const canvas = this.renderRoot.querySelector('canvas') as HTMLCanvasElement;
+    const rect = canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+
+    const activeCamera = this._isOrtho ? (this._orthoCamera ?? this._camera) : this._camera;
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(ndc, activeCamera);
+
+    const handles = this._gizmoGroup.children.filter(c => c.userData.isGizmoHandle);
+    const hits = raycaster.intersectObjects(handles, false);
+    if (!hits.length) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+    const hit = hits[0].object;
+    this._snapCameraToAxis(hit.userData.axis as 'x' | 'y' | 'z', hit.userData.negative as boolean);
+  };
+
+  private _snapCameraToAxis(axis: 'x' | 'y' | 'z', negative: boolean)
+  {
+    const target = this._controls.target.clone();
+    const dist   = this._camera.position.distanceTo(target);
+
+    const dir = new THREE.Vector3();
+    if (axis === 'x') dir.set(negative ? -1 : 1, 0, 0);
+    else if (axis === 'y') dir.set(0, negative ? -1 : 1, 0);
+    else dir.set(0, 0, negative ? -1 : 1);
+
+    const toPos = target.clone().add(dir.multiplyScalar(dist));
+    // choose up vector that avoids gimbal lock on the Y axis
+    const upTarget = axis === 'y'
+      ? new THREE.Vector3(0, 0, negative ? -1 : 1)
+      : new THREE.Vector3(0, 1, 0);
+
+    this._cameraTween = {
+      from:      this._camera.position.clone(),
+      to:        toPos,
+      upTarget,
+      t:         0,
+      duration:  0.4,
+    };
+    this._dirty = true;
+  }
+
   private _applyViewStyle(styleId: string)
   {
     const style = VIEW_STYLES.find(s => s.id === styleId);
@@ -520,29 +840,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._hemiLight.visible = false;
     }
 
-    // Grid
-    if (style.grid?.visible)
-    {
-      if (!this._gridHelper)
-      {
-        this._gridHelper = new THREE.GridHelper(
-          style.grid.size ?? 10,
-          style.grid.divisions ?? 20,
-          style.grid.color ?? 0x444444,
-          style.grid.color ?? 0x333333,
-        );
-        this._gridHelper.userData.isViewerHelper = true;
-        this._scene.add(this._gridHelper);
-      }
-      else
-      {
-        this._gridHelper.visible = true;
-      }
-    }
-    else if (this._gridHelper)
-    {
-      this._gridHelper.visible = false;
-    }
+    // Grid + Fog (auto-sized to scene bounds)
+    this._activeStyleId = styleId;
+    this._updateGrid();
 
     // Material overrides — traverse scene only when the style has mesh/line config
     if (style.mesh !== undefined || style.lines !== undefined)
@@ -569,7 +869,6 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // Apply user-controlled node visibility on top of style overrides
     this._applyNodeVisibility(this._pendingHiddenNodes);
 
-    this._activeStyleId = styleId;
     this._dirty = true;
   }
 
@@ -805,6 +1104,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
   private async _loadGLTFString(data: string | ArrayBuffer)
   {
+    const shouldFrameCamera = VIEWER_AUTO_FRAME_ON_FIRST_LOAD && !this._currentModel && !this._hasFramedCamera;
     this._disposeModel();
     const gltf = await new Promise<import('three/examples/jsm/loaders/GLTFLoader.js').GLTF>(
       (resolve, reject) =>
@@ -812,10 +1112,13 @@ export class ModelViewer extends SignalWatcher(LitElement)
         this._gltfLoader.parse(data, '', resolve, reject);
       },
     );
-    this._applyGLTF(gltf);
+    this._applyGLTF(gltf, shouldFrameCamera);
   }
 
-  private async _applyGLTF(gltf: import('three/examples/jsm/loaders/GLTFLoader.js').GLTF)
+  private async _applyGLTF(
+    gltf: import('three/examples/jsm/loaders/GLTFLoader.js').GLTF,
+    shouldFrameCamera = false,
+  )
   {
     const model = gltf.scene;
 
@@ -839,18 +1142,6 @@ export class ModelViewer extends SignalWatcher(LitElement)
       }
     });
 
-    // Normalize: scale to ~2 units, center horizontally, sit on ground
-    const box = new THREE.Box3().setFromObject(model);
-    const size = box.getSize(new THREE.Vector3());
-    const scale = 2 / Math.max(size.x, size.y, size.z);
-
-    model.scale.setScalar(scale);
-    const scaled = new THREE.Box3().setFromObject(model);
-    const sCenter = scaled.getCenter(new THREE.Vector3());
-    model.position.x -= sCenter.x;
-    model.position.z -= sCenter.z;
-    model.position.y -= scaled.min.y;
-
     this._scene.add(model);
     this._currentModel = model;
 
@@ -858,7 +1149,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
     const mc = new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3());
     this._spotlight.target.position.copy(mc);
 
-    if (!this._hasFramedCamera)
+    this._updateCameraRangesForObject(model);
+
+    if (shouldFrameCamera && !this._hasFramedCamera)
     {
       this._frameCamera(model);
       this._hasFramedCamera = true;
@@ -883,7 +1176,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // Render annotations from GLB root extras: dimension lines as 3D arrows
     // (geometry) + HTML overlay value text; labels as HTML overlay elements
     // (optionally with a CSS leader line/arrow). Projected each frame.
-    const { htmlLabels } = await applyAnnotations(gltf, model, scale);
+    const { htmlLabels } = await applyAnnotations(gltf, model);
     this._htmlLabels = htmlLabels;
     const overlay = this.renderRoot.querySelector('viewer-labels-overlay') as ViewerLabelsOverlay | null;
     if (overlay)
@@ -1005,20 +1298,24 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _frameCamera(obj: THREE.Object3D)
   {
     const box = new THREE.Box3().setFromObject(obj);
-    const size = box.getSize(new THREE.Vector3());
+    if (box.isEmpty()) return;
+
     const center = box.getCenter(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const dist = (maxDim / (2 * Math.tan((this._camera.fov * Math.PI) / 360))) * 1.5;
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const activeCamera = this._isOrtho ? (this._orthoCamera ?? this._camera) : this._camera;
+    const currentViewVector = activeCamera.position.clone().sub(this._controls.target);
+    const viewDirection = currentViewVector.lengthSq() > 0
+      ? currentViewVector.normalize()
+      : new THREE.Vector3(1, 1, 1).normalize();
+
+    const verticalFov = THREE.MathUtils.degToRad(this._camera.fov);
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * this._camera.aspect);
+    const limitingHalfFov = Math.max(Math.min(verticalFov, horizontalFov) / 2, THREE.MathUtils.degToRad(1));
+    const dist = (sphere.radius / Math.sin(limitingHalfFov)) * 1.1;
 
     this._controls.target.copy(center);
-    this._camera.position.set(
-      center.x + dist * 0.7,
-      center.y + dist * 0.5,
-      center.z + dist * 0.7,
-    );
-    this._camera.near = dist * 0.01;
-    this._camera.far = dist * 20;
-    this._camera.updateProjectionMatrix();
+    this._camera.position.copy(center.clone().add(viewDirection.multiplyScalar(dist)));
+    this._updateCameraRangesForObject(obj, dist);
     this._controls.update();
     if (this._isOrtho)
     {
@@ -1066,6 +1363,28 @@ export class ModelViewer extends SignalWatcher(LitElement)
     {
       this._mixer.update(dt);
       this._dirty = true;
+    }
+
+    // Camera axis-snap tween
+    if (this._cameraTween)
+    {
+      const tw = this._cameraTween;
+      tw.t = Math.min(tw.t + dt / tw.duration, 1);
+      // smooth-step ease-out
+      const k = tw.t * tw.t * (3 - 2 * tw.t);
+      this._camera.position.lerpVectors(tw.from, tw.to, k);
+      this._camera.up.lerp(tw.upTarget, k);
+      this._controls.update();
+      if (this._isOrtho) this._buildOrthoFromPersp();
+      this._dirty = true;
+      if (tw.t >= 1)
+      {
+        this._camera.position.copy(tw.to);
+        this._camera.up.copy(tw.upTarget);
+        this._controls.update();
+        if (this._isOrtho) this._buildOrthoFromPersp();
+        this._cameraTween = undefined;
+      }
     }
 
     if (this._controls.update()) this._dirty = true;

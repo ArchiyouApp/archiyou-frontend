@@ -13,8 +13,8 @@ import {
  * glTF root extras (Three's GLTFLoader exposes raw json at gltf.parser.json →
  * root extras at gltf.parser.json.extras).
  *
- *  - dimension lines  → 3D line + arrowhead cones (added under modelGroup so
- *                       they inherit the model normalization transform) PLUS
+ *  - dimension lines  → 3D line + arrowhead cones (added under modelGroup)
+ *                       PLUS
  *                       an HTML overlay label for the value text.
  *  - labels           → an HTML overlay element, optionally with a CSS leader
  *                       line + arrow (screen-space length/angle).
@@ -74,7 +74,6 @@ export interface AnnotationsResult
 export async function applyAnnotations(
   gltf: GLTF,
   modelGroup: THREE.Object3D,
-  modelScale: number,
 ): Promise<AnnotationsResult>
 {
   const extras = (gltf.parser?.json?.extras ?? {}) as { annotations?: AnnotationItem[] };
@@ -110,11 +109,9 @@ export async function applyAnnotations(
 
   if (dims.length === 0) return { htmlLabels };
 
-  // 3D dimension-line geometry (line + arrowhead cones). Sizes are world units
-  // counter-scaled by the model fit-scale so they read consistently.
-  const s = modelScale > 0 ? modelScale : 1;
-  const arrowLen = DIMENSION_ARROW_LENGTH / s;
-  const arrowRad = DIMENSION_ARROW_RADIUS / s;
+  // 3D dimension-line geometry (line + arrowhead cones). Sizes are world units.
+  const arrowLen = DIMENSION_ARROW_LENGTH;
+  const arrowRad = DIMENSION_ARROW_RADIUS;
 
   const group = new THREE.Group();
   group.name = 'Dimensions';

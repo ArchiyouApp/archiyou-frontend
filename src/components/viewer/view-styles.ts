@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { VIEWER_GRID_SIZE, VIEWER_GRID_DIVISIONS } from '../../settings.js';
 
 export interface ViewStyleMaterialConfig {
   color?: number;
@@ -65,7 +66,7 @@ export const VIEW_STYLES: ViewStyle[] = [
     environment: 'room',
     ambientLight: { enabled: true, color: 0xffffff, intensity: 0.3 },
     spotlight: { enabled: true, color: 0xffffff, intensity: 5, castShadow: true },
-    grid: { visible: false },
+    grid: { visible: true, color: 0xDDDDDD, divisions: VIEWER_GRID_DIVISIONS, size: VIEWER_GRID_SIZE },
   },
   {
     id: 'xray',
@@ -86,7 +87,7 @@ export const VIEW_STYLES: ViewStyle[] = [
       depthTest: true,
     },
     lines: { strokeWidth: 2  },
-    grid: { visible: true, color: 0xFFFFFF, divisions: 20, size: 10 },
+    grid: { visible: true, color: 0xFFFFFF, divisions: VIEWER_GRID_DIVISIONS, size: VIEWER_GRID_SIZE },
   },
   {
     id: 'wireframe',
@@ -123,7 +124,7 @@ export const VIEW_STYLES: ViewStyle[] = [
       side: 'double',
     },
     lines: { color: 0x4fc3f7,  },
-    grid: { visible: true, color: 0x1e4b8a, divisions: 20, size: 10 },
+    grid: { visible: true, color: 0x1e4b8a, divisions: VIEWER_GRID_DIVISIONS, size: VIEWER_GRID_SIZE },
   },
   {
     id: 'techdraw',

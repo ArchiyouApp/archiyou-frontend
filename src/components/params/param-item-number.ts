@@ -47,6 +47,7 @@ export class ParamItemNumber extends LitElement
                         max=${max}
                         step=${step}
                         .value=${String(this._value)}
+                        @input=${this._onNumberInput}
                         @change=${this._onNumber}
                     />
                     <select class="unit" @change=${this._onUnit} title="Unit">
@@ -107,6 +108,22 @@ export class ParamItemNumber extends LitElement
         this._value      = snapped;
         input.value      = String(snapped);
         this._dispatchValue(snapped);
+    }
+
+    private _onNumberInput(e: InputEvent)
+    {
+        const input = e.target as HTMLInputElement;
+        if (input.value === '') return;
+
+        const parsed = Number(input.value);
+        if (!Number.isFinite(parsed)) return;
+
+        const min = paramMin(this.param);
+        const max = paramMax(this.param);
+        const clamped = Math.max(min, Math.min(max, parsed));
+
+        this._value = clamped;
+        this._dispatchValue(clamped);
     }
 
     private _onUnit(e: Event)

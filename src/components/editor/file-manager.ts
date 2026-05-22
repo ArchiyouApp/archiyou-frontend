@@ -5,18 +5,19 @@ import { SignalWatcher } from '@lit-labs/signals';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/tooltip/tooltip.js';
+import '@awesome.me/webawesome/dist/components/popover/popover.js';
 import '@awesome.me/webawesome/dist/components/dropdown/dropdown.js';
 import '@awesome.me/webawesome/dist/components/dropdown-item/dropdown-item.js';
 import '@dile/editor/editor.js';
 
 import {
   editorScript,
-  scriptMetadata,
   fileManagerCollapsed,
   setFileManagerCollapsed,
   updateScriptName,
   updateScriptMetadata,
   updateScriptMeta,
+  isScriptNameTaken,
 } from '../../state/workspace.js';
 import type { ScriptMetadata } from '../../state/workspace.js';
 
@@ -59,6 +60,7 @@ export class EditorFileManager extends SignalWatcher(LitElement)
         ${this._editingName
           ? html`
               <input
+                id=${`fm-name-header-${this._uid}`}
                 class="name-input"
                 .value=${this._nameDraft}
                 @input=${(e: InputEvent) => (this._nameDraft = (e.target as HTMLInputElement).value)}
@@ -86,14 +88,23 @@ export class EditorFileManager extends SignalWatcher(LitElement)
       </div>
 
       ${!collapsed ? this._renderBody() : nothing}
+
+      <wa-popover
+        class="name-error-popover"
+        placement=${this._nameErrorAnchor === 'header' ? 'bottom' : 'right'}
+        for=${this._nameErrorAnchor === 'header'
+          ? `fm-name-header-${this._uid}`
+          : `fm-name-form-${this._uid}`}
+        ?open=${this._nameErrorOpen}
+        @click=${(e: Event) => e.stopPropagation()}
+      >${this._nameErrorText}</wa-popover>
     `;
   }
 
   private _renderBody()
   {
-    const meta    = scriptMetadata.get();
     const script  = editorScript.get();
-    const version = script?.published?.version ?? meta.version ?? '—';
+    const version = script?.published?.version ?? '—';
 
     return html`
       <div class="body">
@@ -101,6 +112,7 @@ export class EditorFileManager extends SignalWatcher(LitElement)
 
           ${this._renderField('name', html`
             <input
+              id=${`fm-name-form-${this._uid}`}
               class="text-input"
               .value=${this._draft.projectName}
               placeholder="script name…"
@@ -243,12 +255,75 @@ export class EditorFileManager extends SignalWatcher(LitElement)
   /** Stable per-instance uid suffix for tooltip `for` references. */
   private readonly _uid = Math.random().toString(36).slice(2, 7);
 
+  /** Name-collision popover state. */
+  @state() private _nameErrorOpen  = false;
+  @state() private _nameErrorText  = '';
+  @state() private _nameErrorAnchor: 'header' | 'form' = 'header';
+  private _nameErrorTimer: number | null = null;
+
+  /** Tracks the fileId of the script the form is currently bound to,
+   *  so we can re-populate when the active script changes (e.g. after
+   *  Open Script). */
+  private _activeFileId: string | null = null;
+
   // ── 3. Lifecycle ───────────────────────────────────────────────────────────
 
-  override connectedCallback()
+  override updated(_changed: Map<string, unknown>)
   {
-    super.connectedCallback();
-    this._loadDraft();
+    // dile-editor hardcodes section.for-input { font-size: 0.9rem } in its
+    // shadow root and exposes no var to override it. Inject a stylesheet so
+    // the body/paragraph text matches our text-sm. (Heading sizes are left
+    // alone — markdown semantics.)
+    this._patchDileEditorFontSize();
+  }
+
+  private _dileEditorSheet: CSSStyleSheet | null = null;
+  private _patchDileEditorFontSize()
+  {
+    if (!this._dileEditorSheet)
+    {
+      try
+      {
+        this._dileEditorSheet = new CSSStyleSheet();
+        this._dileEditorSheet.replaceSync(`
+          section.for-input { font-size: var(--text-sm, 0.875rem); }
+          .ProseMirror      { font-size: var(--text-sm, 0.875rem); }
+        `);
+      }
+      catch { return; /* constructable sheets unsupported */ }
+    }
+    const sheet = this._dileEditorSheet;
+    this.renderRoot.querySelectorAll('dile-editor').forEach(el =>
+    {
+      const sr = (el as HTMLElement).shadowRoot;
+      if (sr && !sr.adoptedStyleSheets.includes(sheet))
+      {
+        sr.adoptedStyleSheets = [...sr.adoptedStyleSheets, sheet];
+      }
+    });
+  }
+
+  override willUpdate(_changed: Map<string, unknown>)
+  {
+    // SignalWatcher runs update() whenever a watched signal ticks, so this
+    // fires on every script switch. Re-derive the form draft from the
+    // canonical Script whenever the active script changes.
+    const script = editorScript.get();
+    const fid = script?.fileId ?? null;
+    if (fid !== this._activeFileId)
+    {
+      this._activeFileId = fid;
+      this._draft        = this._draftFromScript();
+      this._snapshot     = null;          // re-captured on next body-open render
+      this._editingName  = false;
+      this._nameDraft    = '';
+      this._nameErrorOpen = false;
+      if (this._nameErrorTimer !== null)
+      {
+        clearTimeout(this._nameErrorTimer);
+        this._nameErrorTimer = null;
+      }
+    }
   }
 
   // ── 4. Behaviour ───────────────────────────────────────────────────────────
@@ -264,18 +339,18 @@ export class EditorFileManager extends SignalWatcher(LitElement)
     };
   }
 
-  private _loadDraft()
+  /** Build the form draft directly from the canonical Script — the
+   *  source of truth post-refactor. The legacy `scriptMetadata` signal
+   *  is no longer consulted here so script switches always show fresh data. */
+  private _draftFromScript(): ScriptMetadata
   {
-    const meta   = scriptMetadata.get();
     const script = editorScript.get();
-
-    this._draft =
-    {
-      projectName:    meta.projectName || script?.name || '',
-      version:        meta.version,
-      description:    meta.description,
-      projectDetails: meta.projectDetails,
-      categories:     [...meta.categories],
+    return {
+      projectName:    script?.name ?? '',
+      version:        script?.published?.version ?? '',
+      description:    script?.description ?? '',
+      projectDetails: script?.details ?? '',
+      categories:     [...(script?.tags ?? [])],
     };
   }
 
@@ -300,10 +375,35 @@ export class EditorFileManager extends SignalWatcher(LitElement)
   private _commitNameEdit()
   {
     const name = this._nameDraft.trim();
+    if (!name) { this._editingName = false; return; }
+
+    const script = editorScript.get();
+    if (script && isScriptNameTaken(name, script.fileId))
+    {
+      this._showNameError('header', name);
+      return; // keep editor open so the user can correct
+    }
+
     this._editingName = false;
-    if (!name) return;
-    // Also keep draft in sync
+    // Commit to the active Script so the header re-renders from the signal,
+    // and keep the form draft in sync.
+    updateScriptName(name);
     this._draft = { ...this._draft, projectName: name };
+  }
+
+  /** Display the collision popover and auto-dismiss after a few seconds. */
+  private _showNameError(anchor: 'header' | 'form', tried: string)
+  {
+    this._nameErrorAnchor = anchor;
+    this._nameErrorText   = `File name "${tried}" already taken!`;
+    this._nameErrorOpen   = true;
+
+    if (this._nameErrorTimer !== null) clearTimeout(this._nameErrorTimer);
+    this._nameErrorTimer = window.setTimeout(() =>
+    {
+      this._nameErrorOpen  = false;
+      this._nameErrorTimer = null;
+    }, 2500);
   }
 
   private _onNameKeydown(e: KeyboardEvent)
@@ -350,7 +450,15 @@ export class EditorFileManager extends SignalWatcher(LitElement)
 
     // Update the script name on the actual Script object
     const newName = this._draft.projectName.trim();
-    if (newName) updateScriptName(newName);
+    if (newName)
+    {
+      if (isScriptNameTaken(newName, script.fileId))
+      {
+        this._showNameError('form', newName);
+        return; // abort save — keep the panel open
+      }
+      updateScriptName(newName);
+    }
 
     // Persist metadata onto the canonical Script (description / details / tags)
     updateScriptMeta({
@@ -383,6 +491,16 @@ export class EditorFileManager extends SignalWatcher(LitElement)
     *,
     *::before,
     *::after { box-sizing: border-box; }
+
+    /* ── Name collision popover ── */
+
+    .name-error-popover {
+      --background-color: var(--color-alert, #ef4444);
+      --border-color:     var(--color-alert, #ef4444);
+      color:              var(--color-white, #fff);
+      font-size:          var(--text-xs);
+      font-weight:        500;
+    }
 
     /* ── Header ── */
 
@@ -459,6 +577,7 @@ export class EditorFileManager extends SignalWatcher(LitElement)
       flex-direction: column;
       position: relative;
       max-height: 480px;
+      font-size: var(--text-sm);
     }
 
     .form
@@ -619,7 +738,7 @@ export class EditorFileManager extends SignalWatcher(LitElement)
       background: var(--color-bg);
       color: var(--color-text-muted);
       font-family: var(--font-sans);
-      font-size: var(--text-xs);
+      font-size: var(--text-sm);
       user-select: none;
     }
 

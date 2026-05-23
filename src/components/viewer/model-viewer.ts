@@ -14,11 +14,13 @@ import { applyAnnotations } from './gltf-annotations.js';
 import type { HtmlLabelDef } from './gltf-annotations.js';
 import './viewer-labels-overlay.js';
 import type { ViewerLabelsOverlay, OverlayLabel, OverlayLabelPos } from './viewer-labels-overlay.js';
-import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR, VIEWER_GRID_SIZE,
+import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR,
+  VIEWER_SCENE_TO_GRID_SIZE, VIEWER_GRID_CELLS_PER_SCENE, VIEWER_GRID_FALLBACK_SCENE_RADIUS,
   VIEWER_GIZMO_AXIS_LENGTH, VIEWER_GIZMO_SCENE_FRACTION, VIEWER_GIZMO_COLOR_X, VIEWER_GIZMO_COLOR_Y,
-  VIEWER_GIZMO_COLOR_Z, VIEWER_GIZMO_LABEL_SIZE } from '../../settings.js';
+  VIEWER_GIZMO_COLOR_Z, VIEWER_GIZMO_COLOR_ORIGIN, VIEWER_GIZMO_LABEL_SIZE } from '../../settings.js';
 import { VIEW_STYLES } from './view-styles.js';
 import type { ViewStyle, ViewStyleMaterialConfig } from './view-styles.js';
+import { FadingGrid } from './fading-grid.js';
 import './viewer-menu.js';
 
 /** Round a raw step size up to the nearest "nice" number (1, 2, 5, 10, 20, …). */
@@ -141,10 +143,13 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _ambientLight!: THREE.AmbientLight;
   private _spotlight!: THREE.SpotLight;
   private _hemiLight?: THREE.HemisphereLight;
-  private _gridHelper?: THREE.GridHelper;
+  private _gridHelper?: FadingGrid;
   private _appliedGridSize?: number;
   private _appliedGridDivisions?: number;
-  private _appliedGridColor?: number;
+  private _appliedGridPrimary?:   number;
+  private _appliedGridSecondary?: number;
+  private _appliedGridPrimaryEvery?: number;
+  private _gridSizedFromModel = false; // false while the grid is still the fallback-sized one
   private _gizmoGroup?: THREE.Group;
   private _roomEnvTexture?: THREE.Texture;
 
@@ -576,12 +581,21 @@ export class ModelViewer extends SignalWatcher(LitElement)
       return;
     }
 
-    const color    = style.grid.color ?? 0x888888;
+    const primary      = style.grid.primaryColor   ?? 0x666666;
+    const secondary    = style.grid.secondaryColor ?? 0xAAAAAA;
+    const primaryEvery = style.grid.primaryEvery   ?? 5;
 
-    // ── Geometry: only compute once (first call that has a model or falls back to default) ──
-    if (!this._appliedGridSize)
+    // ── Geometry: build on first call and re-size once a real model arrives ──
+    // The first call may happen before any model loads — we size to a
+    // DEFAULT_SCENE_RADIUS fallback then. When the model later shows up
+    // (`_gridSizedFromModel` is still false but `_currentModel` is now set)
+    // we rebuild so cell size matches the actual scene scale.
+    const needsBuild = !this._appliedGridSize
+                       || (!this._gridSizedFromModel && !!this._currentModel);
+    if (needsBuild)
     {
-      let sceneRadius = VIEWER_GRID_SIZE * 0.5;
+      let sceneRadius = VIEWER_GRID_FALLBACK_SCENE_RADIUS;
+      let sizedFromModel = false;
       if (this._currentModel)
       {
         const box = new THREE.Box3().setFromObject(this._currentModel);
@@ -589,20 +603,36 @@ export class ModelViewer extends SignalWatcher(LitElement)
         {
           const sz = box.getSize(new THREE.Vector3());
           sceneRadius = Math.max(Math.max(sz.x, sz.z) * 0.5, 0.5);
+          sizedFromModel = true;
         }
       }
 
-      const cellStep   = _niceGridStep(sceneRadius * 2 / 10);
-      const gridRadius = Math.ceil((sceneRadius * 6) / cellStep) * cellStep;
-      const size       = gridRadius * 4;
-      const divisions  = Math.round(size / cellStep);
+      // Target cell size: one cell per `1 / VIEWER_GRID_CELLS_PER_SCENE` of the
+      // scene diameter, snapped to a "nice" round step (1, 2, 5, 10, …).
+      const cellStep  = _niceGridStep((sceneRadius * 2) / VIEWER_GRID_CELLS_PER_SCENE);
+      // Total grid extent snapped to a whole multiple of the cell step so
+      // primary lines line up cleanly with the centre.
+      const size      = Math.ceil((sceneRadius * VIEWER_SCENE_TO_GRID_SIZE) / cellStep) * cellStep;
+      const divisions = Math.round(size / cellStep);
 
-      this._gridHelper = new THREE.GridHelper(size, divisions, color, color);
+      if (this._gridHelper)
+      {
+        this._scene.remove(this._gridHelper);
+        this._gridHelper.geometry.dispose();
+        (this._gridHelper.material as THREE.Material).dispose();
+      }
+      this._gridHelper = new FadingGrid(
+        size, divisions, primary, secondary,
+        VIEWER_BACKGROUND_COLOR, primaryEvery,
+      );
       this._gridHelper.userData.isViewerHelper = true;
       this._scene.add(this._gridHelper);
-      this._appliedGridSize      = size;
-      this._appliedGridDivisions = divisions;
-      this._appliedGridColor     = color;
+      this._appliedGridSize         = size;
+      this._appliedGridDivisions    = divisions;
+      this._appliedGridPrimary      = primary;
+      this._appliedGridSecondary    = secondary;
+      this._appliedGridPrimaryEvery = primaryEvery;
+      this._gridSizedFromModel      = sizedFromModel;
 
       // Scale the gizmo so its arm length = sceneRadius × VIEWER_GIZMO_SCENE_FRACTION
       if (this._gizmoGroup)
@@ -618,27 +648,32 @@ export class ModelViewer extends SignalWatcher(LitElement)
     if (!this._gridHelper)
     {
       // Geometry params known — recreate with existing values (e.g. after dispose)
-      this._gridHelper = new THREE.GridHelper(
+      this._gridHelper = new FadingGrid(
         this._appliedGridSize,
         this._appliedGridDivisions!,
-        color, color,
+        primary, secondary,
+        VIEWER_BACKGROUND_COLOR, primaryEvery,
       );
       this._gridHelper.userData.isViewerHelper = true;
       this._scene.add(this._gridHelper);
-      this._appliedGridColor = color;
+      this._appliedGridPrimary      = primary;
+      this._appliedGridSecondary    = secondary;
+      this._appliedGridPrimaryEvery = primaryEvery;
       return;
     }
 
     this._gridHelper.visible = true;
 
-    if (this._appliedGridColor !== color)
+    if (this._appliedGridPrimary !== primary || this._appliedGridSecondary !== secondary)
     {
-      // Swap colours without rebuilding geometry
-      const mats = Array.isArray(this._gridHelper.material)
-        ? this._gridHelper.material as THREE.Material[]
-        : [this._gridHelper.material as THREE.Material];
-      mats.forEach(m => (m as THREE.LineBasicMaterial).color.setHex(color));
-      this._appliedGridColor = color;
+      this._gridHelper.setColors(primary, secondary);
+      this._appliedGridPrimary   = primary;
+      this._appliedGridSecondary = secondary;
+    }
+    if (this._appliedGridPrimaryEvery !== primaryEvery)
+    {
+      this._gridHelper.setPrimaryEvery(primaryEvery);
+      this._appliedGridPrimaryEvery = primaryEvery;
     }
   }
 
@@ -724,7 +759,11 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     // small origin sphere
     const originGeo = new THREE.SphereGeometry(L * 0.06, 8, 8);
-    const originMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
+    const originMat = new THREE.MeshBasicMaterial({
+      color:       VIEWER_GIZMO_COLOR_ORIGIN,
+      depthTest:   false,
+      toneMapped:  false, // keep the configured colour exact (AgX would otherwise tint pure white slightly)
+    });
     const originSphere = new THREE.Mesh(originGeo, originMat);
     originSphere.renderOrder = 999;
     originSphere.userData.isViewerHelper = true;
@@ -1144,6 +1183,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     this._scene.add(model);
     this._currentModel = model;
+
+    // Resize the grid to match the now-known model scale (first model load).
+    this._updateGrid();
 
     // Aim spotlight at model center
     const mc = new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3());

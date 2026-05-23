@@ -20,16 +20,21 @@ export const EDITOR_START_SCRIPT: ScriptData =
   name: 'untitled',
   code: `// Welcome to Archiyou!
 myMainBox = box($SIZE).color('red');
-// do a subtract
 myMainBox.subtract(
-      box(50)
-        .moveTo(
-          myMainBox.bbox().corner('rightbacktop')
-        )
+      box(50).color('blue')
+        .moveTo(myMainBox.bbox().corner('leftfronttop'))
         .hide()
     )
 
-
+doc.create('myDoc')
+.pipeline(() => {
+  iso = myMainBox.iso();
+  return { iso }
+})
+.page('myPage')
+.view('isometry')
+.shapes('iso')
+.text('MyText')
 `,
   params: {
     SIZE: {
@@ -53,9 +58,18 @@ export const DIMENSION_ARROW_RADIUS     = 0.01;    // arrowhead cone base radius
 export const VIEWER_BACKGROUND_COLOR = 0xf1f5f9; // scene + renderer clear color
 export const VIEWER_AUTO_FRAME_ON_FIRST_LOAD = true;
 
-// Grid (world units)
-export const VIEWER_GRID_SIZE      = 100; // gets overriden
-export const VIEWER_GRID_DIVISIONS = 1;
+// 3D viewer grid (auto-sized to the loaded model on first load).
+// Total grid extent along each axis = sceneRadius × VIEWER_SCENE_TO_GRID_SIZE.
+// FadingGrid fades to the background near the edges, so the visually useful
+// area is smaller than the full extent.
+export const VIEWER_SCENE_TO_GRID_SIZE   = 30;
+// Target number of grid cells across the scene diameter. The actual cell
+// step is snapped to the nearest "nice" value (1, 2, 5, 10, …) so labels and
+// snap distances stay readable.
+export const VIEWER_GRID_CELLS_PER_SCENE = 10;
+// Scene radius assumed for the very first grid build, before any model has
+// loaded. Once a model arrives the grid rebuilds from its bounding box.
+export const VIEWER_GRID_FALLBACK_SCENE_RADIUS = 5;
 
 // Origin UCS / navigation gizmo
 export const VIEWER_GIZMO_AXIS_LENGTH    = 0.6;    // positive-arm length, world units (base scale)
@@ -63,6 +77,7 @@ export const VIEWER_GIZMO_SCENE_FRACTION = 0.40;   // gizmo arm length as fracti
 export const VIEWER_GIZMO_COLOR_X        = 0xFF0000; // red   (+X)
 export const VIEWER_GIZMO_COLOR_Y        = 0x00FF00; // green (+Y)
 export const VIEWER_GIZMO_COLOR_Z        = 0x0000FF; // blue  (+Z)
+export const VIEWER_GIZMO_COLOR_ORIGIN   = 0xFFFFFF; // origin sphere at (0,0,0)
 export const VIEWER_GIZMO_LABEL_SIZE     = 0.14;   // sprite scale, world units
 
 // ── File Manager ──────────────────────────────────────────────────────────────

@@ -2,7 +2,9 @@ import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 
+import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
+import '@awesome.me/webawesome/dist/components/input/input.js';
 
 import { executionResult } from '../../../state/workspace.js';
 import type { ConsoleMessageType } from '../../../../devlibs/archiyou-core-next/src/console/types';
@@ -36,30 +38,65 @@ export class EditorConsoleTool extends SignalWatcher(LitElement)
   override render()
   {
     const messages = executionResult.get()?.messages ?? [];
+    const searchQuery = this._searchQuery.trim().toLowerCase();
 
     const counts = Object.fromEntries(
       MESSAGE_TYPES.map(t => [t, messages.filter(m => m.type === t).length])
     ) as Record<ConsoleMessageType, number>;
 
-    const filtered = messages.filter(m => this._activeFilters.has(m.type));
+    const filtered = messages.filter(m =>
+      this._activeFilters.has(m.type)
+      && (!searchQuery || m.message.toLowerCase().includes(searchQuery))
+    );
 
     return html`
-      <div class="toolbar">
-        ${MESSAGE_TYPES.map(type => html`
-          <button
-            class="filter-btn type-${type} ${this._activeFilters.has(type) ? 'active' : ''}"
-            @click=${() => this._toggleFilter(type)}
-            title="${TYPE_LABEL[type]}: ${counts[type]}"
+      <div class="topbar">
+        <div class="toolbar">
+          ${MESSAGE_TYPES.map(type => html`
+            <button
+              class="filter-btn type-${type} ${this._activeFilters.has(type) ? 'active' : ''}"
+              @click=${() => this._toggleFilter(type)}
+              title="${TYPE_LABEL[type]}: ${counts[type]}"
+            >
+              <wa-icon library="lucide" name=${ICON_MAP[type]}></wa-icon>
+              <span class="count">${counts[type]}</span>
+            </button>
+          `)}
+        </div>
+
+        <div class="searchbar">
+          <wa-input
+            class="search-input"
+            size="small"
+            type="search"
+            placeholder="Filter"
+            .value=${this._searchQuery}
+            @input=${this._onSearchInput}
           >
-            <wa-icon library="lucide" name=${ICON_MAP[type]}></wa-icon>
-            <span class="count">${counts[type]}</span>
-          </button>
-        `)}
+            <wa-icon slot="start" library="lucide" name="search"></wa-icon>
+
+            ${this._searchQuery
+              ? html`
+                  <wa-button
+                    slot="end"
+                    class="clear-search-btn"
+                    appearance="plain"
+                    size="small"
+                    @click=${this._clearSearch}
+                    aria-label="Clear search"
+                    title="Clear search"
+                  >
+                    <wa-icon library="lucide" name="x"></wa-icon>
+                  </wa-button>
+                `
+              : null}
+          </wa-input>
+        </div>
       </div>
 
       <div class="messages">
         ${filtered.length === 0
-          ? html`<div class="empty">No messages</div>`
+          ? html`<div class="empty">${this._searchQuery ? 'No matching messages' : 'No messages'}</div>`
           : filtered.map(m => html`
               <div class="message type-${m.type}">
                 <wa-icon class="msg-icon" library="lucide" name=${ICON_MAP[m.type]}></wa-icon>
@@ -73,7 +110,8 @@ export class EditorConsoleTool extends SignalWatcher(LitElement)
   }
 
   // ── 2. State ──
-  @state() private _activeFilters: Set<ConsoleMessageType> = new Set(MESSAGE_TYPES);
+  @state() private _activeFilters: Set<ConsoleMessageType> = new Set(['error', 'user']);
+  @state() private _searchQuery = '';
 
   // ── 4. Behaviour & Methods ──
   private _toggleFilter(type: ConsoleMessageType)
@@ -82,6 +120,16 @@ export class EditorConsoleTool extends SignalWatcher(LitElement)
     if (next.has(type)) { next.delete(type); }
     else { next.add(type); }
     this._activeFilters = next;
+  }
+
+  private _onSearchInput(event: Event)
+  {
+    this._searchQuery = (event.target as HTMLInputElement).value ?? '';
+  }
+
+  private _clearSearch()
+  {
+    this._searchQuery = '';
   }
 
   // ── 5. Styles ──
@@ -104,13 +152,46 @@ export class EditorConsoleTool extends SignalWatcher(LitElement)
       box-sizing: border-box;
     }
 
-    .toolbar {
+    .topbar {
       display: flex;
       flex-wrap: wrap;
-      gap: 4px;
+      align-items: center;
+      gap: 6px;
       padding: 4px 10px;
       flex-shrink: 0;
       border-bottom: 1px solid var(--color-border);
+    }
+
+    .toolbar {
+      display: flex;
+      flex: 1 1 auto;
+      flex-wrap: wrap;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .searchbar {
+      flex: 0 1 160px;
+      width: min(100%, 160px);
+      min-width: 120px;
+    }
+
+    .search-input {
+      width: 100%;
+      font-size: var(--text-xs);
+    }
+
+    .search-input::part(base),
+    .search-input::part(input),
+    .search-input::part(prefix),
+    .search-input::part(suffix) {
+      font-size: var(--text-xs);
+    }
+
+    .clear-search-btn {
+      --wa-button-padding-inline: 0.25rem;
+      min-height: auto;
+      font-size: var(--text-xs);
     }
 
     .filter-btn {
@@ -152,6 +233,7 @@ export class EditorConsoleTool extends SignalWatcher(LitElement)
       flex: 1;
       min-height: 0;
       overflow-y: auto;
+      overflow-x: hidden;
       padding-bottom: 0.3rem;
     }
 

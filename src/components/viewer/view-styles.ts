@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { VIEWER_GRID_SIZE, VIEWER_GRID_DIVISIONS } from '../../settings.js';
 
 export interface ViewStyleMaterialConfig {
   color?: number;
@@ -22,9 +21,12 @@ export interface ViewStyleLightConfig {
 
 export interface ViewStyleGridConfig {
   visible: boolean;
-  color?: number;
-  divisions?: number;
-  size?: number;
+  /** Colour of the bolder, periodic "primary" lines (every `primaryEvery` cells). */
+  primaryColor?: number;
+  /** Colour of the lighter "secondary" lines between primaries. */
+  secondaryColor?: number;
+  /** Draw a primary line every N cells, measured from the centre (default 5). */
+  primaryEvery?: number;
 }
 
 export interface ViewStyle {
@@ -66,7 +68,7 @@ export const VIEW_STYLES: ViewStyle[] = [
     environment: 'room',
     ambientLight: { enabled: true, color: 0xffffff, intensity: 0.3 },
     spotlight: { enabled: true, color: 0xffffff, intensity: 5, castShadow: true },
-    grid: { visible: true, color: 0xDDDDDD, divisions: VIEWER_GRID_DIVISIONS, size: VIEWER_GRID_SIZE },
+    grid: { visible: true, primaryColor: 0xAAAAAA, secondaryColor: 0xDDDDDD, primaryEvery: 5 },
   },
   {
     id: 'xray',
@@ -87,7 +89,7 @@ export const VIEW_STYLES: ViewStyle[] = [
       depthTest: true,
     },
     lines: { strokeWidth: 2  },
-    grid: { visible: true, color: 0xFFFFFF, divisions: VIEWER_GRID_DIVISIONS, size: VIEWER_GRID_SIZE },
+    grid: { visible: true, primaryColor: 0xB0B0B0, secondaryColor: 0xE5E5E5, primaryEvery: 5 },
   },
   {
     id: 'wireframe',
@@ -124,7 +126,7 @@ export const VIEW_STYLES: ViewStyle[] = [
       side: 'double',
     },
     lines: { color: 0x4fc3f7,  },
-    grid: { visible: true, color: 0x1e4b8a, divisions: VIEWER_GRID_DIVISIONS, size: VIEWER_GRID_SIZE },
+    grid: { visible: true, primaryColor: 0x4fc3f7, secondaryColor: 0x1e4b8a, primaryEvery: 5 },
   },
   {
     id: 'techdraw',
@@ -144,6 +146,6 @@ export const VIEW_STYLES: ViewStyle[] = [
       transparent: false,
     },
     lines: { color: 0x111111 },
-    grid: { visible: false },
+    grid: { visible: true, primaryColor: 0x999999, secondaryColor: 0xDDDDDD, primaryEvery: 5 },
   },
 ];

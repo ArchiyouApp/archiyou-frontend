@@ -16,9 +16,11 @@ import { signal, computed } from '@lit-labs/signals';
 
 import { Script } from '../../devlibs/archiyou-core-next/src/execution/Script';
 import type { RunnerScriptExecutionResult } from '../../devlibs/archiyou-core-next/src/runner/types';
+import { uuid4 } from '../../devlibs/archiyou-core-next/src/utils';
 
 import { EDITOR_START_SCRIPT } from '../settings';
 import type { UserState, WorkspaceCoreState } from './types';
+import { scenegraph, reconcileScenegraph } from './editor';
 
 //// LOCAL STORAGE ////
 
@@ -151,7 +153,12 @@ const _initialActive  = _loadPersistedScript();
   else          _initialScripts.push(_initialActive);
 }
 
-export const editorScript     = signal<Script | null>(_initialActive);
+// `equals: () => false` — every `.set()` notifies, even when the script
+// reference hasn't changed. We mutate the active Script in place (code,
+// metadata, params…) and call `editorScript.set(script)` to broadcast;
+// without this, the polyfill's default `Object.is` check would suppress
+// the notification and watchers would never see the new content.
+export const editorScript     = signal<Script | null>(_initialActive, { equals: () => false });
 export const scripts          = signal<Script[]>(_initialScripts);
 export const executing        = signal<boolean>(false);
 export const executionResult  = signal<RunnerScriptExecutionResult | null>(null);
@@ -211,6 +218,62 @@ export function createNewScript(): Script
   saveActive();
   saveCollection();
   return fresh;
+}
+
+function _normalizeImportedScriptName(name?: string): string | undefined
+{
+  const base = name?.trim().toLowerCase();
+  return base ? base : undefined;
+}
+
+function _uniqueImportedScriptName(name?: string): string | undefined
+{
+  const normalized = _normalizeImportedScriptName(name);
+  if (!normalized) return undefined;
+  if (!isScriptNameTaken(normalized)) return normalized;
+
+  const importBase = normalized.endsWith('-imported')
+    ? normalized
+    : `${normalized}-imported`;
+
+  if (!isScriptNameTaken(importBase)) return importBase;
+
+  let index = 2;
+  while (isScriptNameTaken(`${importBase}-${index}`))
+  {
+    index++;
+  }
+  return `${importBase}-${index}`;
+}
+
+/** Import ScriptData-like payload as a new local editor script.
+ *  The imported script always gets fresh local ids so it never overwrites an
+ *  existing script by identity. Returns the opened Script or null if invalid. */
+export function importScriptFromData(data: Record<string, any>): Script | null
+{
+  const validated = Script.fromData(data);
+  if (!validated) return null;
+
+  const importedData = validated.toData() as Record<string, any>;
+  const importedName = _uniqueImportedScriptName(importedData.name);
+
+  const localScript = Script.fromData({
+    ...importedData,
+    id: uuid4(),
+    fileId: uuid4(),
+    name: importedName,
+  });
+
+  if (!localScript) return null;
+
+  _archiveScript(editorScript.get());
+  _upsertScript(localScript);
+  editorScript.set(localScript);
+  bumpScripts();
+  saveActive();
+  saveCollection();
+
+  return localScript;
 }
 
 /** Open a script from the collection by fileId.
@@ -306,9 +369,15 @@ export function updateScriptMeta(
   editorScript.set(script);
 }
 
-/** Store the result of the latest execution. */
+/** Store the result of the latest execution. Also reconciles the app-owned
+ *  scenegraph against the new one from `result.state` so user-toggled
+ *  visibility on still-existing paths survives the re-run. We update the
+ *  scenegraph synchronously **before** notifying executionResult watchers
+ *  (the model-viewer) so its GLB load sees an up-to-date tree. */
 export function setExecutionResult(result: RunnerScriptExecutionResult): void
 {
+  const next = reconcileScenegraph(scenegraph.get(), result.state?.scenegraph ?? null);
+  scenegraph.set(next);
   executionResult.set(result);
 }
 

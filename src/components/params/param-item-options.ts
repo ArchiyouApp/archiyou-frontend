@@ -102,7 +102,7 @@ export class ParamItemOptions extends LitElement
     private _dispatch()
     {
         this.dispatchEvent(new CustomEvent('param-value-change', {
-            detail:   { id: this.param.id, value: this._selected },
+            detail:   { name: this.param.name, value: this._selected },
             bubbles:  true,
             composed: true,
         }));

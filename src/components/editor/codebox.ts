@@ -69,6 +69,9 @@ export class CodeBox extends SignalWatcher(LitElement)
   // ── 1. Render ──
   override render()
   {
+    const result = executionResult.get();
+    const error = result?.errors?.[0];
+
     return html`
       <div class="wrapper">
         <div class="title-bar">
@@ -77,16 +80,12 @@ export class CodeBox extends SignalWatcher(LitElement)
           <span class="state">
             ${executing.get()
                 ? html`<wa-icon library="lucide" name="settings" animation="spin-reverse" label="executing"></wa-icon>`
-                : executionResult.get()?.status === 'error'
-                    ? html`
-                        <wa-icon class="error-icon" library="lucide" name="circle-x" label="error"></wa-icon>
-                        <span class="error-message" title=${this._fullErrorMessage(executionResult.get()?.errors?.[0]?.message)}>
-                          ${this._shortErrorMessage(executionResult.get()?.errors?.[0])}
-                        </span>`
-                    : executionResult.get()?.status === 'success'
+                : result?.status === 'error'
+                    ? html`<wa-icon class="error-icon" library="lucide" name="circle-x" label="error"></wa-icon>`
+                    : result?.status === 'success'
                         ? html`
                             <wa-icon class="success-icon" library="lucide" name="circle-check" label="success"></wa-icon>
-                            <span class="duration">${this._formatDuration(executionResult.get()!.duration)}</span>`
+                            <span class="duration">${this._formatDuration(result.duration)}</span>`
                         : ''
             }
           </span>
@@ -96,6 +95,13 @@ export class CodeBox extends SignalWatcher(LitElement)
               <wa-icon library="lucide" name="play" label="Execute"></wa-icon>
           </button>
         </div>
+        ${result?.status === 'error'
+          ? html`
+              <div class="subheader subheader-error" title=${this._fullErrorMessage(error?.message)}>
+                ${this._shortErrorMessage(error)}
+              </div>
+            `
+          : ''}
         <div class="cm-container"></div>
       </div>
     `;
@@ -248,7 +254,7 @@ export class CodeBox extends SignalWatcher(LitElement)
     this._view.dispatch({ effects: setErrorLine.of(value) });
   }
 
-  /** Extract a 1-line summary from the error result entry, prepending line info. */
+  /** Extract an error summary from the result entry, prepending line info. */
   private _shortErrorMessage(err: { message?: string; lineStart?: number } | undefined): string
   {
     const msg = err?.message;
@@ -257,8 +263,7 @@ export class CodeBox extends SignalWatcher(LitElement)
     if (!msg) return `${prefix}Execution error`;
     const m = msg.match(/- error: '(.+?)'/);
     const text = m ? m[1] : (msg.split('\n').find(l => l.trim().length > 0) ?? 'Execution error');
-    const full = `${prefix}${text}`;
-    return full.length > 80 ? full.slice(0, 77) + '…' : full;
+    return `${prefix}${text}`;
   }
 
   /** Return the full message for the tooltip. */
@@ -304,6 +309,21 @@ export class CodeBox extends SignalWatcher(LitElement)
       flex-shrink: 0;
       background: var(--color-gray);
       border-bottom: 1px solid var(--color-border);
+    }
+
+    .subheader {
+      padding: var(--space-2xs, 0.25rem) var(--space-md);
+      border-bottom: 1px solid var(--color-border);
+      font-family: var(--font-sans);
+      font-size: var(--text-xs, 0.75rem);
+      line-height: 1.35;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .subheader-error {
+      color: var(--wa-color-danger-500, #ef4444);
+      background: color-mix(in srgb, var(--wa-color-danger-500, #ef4444) 8%, transparent);
     }
 
     .title {
@@ -361,14 +381,10 @@ export class CodeBox extends SignalWatcher(LitElement)
       flex-shrink: 0;
     }
 
-    .error-message {
-      color: var(--wa-color-danger-500, #ef4444);
-      font-size: var(--text-xs, 0.75rem);
-      max-width: 28ch;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      cursor: default;
+    .state {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2xs, 0.25rem);
     }
 
     .success-icon {

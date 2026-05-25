@@ -13,14 +13,19 @@ import { signal, computed } from '@lit-labs/signals';
 
 import { ScriptParam } from '../../devlibs/archiyou-core-next/src/execution/ScriptParam';
 import type { ScriptParamType, ScriptParamData } from '../../devlibs/archiyou-core-next/src/execution/types';
+import type { SmartSceneNodeData } from '../../devlibs/archiyou-core-next/src/modeler/types';
 
 import { editorScript, bumpScript, saveCore } from './core';
 import type { ScriptMetadata, ScriptPreset } from './types';
 
 //// EDITOR UI SIGNALS ////
 
-export const sceneTree         = signal<import('./types').SceneNodeData | null>(null);
-export const hiddenNodes       = signal<ReadonlySet<string>>(new Set<string>());
+/** App-owned, mutable copy of the runner's scenegraph. Identity by path
+ *  (root joined down with `/`). User visibility toggles mutate this tree;
+ *  on every new execution we reconcile against this snapshot so toggled
+ *  nodes that still exist by path keep their visibility. `equals: () => false`
+ *  so in-place node mutations broadcast to watchers. */
+export const scenegraph        = signal<SmartSceneNodeData | null>(null, { equals: () => false });
 export const activeBottomPanel = signal<'console' | 'scene' | 'none'>('console');
 export const fileManagerCollapsed = signal<boolean>(true);
 export const paramMenuCollapsed   = signal<boolean>(false);
@@ -34,25 +39,146 @@ export const scriptMetadata = signal<ScriptMetadata>({
   categories: [],
 });
 
+function _encodeScenegraphSegment(name: string): string
+{
+  return encodeURIComponent(name);
+}
+
+function _decodeScenegraphSegment(name: string): string
+{
+  return decodeURIComponent(name);
+}
+
+export function buildScenegraphPath(parentPath: string, name: string): string
+{
+  const segment = _encodeScenegraphSegment(name);
+  return parentPath ? `${parentPath}/${segment}` : segment;
+}
+
 //// EDITOR UI MUTATORS ////
 
-export function setSceneTree(tree: import('./types').SceneNodeData | null): void
+/** Toggle visibility for the scenegraph node at `path` (slash-separated names
+ *  from the root). Mutates the tree in place then notifies. */
+export function toggleNodeVisibility(path: string): void
 {
-  sceneTree.set(tree);
+  const root = scenegraph.get();
+  if (!root) return;
+  const next = _toggleNodeVisibilityByPath(root, path);
+  if (!next) return;
+  scenegraph.set(next);
 }
 
-export function toggleNodeVisibility(uuid: string): void
+/** Walk a scenegraph by `/`-joined path. Empty path returns the root. */
+export function findNodeByPath(
+  root: SmartSceneNodeData,
+  path: string,
+): SmartSceneNodeData | null
 {
-  const next = new Set(hiddenNodes.get());
-  if (next.has(uuid)) next.delete(uuid);
-  else next.add(uuid);
-  hiddenNodes.set(next);
+  if (!path) return root;
+  const parts = path.split('/').map(_decodeScenegraphSegment);
+  if (parts[0] !== root.name) return null;
+  let cur: SmartSceneNodeData = root;
+  for (let i = 1; i < parts.length; i++)
+  {
+    const next = cur.children.find(c => c.name === parts[i]);
+    if (!next) return null;
+    cur = next;
+  }
+  return cur;
 }
 
+/** Deep-clone a SmartSceneNodeData tree (plain structured data, safe). */
+function _cloneNode(n: SmartSceneNodeData): SmartSceneNodeData
+{
+  return {
+    name: n.name,
+    shape: n.shape ?? null,
+    style: { ...n.style },
+    children: n.children.map(_cloneNode),
+  };
+}
+
+/** Return a new tree with the node at `path` toggled, or `null` if not found. */
+function _toggleNodeVisibilityByPath(
+  root: SmartSceneNodeData,
+  path: string,
+): SmartSceneNodeData | null
+{
+  if (!path) return null;
+
+  const parts = path.split('/').map(_decodeScenegraphSegment);
+  if (parts[0] !== root.name) return null;
+
+  const toggle = (node: SmartSceneNodeData, partIndex: number): SmartSceneNodeData | null =>
+  {
+    if (partIndex === parts.length - 1)
+    {
+      const current = node.style.visible !== false;
+      return {
+        ...node,
+        style: { ...node.style, visible: !current },
+        children: node.children.map(_cloneNode),
+      };
+    }
+
+    const childName = parts[partIndex + 1];
+    const childIndex = node.children.findIndex(c => c.name === childName);
+    if (childIndex === -1) return null;
+
+    const toggledChild = toggle(node.children[childIndex], partIndex + 1);
+    if (!toggledChild) return null;
+
+    const nextChildren = node.children.map((child, index) =>
+      index === childIndex ? toggledChild : _cloneNode(child),
+    );
+
+    return {
+      ...node,
+      style: { ...node.style },
+      children: nextChildren,
+    };
+  };
+
+  return toggle(root, 0);
+}
+
+/** Reconcile a previous scenegraph against an incoming one (by path):
+ *  carry over any explicit `style.visible` the user toggled on still-existing
+ *  paths; otherwise the incoming default wins. Pure function: returns a fresh
+ *  deep clone of `incoming` and never mutates either input. */
+export function reconcileScenegraph(
+  prev: SmartSceneNodeData | null,
+  incoming: SmartSceneNodeData | null,
+): SmartSceneNodeData | null
+{
+  if (!incoming) return null;
+  const clone = _cloneNode(incoming);
+  if (!prev) return clone;
+
+  // Build lookup of previous visibility-by-path. Only carry explicit values.
+  const prevVis = new Map<string, boolean>();
+  const collect = (n: SmartSceneNodeData, parentPath: string) =>
+  {
+    const p = buildScenegraphPath(parentPath, n.name);
+    if (typeof n.style.visible === 'boolean') prevVis.set(p, n.style.visible);
+    n.children.forEach(c => collect(c, p));
+  };
+  collect(prev, '');
+
+  const apply = (n: SmartSceneNodeData, parentPath: string) =>
+  {
+    const p = buildScenegraphPath(parentPath, n.name);
+    if (prevVis.has(p)) n.style.visible = prevVis.get(p);
+    n.children.forEach(c => apply(c, p));
+  };
+  apply(clone, '');
+  return clone;
+}
+
+/** Drop the scenegraph (called when no model is loaded). */
 export function clearSceneState(): void
 {
-  sceneTree.set(null);
-  hiddenNodes.set(new Set<string>());
+  scenegraph.set(null);
 }
 
 export function setActiveBottomPanel(panel: 'console' | 'scene' | 'none'): void
@@ -100,13 +226,15 @@ export const scriptParams = computed<ScriptParam[]>(() =>
 {
   const s = editorScript.get();
   if (!s) return [];
-  return Object.values(s.params).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  return Object.values(s.params)
+    .map((param, index) => ({ param, index }))
+    .sort((a, b) => ((a.param.order ?? 0) - (b.param.order ?? 0)) || (a.index - b.index))
+    .map(({ param }) => param);
 });
 
 /** Flat spec used by param-menu / param-define-menu (legacy field names). */
 export interface ParamSpec
 {
-  id?: string;
   name?: string;
   type?: ScriptParamType;
   group?: string;
@@ -155,13 +283,13 @@ function _applySpec(p: ScriptParam, spec: ParamSpec): void
   p.iterable = p.isIterable();
 }
 
-/** Find a param (and its current key) in the active script by id. */
-function _findById(id: string): { key: string; param: ScriptParam } | null
+/** Find a param (and its current key) in the active script by name. */
+function _findByName(name: string): { key: string; param: ScriptParam } | null
 {
   const s = editorScript.get();
   if (!s) return null;
   for (const [key, param] of Object.entries(s.params))
-    if (param.id === id) return { key, param };
+    if (param.name === name) return { key, param };
   return null;
 }
 
@@ -172,7 +300,6 @@ export function addParam(spec: ParamSpec): void
   if (!s) return;
 
   const p = ScriptParam.fromType((spec.type ?? 'number') as ScriptParamType);
-  p.id = spec.id ?? crypto.randomUUID();
   p.name = spec.name ?? p.name;
   p.group = spec.group ?? 'main';
   p.order = spec.order ?? Object.keys(s.params).length;
@@ -183,20 +310,20 @@ export function addParam(spec: ParamSpec): void
   saveCore();
 }
 
-/** Update an existing param by id (re-keys the script.params map if renamed). */
-export function updateParam(id: string, updates: ParamSpec): void
+/** Update an existing param by name (re-keys the script.params map if renamed). */
+export function updateParam(name: string, updates: ParamSpec): void
 {
-  const found = _findById(id);
+  const found = _findByName(name);
   const s = editorScript.get();
   if (!found || !s) return;
 
   let { key, param } = found;
+  const originalKey = key;
 
   // type change → rebuild from the new type, preserving identity fields
   if (updates.type && updates.type !== param.type)
   {
     const next = ScriptParam.fromType(updates.type);
-    next.id = param.id;
     next.name = param.name;
     next.group = param.group;
     next.order = param.order;
@@ -205,8 +332,15 @@ export function updateParam(id: string, updates: ParamSpec): void
 
   _applySpec(param, updates);
 
-  delete s.params[key];
-  s.params[param.name] = param;
+  if (param.name !== originalKey)
+  {
+    delete s.params[originalKey];
+    s.params[param.name] = param;
+  }
+  else
+  {
+    s.params[originalKey] = param;
+  }
   bumpScript();
   saveCore();
 }
@@ -218,7 +352,6 @@ export function addParamDirect(data: ScriptParamData): void
   if (!s) return;
 
   const p = ScriptParam.fromData(data);
-  p.id    = data.id    ?? crypto.randomUUID();
   p.order = data.order ?? Object.keys(s.params).length;
   s.params[p.name] = p;
   bumpScript();
@@ -227,25 +360,32 @@ export function addParamDirect(data: ScriptParamData): void
 
 /** Update an existing param directly from canonical ScriptParamData.
  *  Re-keys script.params if the name changed. */
-export function updateParamDirect(id: string, data: ScriptParamData): void
+export function updateParamDirect(name: string, data: ScriptParamData): void
 {
-  const found = _findById(id);
+  const found = _findByName(name);
   const s = editorScript.get();
   if (!found || !s) return;
 
   const { key } = found;
-  const p = ScriptParam.fromData({ ...data, id });
+  const p = ScriptParam.fromData(data);
   p.order = found.param.order;
 
-  delete s.params[key];
-  s.params[p.name] = p;
+  if (p.name !== key)
+  {
+    delete s.params[key];
+    s.params[p.name] = p;
+  }
+  else
+  {
+    s.params[key] = p;
+  }
   bumpScript();
   saveCore();
 }
 
-export function deleteParam(id: string): void
+export function deleteParam(name: string): void
 {
-  const found = _findById(id);
+  const found = _findByName(name);
   const s = editorScript.get();
   if (!found || !s) return;
   delete s.params[found.key];
@@ -253,12 +393,12 @@ export function deleteParam(id: string): void
   saveCore();
 }
 
-/** Re-order params within a group according to the supplied ordered id list. */
-export function reorderParams(_group: string, orderedIds: string[]): void
+/** Re-order params within a group according to the supplied ordered name list. */
+export function reorderParams(_group: string, orderedNames: string[]): void
 {
-  orderedIds.forEach((id, idx) =>
+  orderedNames.forEach((name, idx) =>
   {
-    const found = _findById(id);
+    const found = _findByName(name);
     if (found) found.param.order = idx;
   });
   bumpScript();

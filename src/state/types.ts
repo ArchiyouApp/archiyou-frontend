@@ -36,26 +36,6 @@ export const paramListItemType = (p: ScriptParamClass): 'string' | 'number' | 'b
 /** Effective current value: runtime `_value`, falling back to `default`. */
 export const paramValue        = (p: ScriptParamClass): any => p._value ?? p.default;
 
-// ── Scene tree ────────────────────────────────────────────────────────────────
-
-export interface SceneMaterialData
-{
-  color?: string;       // '#rrggbb'
-  opacity: number;
-  transparent: boolean;
-  wireframe?: boolean;
-}
-
-export interface SceneNodeData
-{
-  uuid: string;
-  name: string;
-  type: string;         // THREE object type string: 'Mesh', 'Group', 'LineSegments2', …
-  visible: boolean;
-  children: SceneNodeData[];
-  material?: SceneMaterialData;
-}
-
 // ── Core ──────────────────────────────────────────────────────────────────────
 
 export interface UserState
@@ -96,7 +76,7 @@ export interface ScriptMetadata
 /** Detail payload for the 'param-value-change' custom event. */
 export interface ParamValueChangeDetail
 {
-  id:       string;
+  name:     string;
   value?:   any;
   units?:   string;
   options?: string[];

@@ -74,10 +74,18 @@ export interface AnnotationsResult
 export async function applyAnnotations(
   gltf: GLTF,
   modelGroup: THREE.Object3D,
+  /** Annotations from the execution result (preferred). When absent, fall
+   *  back to `gltf.parser.json.extras.state.annotations` (new) and then to
+   *  `extras.annotations` (legacy) so a standalone .glb can still render. */
+  override?: AnnotationItem[],
+  /** Multiplier applied to arrowhead length/radius so dimension arrows scale
+   *  with the viewer's scene radius. 1 = use the constants as-is. */
+  arrowScale: number = 1,
 ): Promise<AnnotationsResult>
 {
-  const extras = (gltf.parser?.json?.extras ?? {}) as { annotations?: AnnotationItem[] };
-  const anns = extras.annotations;
+  const extras = (gltf.parser?.json?.extras ?? {}) as
+    { annotations?: AnnotationItem[]; state?: { annotations?: AnnotationItem[] } };
+  const anns = override ?? extras.state?.annotations ?? extras.annotations;
   if (!Array.isArray(anns) || anns.length === 0) return { htmlLabels: [] };
 
   const htmlLabels: HtmlLabelDef[] = [];
@@ -109,9 +117,10 @@ export async function applyAnnotations(
 
   if (dims.length === 0) return { htmlLabels };
 
-  // 3D dimension-line geometry (line + arrowhead cones). Sizes are world units.
-  const arrowLen = DIMENSION_ARROW_LENGTH;
-  const arrowRad = DIMENSION_ARROW_RADIUS;
+  // 3D dimension-line geometry (line + arrowhead cones). Sizes are world units,
+  // scaled by `arrowScale` so arrows stay legible across very different model sizes.
+  const arrowLen = DIMENSION_ARROW_LENGTH * arrowScale;
+  const arrowRad = DIMENSION_ARROW_RADIUS * arrowScale;
 
   const group = new THREE.Group();
   group.name = 'Dimensions';

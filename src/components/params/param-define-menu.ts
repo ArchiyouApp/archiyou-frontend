@@ -1,6 +1,7 @@
 import { LitElement, html, css, nothing, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
+import { ifDefined } from 'lit/directives/if-defined.js';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
@@ -127,7 +128,7 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
                             : html`
                                 <select class="select-input" @change=${this._onGroupChange}>
                                     ${groups.map(g => html`
-                                        <option value=${g} ?selected=${this._group === g}>${g}</option>
+                                        <option value=${ifDefined(g)} ?selected=${this._group === g}>${g}</option>
                                     `)}
                                     <option value="__new__">+ New group…</option>
                                 </select>`
@@ -489,7 +490,7 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
         if (!name) return;
 
         const duplicate = scriptParams.get().some(
-            p => p.name.toLowerCase() === name.toLowerCase() && p.id !== this.editParam?.id
+            p => p.name.toLowerCase() === name.toLowerCase() && p.name !== this.editParam?.name
         );
         if (duplicate)
         {
@@ -509,7 +510,6 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
         base.name        = name.toUpperCase();
         base.description = this._description.trim() || undefined;
         base.group       = resolvedGroup;
-        if (this.editParam?.id) base.id = this.editParam.id;
 
         this._applyFormToSchema(base);
 

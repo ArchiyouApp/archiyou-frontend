@@ -48,7 +48,7 @@ export class ParamItemBoolean extends LitElement
     {
         this._checked = (e.target as HTMLInputElement).checked;
         this.dispatchEvent(new CustomEvent('param-value-change', {
-            detail:   { id: this.param.id, value: this._checked },
+            detail:   { name: this.param.name, value: this._checked },
             bubbles:  true,
             composed: true,
         }));

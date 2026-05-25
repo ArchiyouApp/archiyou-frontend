@@ -121,8 +121,8 @@ export class ConfiguratorParams extends SignalWatcher(LitElement)
 
   private _handleParamValueChange(e: CustomEvent<ParamValueChangeDetail>)
   {
-    const { id, value } = e.detail;
-    if (value !== undefined) setConfiguratorValue(id, value);
+    const { name, value } = e.detail;
+    if (value !== undefined) setConfiguratorValue(name, value);
 
     this.dispatchEvent(new CustomEvent('configurator-params-changed', {
       bubbles:  true,

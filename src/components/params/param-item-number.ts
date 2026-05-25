@@ -130,7 +130,7 @@ export class ParamItemNumber extends LitElement
     {
         const units = (e.target as HTMLSelectElement).value || undefined;
         this.dispatchEvent(new CustomEvent('param-value-change', {
-            detail:   { id: this.param.id, value: this._value, units },
+            detail:   { name: this.param.name, value: this._value, units },
             bubbles:  true,
             composed: true,
         }));
@@ -155,7 +155,7 @@ export class ParamItemNumber extends LitElement
     private _dispatchValue(value: number)
     {
         this.dispatchEvent(new CustomEvent('param-value-change', {
-            detail:   { id: this.param.id, value },
+            detail:   { name: this.param.name, value },
             bubbles:  true,
             composed: true,
         }));

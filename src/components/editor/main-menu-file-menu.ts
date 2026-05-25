@@ -29,26 +29,48 @@ export class MainMenuFileMenu extends LitElement
         </wa-dropdown-item>
 
         <wa-divider></wa-divider>
-        <wa-dropdown-item value="new">${msg('New')}</wa-dropdown-item>
+        <wa-dropdown-item value="new">
+          <wa-icon slot="icon" library="lucide" name="file-plus-2"></wa-icon>
+          ${msg('New')}
+        </wa-dropdown-item>
         <wa-dropdown-item value="open-script">
           <wa-icon slot="icon" library="lucide" name="folder-open"></wa-icon>
           ${msg('Open script')}
         </wa-dropdown-item>
-        <wa-dropdown-item value="save">${msg('Save')}</wa-dropdown-item>
+        <wa-dropdown-item value="save">
+          <wa-icon slot="icon" library="lucide" name="save"></wa-icon>
+          ${msg('Save')}
+        </wa-dropdown-item>
 
         <wa-divider></wa-divider>
 
+        <wa-dropdown-item value="import-data">
+          <wa-icon slot="icon" library="lucide" name="file-input"></wa-icon>
+          ${msg('Import Script Data')}
+        </wa-dropdown-item>
         <wa-dropdown-item value="export">
+          <wa-icon slot="icon" library="lucide" name="file-output"></wa-icon>
           ${msg('Export to...')}
-          <wa-dropdown-item slot="submenu" value="export-gltf">GLTF</wa-dropdown-item>
-          <wa-dropdown-item slot="submenu" value="export-stl">STL</wa-dropdown-item>
-          <wa-dropdown-item slot="submenu" value="export-obj">OBJ</wa-dropdown-item>
+          <wa-dropdown-item slot="submenu" value="export-gltf">
+            <wa-icon slot="icon" library="lucide" name="boxes"></wa-icon>
+            GLTF
+          </wa-dropdown-item>
+          <wa-dropdown-item slot="submenu" value="export-stl">
+            <wa-icon slot="icon" library="lucide" name="scan-search"></wa-icon>
+            STL
+          </wa-dropdown-item>
+          <wa-dropdown-item slot="submenu" value="export-obj">
+            <wa-icon slot="icon" library="lucide" name="package"></wa-icon>
+            OBJ
+          </wa-dropdown-item>
         </wa-dropdown-item>
 
         <wa-dropdown-item value="share">
+          <wa-icon slot="icon" library="lucide" name="share-2"></wa-icon>
           ${msg('Share script')}
         </wa-dropdown-item>
         <wa-dropdown-item value="publish">
+          <wa-icon slot="icon" library="lucide" name="rocket"></wa-icon>
           ${msg('Publish as configurator')}
         </wa-dropdown-item>
 

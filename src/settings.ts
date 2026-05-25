@@ -71,6 +71,16 @@ export const VIEWER_GRID_CELLS_PER_SCENE = 10;
 // loaded. Once a model arrives the grid rebuilds from its bounding box.
 export const VIEWER_GRID_FALLBACK_SCENE_RADIUS = 5;
 
+// Relative change in scene radius (XZ half-extent) that triggers a rebuild of
+// the grid, gizmo and dimension arrows on subsequent model loads. 0.5 = rebuild
+// when the new model is >50% larger/smaller than the last one we sized for.
+// Lower = jumpier, higher = stickier.
+export const VIEWER_ESSENTIALS_RESCALE_THRESHOLD = 0.5;
+
+// Scene radius at which DIMENSION_ARROW_LENGTH / DIMENSION_ARROW_RADIUS look
+// "right". Arrow sizes scale by (currentSceneRadius / reference).
+export const VIEWER_DIMENSION_REFERENCE_SCENE_RADIUS = VIEWER_GRID_FALLBACK_SCENE_RADIUS;
+
 // Origin UCS / navigation gizmo
 export const VIEWER_GIZMO_AXIS_LENGTH    = 0.6;    // positive-arm length, world units (base scale)
 export const VIEWER_GIZMO_SCENE_FRACTION = 0.40;   // gizmo arm length as fraction of scene radius

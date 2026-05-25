@@ -19,10 +19,12 @@ import '../components/editor/tools/document-viewer.js';
 import '../components/editor/tools/console-tool.js';
 import '../components/editor/file-manager.js';
 import '../components/editor/script-manager.js';
+import '../components/editor/script-importer.js';
 import type { ToolDef } from '../components/editor/toolbar.js';
 
-import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, deleteScriptById } from '../state/workspace';
+import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, deleteScriptById, importScriptFromData } from '../state/workspace';
 import { RunnerScriptExecutionRequest } from '../../devlibs/archiyou-core-next/src/runner/types';
+import type { ScriptData } from '../../devlibs/archiyou-core-next/src/execution/types';
 
 @customElement('page-editor')
 export class PageEditor extends SignalWatcher(LitElement)
@@ -90,6 +92,11 @@ export class PageEditor extends SignalWatcher(LitElement)
         @script-manager-cancel=${this._handleScriptManagerCancel}
         @script-delete=${this._handleScriptDelete}
       ></script-manager>
+      <script-importer
+        ?open=${this._showScriptImporter}
+        @script-importer-cancel=${this._handleScriptImporterCancel}
+        @script-importer-import=${this._handleScriptImporterImport}
+      ></script-importer>
     `;
   }
 
@@ -99,6 +106,7 @@ export class PageEditor extends SignalWatcher(LitElement)
   @state() private _activeSection: 'info' | 'code' | 'history' | 'files' | 'templates' | 'help' | 'settings' | null = 'code';
   @state() private _activeTools: ToolDef[] = [];
   @state() private _showScriptManager = false;
+  @state() private _showScriptImporter = false;
 
 
 
@@ -253,16 +261,43 @@ export class PageEditor extends SignalWatcher(LitElement)
       this._buildRequest(toolOutputs, ['error'])
     );
 
-    if (extraResult?.outputs?.length)
+    if (!extraResult)
     {
-      const current = executionResult.get();
-      if (current)
-      {
-        setExecutionResult({
-          ...current,
-          outputs: [...(current.outputs ?? []), ...extraResult.outputs],
-        });
-      }
+      return;
+    }
+
+    const current = executionResult.get();
+    if (!current)
+    {
+      setExecutionResult(extraResult);
+      return;
+    }
+
+    const mergedMessages = [...(current.messages ?? []), ...(extraResult.messages ?? [])];
+    const mergedOutputs = [...(current.outputs ?? []), ...(extraResult.outputs ?? [])];
+    const mergedWarnings = [...(current.warnings ?? []), ...(extraResult.warnings ?? [])];
+
+    if (
+      extraResult.status === 'error'
+      || (extraResult.errors?.length ?? 0) > 0
+      || mergedOutputs.length !== (current.outputs?.length ?? 0)
+      || mergedMessages.length !== (current.messages?.length ?? 0)
+      || mergedWarnings.length !== (current.warnings?.length ?? 0)
+    )
+    {
+      setExecutionResult({
+        ...current,
+        status: extraResult.status === 'error' ? 'error' : current.status,
+        created: extraResult.created ?? current.created,
+        duration: (current.duration ?? 0) + (extraResult.duration ?? 0),
+        request: extraResult.request ?? current.request,
+        errors: extraResult.status === 'error'
+          ? (extraResult.errors ?? current.errors)
+          : current.errors,
+        warnings: mergedWarnings,
+        messages: mergedMessages,
+        outputs: mergedOutputs,
+      });
     }
   }
 
@@ -287,6 +322,12 @@ export class PageEditor extends SignalWatcher(LitElement)
       return;
     }
 
+    if (value === 'import-data')
+    {
+      this._showScriptImporter = true;
+      return;
+    }
+
     this.dispatchEvent(new CustomEvent('editor-action', {
       detail: value,
       bubbles: true,
@@ -305,6 +346,18 @@ export class PageEditor extends SignalWatcher(LitElement)
   private _handleScriptManagerCancel()
   {
     this._showScriptManager = false;
+  }
+
+  private _handleScriptImporterCancel()
+  {
+    this._showScriptImporter = false;
+  }
+
+  private _handleScriptImporterImport(e: CustomEvent<ScriptData>)
+  {
+    const imported = importScriptFromData(e.detail as unknown as Record<string, any>);
+    if (!imported) return;
+    this._showScriptImporter = false;
   }
 
   private _handleScriptDelete(e: CustomEvent<string>)

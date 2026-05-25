@@ -71,7 +71,7 @@ export class ParamItemText extends LitElement
 
         this._error = '';
         this.dispatchEvent(new CustomEvent('param-value-change', {
-            detail:   { id: this.param.id, value: val },
+            detail:   { name: this.param.name, value: val },
             bubbles:  true,
             composed: true,
         }));

@@ -5,23 +5,16 @@ import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import { sceneTree, hiddenNodes, toggleNodeVisibility, activeBottomPanel, setActiveBottomPanel } from '../../state/workspace.js';
-import type { SceneNodeData } from '../../state/workspace.js';
+import { buildScenegraphPath, scenegraph, toggleNodeVisibility, activeBottomPanel, setActiveBottomPanel } from '../../state/workspace.js';
+import type { SmartSceneNodeData } from '../../../devlibs/archiyou-core-next/src/modeler/types.js';
 
-const TYPE_ICON: Record<string, string> = {
-  Mesh:          'cube',
-  Group:         'layer-group',
-  Object3D:      'layer-group',
-  LineSegments:  'wave-square',
-  LineSegments2: 'wave-square',
-  Line2:         'wave-square',
-  Line:          'wave-square',
-  Points:        'circle-dot',
-};
-
-function nodeIcon(type: string): string
+/** Pick a row icon by node kind. Layer/group nodes have no held shape;
+ *  Mesh/Curve nodes show their geometry icon. */
+function nodeIcon(node: SmartSceneNodeData): string
 {
-  return TYPE_ICON[type] ?? 'layer-group';
+  if (!node.shape) return 'layer-group'; // container / layer
+  // Children-bearing leaf nodes are uncommon; default to cube for shapes.
+  return 'cube';
 }
 
 @customElement('scene-explorer')
@@ -29,25 +22,26 @@ export class SceneExplorer extends SignalWatcher(LitElement)
 {
   @property({ type: Boolean }) standalone = false;
 
+  /** Path keys (slash-joined) of expanded rows. */
   @state() private _expandedNodes = new Set<string>();
 
-  // Track tree root UUID to reset expansion when a new model loads
-  private _knownRootUuid?: string;
+  /** Track which tree we've seeded expansion for; reset on new tree identity. */
+  private _knownTree?: SmartSceneNodeData;
 
   override render()
   {
     const collapsed = this.standalone ? false : activeBottomPanel.get() !== 'scene';
     if (!this.standalone) this.toggleAttribute('collapsed', collapsed);
 
-    const tree   = sceneTree.get();
-    const hidden = hiddenNodes.get();
+    const tree = scenegraph.get();
 
-    // Auto-expand everything when a new tree arrives
-    if (tree && tree.uuid !== this._knownRootUuid)
+    // Auto-expand everything when a new tree arrives. Identity is the root
+    // reference — `reconcileScenegraph` returns a fresh clone on every run.
+    if (tree && tree !== this._knownTree)
     {
-      this._knownRootUuid = tree.uuid;
+      this._knownTree = tree;
       const expanded = new Set<string>();
-      this._collectUuids(tree, expanded);
+      this._collectPaths(tree, '', expanded);
       this._expandedNodes = expanded;
     }
 
@@ -64,7 +58,7 @@ export class SceneExplorer extends SignalWatcher(LitElement)
       ${!collapsed ? html`
         <div class="tree">
           ${tree
-            ? this._renderNode(tree, hidden, 0)
+            ? this._renderNode(tree, '', 0)
             : html`<div class="empty">No scene loaded</div>`
           }
         </div>
@@ -72,47 +66,49 @@ export class SceneExplorer extends SignalWatcher(LitElement)
     `;
   }
 
-  private _renderNode(node: SceneNodeData, hidden: ReadonlySet<string>, depth: number): HTMLTemplateResult
+  private _renderNode(node: SmartSceneNodeData, parentPath: string, depth: number): HTMLTemplateResult
   {
-    const isHidden   = hidden.has(node.uuid);
+    const path       = buildScenegraphPath(parentPath, node.name);
+    const isHidden   = node.style.visible === false;
     const hasKids    = node.children.length > 0;
-    const isExpanded = this._expandedNodes.has(node.uuid);
-    const mat        = node.material;
+    const isExpanded = this._expandedNodes.has(path);
+    const color      = node.style.color;
+    const opacity    = node.style.opacity;
 
     return html`
       <div class="node-row" style="padding-left: ${depth * 14 + 6}px">
         <button
           class="expand-btn"
           ?disabled=${!hasKids}
-          @click=${() => hasKids && this._toggleExpand(node.uuid)}
+          @click=${() => hasKids && this._toggleExpand(path)}
         >
           ${hasKids
             ? html`<wa-icon name=${isExpanded ? 'chevron-down' : 'chevron-right'}></wa-icon>`
             : nothing}
         </button>
 
-        <wa-icon class="node-icon type-${node.type}" name=${nodeIcon(node.type)}></wa-icon>
+        <wa-icon class="node-icon" name=${nodeIcon(node)}></wa-icon>
 
         <span class="node-name ${isHidden ? 'faded' : ''}" title=${node.name}>${node.name}</span>
 
-        ${mat?.color ? html`
-          <span class="mat-swatch" style="background:${mat.color}" title="${mat.color}"></span>
+        ${color ? html`
+          <span class="mat-swatch" style="background:${color}" title=${color}></span>
         ` : nothing}
-        ${mat && mat.opacity < 0.99 ? html`
-          <span class="mat-opacity">${Math.round(mat.opacity * 100)}%</span>
+        ${typeof opacity === 'number' && opacity < 0.99 ? html`
+          <span class="mat-opacity">${Math.round(opacity * 100)}%</span>
         ` : nothing}
 
         <button
           class="vis-btn"
           title=${isHidden ? 'Show node' : 'Hide node'}
-          @click=${() => toggleNodeVisibility(node.uuid)}
+          @click=${() => toggleNodeVisibility(path)}
         >
           <wa-icon name=${isHidden ? 'eye-slash' : 'eye'}></wa-icon>
         </button>
       </div>
 
       ${isExpanded && hasKids
-        ? node.children.map(c => this._renderNode(c, hidden, depth + 1))
+        ? node.children.map(c => this._renderNode(c, path, depth + 1))
         : nothing}
     `;
   }
@@ -122,18 +118,19 @@ export class SceneExplorer extends SignalWatcher(LitElement)
   private _activate = () =>
     setActiveBottomPanel(activeBottomPanel.get() === 'scene' ? 'none' : 'scene');
 
-  private _toggleExpand(uuid: string)
+  private _toggleExpand(path: string)
   {
     const next = new Set(this._expandedNodes);
-    if (next.has(uuid)) next.delete(uuid);
-    else next.add(uuid);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
     this._expandedNodes = next;
   }
 
-  private _collectUuids(node: SceneNodeData, set: Set<string>)
+  private _collectPaths(node: SmartSceneNodeData, parentPath: string, set: Set<string>)
   {
-    set.add(node.uuid);
-    node.children.forEach(c => this._collectUuids(c, set));
+    const path = buildScenegraphPath(parentPath, node.name);
+    set.add(path);
+    node.children.forEach(c => this._collectPaths(c, path, set));
   }
 
   // ── Styles ──

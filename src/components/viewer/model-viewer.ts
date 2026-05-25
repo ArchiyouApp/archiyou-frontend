@@ -6,9 +6,9 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { executionResult, hiddenNodes, setSceneTree, clearSceneState } from '../../state/workspace.js';
+import { buildScenegraphPath, executionResult, scenegraph } from '../../state/workspace.js';
 import type { ScriptOutputData } from '../../../devlibs/archiyou-core-next/src/execution/types.js';
-import type { SceneNodeData, SceneMaterialData } from '../../state/workspace.js';
+import type { SmartSceneNodeData } from '../../../devlibs/archiyou-core-next/src/modeler/types.js';
 import { applyEdgeExtensions } from './gltf-edge-extensions.js';
 import { applyAnnotations } from './gltf-annotations.js';
 import type { HtmlLabelDef } from './gltf-annotations.js';
@@ -17,7 +17,8 @@ import type { ViewerLabelsOverlay, OverlayLabel, OverlayLabelPos } from './viewe
 import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR,
   VIEWER_SCENE_TO_GRID_SIZE, VIEWER_GRID_CELLS_PER_SCENE, VIEWER_GRID_FALLBACK_SCENE_RADIUS,
   VIEWER_GIZMO_AXIS_LENGTH, VIEWER_GIZMO_SCENE_FRACTION, VIEWER_GIZMO_COLOR_X, VIEWER_GIZMO_COLOR_Y,
-  VIEWER_GIZMO_COLOR_Z, VIEWER_GIZMO_COLOR_ORIGIN, VIEWER_GIZMO_LABEL_SIZE } from '../../settings.js';
+  VIEWER_GIZMO_COLOR_Z, VIEWER_GIZMO_COLOR_ORIGIN, VIEWER_GIZMO_LABEL_SIZE,
+  VIEWER_ESSENTIALS_RESCALE_THRESHOLD, VIEWER_DIMENSION_REFERENCE_SCENE_RADIUS } from '../../settings.js';
 import { VIEW_STYLES } from './view-styles.js';
 import type { ViewStyle, ViewStyleMaterialConfig } from './view-styles.js';
 import { FadingGrid } from './fading-grid.js';
@@ -47,7 +48,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // Read signals so SignalWatcher tracks them and re-renders on change
     this._pendingGlbOutput = executionResult.get()?.outputs
       ?.find(o => o.path.requestedPath === 'default/model/glb');
-    this._pendingHiddenNodes = hiddenNodes.get();
+    this._pendingScenegraph = scenegraph.get();
 
     return html`
       <canvas></canvas>
@@ -105,11 +106,12 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._loadGlbOutput(glbOutput);
     }
 
-    // Re-apply full view style when user toggles node visibility, so that
-    // style-level hiding and user-level hiding are composed correctly.
-    if (this._pendingHiddenNodes !== this._lastAppliedHiddenNodes && this._renderer)
+    // Re-apply full view style when the scenegraph signal mutates (toggle, or
+    // a fresh result reconciled into a new tree). The signal always replaces
+    // the root reference on mutation, so cheap reference compare is enough.
+    if (this._pendingScenegraph !== this._lastAppliedScenegraph && this._renderer)
     {
-      this._lastAppliedHiddenNodes = this._pendingHiddenNodes;
+      this._lastAppliedScenegraph = this._pendingScenegraph;
       this._applyViewStyle(this._activeStyleId);
     }
   }
@@ -149,7 +151,10 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _appliedGridPrimary?:   number;
   private _appliedGridSecondary?: number;
   private _appliedGridPrimaryEvery?: number;
-  private _gridSizedFromModel = false; // false while the grid is still the fallback-sized one
+  // Scene radius the grid/gizmo/dimension arrows were last sized to.
+  // `undefined` = still on the fallback build (no real model has informed sizing yet).
+  // Used to detect bbox changes that exceed VIEWER_ESSENTIALS_RESCALE_THRESHOLD.
+  private _lastSceneRadius?: number;
   private _gizmoGroup?: THREE.Group;
   private _roomEnvTexture?: THREE.Texture;
 
@@ -179,9 +184,12 @@ export class ModelViewer extends SignalWatcher(LitElement)
   // AR
   private _xrSession?: unknown;
 
-  // Node visibility (driven by hiddenNodes signal)
-  private _pendingHiddenNodes: ReadonlySet<string> = new Set();
-  private _lastAppliedHiddenNodes?: ReadonlySet<string>;
+  // Node visibility (driven by scenegraph signal, identity by path).
+  private _pendingScenegraph: SmartSceneNodeData | null = null;
+  private _lastAppliedScenegraph: SmartSceneNodeData | null = null;
+  /** Path → Three.js object map rebuilt on every GLB load; matches the
+   *  filtering rules used by the runner-side path emitter so paths line up. */
+  private _pathToObject = new Map<string, THREE.Object3D>();
 
   // Camera tween state for smooth axis-snap
   private _cameraTween?: {
@@ -567,9 +575,26 @@ export class ModelViewer extends SignalWatcher(LitElement)
   };
 
   /**
-   * Build the GridHelper from the current model bounding box on first load,
-   * then keep the same geometry for the session so the grid doesn't jump.
-   * Only the colour is allowed to change (driven by the active view style).
+   * Half-extent of the current model along its largest XZ axis, or `undefined`
+   * if there's no model / it has an empty bbox. The grid + gizmo + dimension
+   * arrows are sized from this value.
+   */
+  private _computeSceneRadius(): number | undefined
+  {
+    if (!this._currentModel) return undefined;
+    const box = new THREE.Box3().setFromObject(this._currentModel);
+    if (box.isEmpty()) return undefined;
+    const sz = box.getSize(new THREE.Vector3());
+    return Math.max(Math.max(sz.x, sz.z) * 0.5, 0.5);
+  }
+
+  /**
+   * Rebuild the GridHelper and rescale the gizmo to match the current model
+   * bounding box. Rebuilds on first load, when a real model first arrives, or
+   * when the scene radius changes by more than
+   * VIEWER_ESSENTIALS_RESCALE_THRESHOLD — otherwise keeps the existing
+   * geometry so small parameter tweaks don't make the grid jump.
+   * The grid colour is always allowed to change (driven by the active style).
    */
   private _updateGrid()
   {
@@ -585,27 +610,22 @@ export class ModelViewer extends SignalWatcher(LitElement)
     const secondary    = style.grid.secondaryColor ?? 0xAAAAAA;
     const primaryEvery = style.grid.primaryEvery   ?? 5;
 
-    // ── Geometry: build on first call and re-size once a real model arrives ──
-    // The first call may happen before any model loads — we size to a
-    // DEFAULT_SCENE_RADIUS fallback then. When the model later shows up
-    // (`_gridSizedFromModel` is still false but `_currentModel` is now set)
-    // we rebuild so cell size matches the actual scene scale.
+    // ── Geometry: build on first call, when a real model first arrives, or
+    // when a new model's scene radius differs from the last one by more than
+    // VIEWER_ESSENTIALS_RESCALE_THRESHOLD (otherwise small parameter tweaks
+    // would make the grid jump on every edit).
+    const newRadius = this._computeSceneRadius();
+    const onFallback = this._lastSceneRadius === undefined;
+    const exceedsThreshold = newRadius !== undefined
+      && this._lastSceneRadius !== undefined
+      && Math.abs(newRadius - this._lastSceneRadius) / this._lastSceneRadius
+           > VIEWER_ESSENTIALS_RESCALE_THRESHOLD;
     const needsBuild = !this._appliedGridSize
-                       || (!this._gridSizedFromModel && !!this._currentModel);
+                       || (onFallback && newRadius !== undefined)
+                       || exceedsThreshold;
     if (needsBuild)
     {
-      let sceneRadius = VIEWER_GRID_FALLBACK_SCENE_RADIUS;
-      let sizedFromModel = false;
-      if (this._currentModel)
-      {
-        const box = new THREE.Box3().setFromObject(this._currentModel);
-        if (!box.isEmpty())
-        {
-          const sz = box.getSize(new THREE.Vector3());
-          sceneRadius = Math.max(Math.max(sz.x, sz.z) * 0.5, 0.5);
-          sizedFromModel = true;
-        }
-      }
+      const sceneRadius = newRadius ?? VIEWER_GRID_FALLBACK_SCENE_RADIUS;
 
       // Target cell size: one cell per `1 / VIEWER_GRID_CELLS_PER_SCENE` of the
       // scene diameter, snapped to a "nice" round step (1, 2, 5, 10, …).
@@ -632,7 +652,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._appliedGridPrimary      = primary;
       this._appliedGridSecondary    = secondary;
       this._appliedGridPrimaryEvery = primaryEvery;
-      this._gridSizedFromModel      = sizedFromModel;
+      this._lastSceneRadius         = newRadius;
 
       // Scale the gizmo so its arm length = sceneRadius × VIEWER_GIZMO_SCENE_FRACTION
       if (this._gizmoGroup)
@@ -683,11 +703,11 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._gizmoGroup.userData.isViewerHelper = true;
 
     // label is the CAD-space name (Z=up system); axis is the Three.js geometric axis
-    // Three.js Y (up) = CAD Z (up);  Three.js Z (depth) = CAD Y
+    // Three.js Y (up) = CAD Z (up); Three.js -Z (depth) = CAD +Y
     const axes: Array<{ axis: 'x' | 'y' | 'z'; label: string; dir: THREE.Vector3; color: number }> = [
       { axis: 'x', label: 'X', dir: new THREE.Vector3(1, 0, 0), color: VIEWER_GIZMO_COLOR_X },
       { axis: 'y', label: 'Z', dir: new THREE.Vector3(0, 1, 0), color: VIEWER_GIZMO_COLOR_Z },
-      { axis: 'z', label: 'Y', dir: new THREE.Vector3(0, 0, 1), color: VIEWER_GIZMO_COLOR_Y },
+      { axis: 'z', label: 'Y', dir: new THREE.Vector3(0, 0, -1), color: VIEWER_GIZMO_COLOR_Y },
     ];
 
     const L = VIEWER_GIZMO_AXIS_LENGTH;
@@ -719,9 +739,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
       const cone = new THREE.Mesh(coneGeo, coneMat);
       // place tip at L, base at L - coneH
       cone.position.copy(dir.clone().multiplyScalar(L - coneH / 2));
-      // orient cone along the axis
-      if (axis === 'x') cone.rotation.z = -Math.PI / 2;
-      else if (axis === 'z') cone.rotation.x = Math.PI / 2;
+      // orient cone from its default +Y direction onto the current axis direction
+      cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
       cone.renderOrder = 999;
       cone.userData = { isViewerHelper: true, isGizmoHandle: true, axis, negative: false };
       this._gizmoGroup.add(cone);
@@ -730,9 +749,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
       const coneNegGeo = new THREE.ConeGeometry(coneR, coneH, 8);
       const coneNeg = new THREE.Mesh(coneNegGeo, coneMat.clone());
       coneNeg.position.copy(dir.clone().multiplyScalar(-(L - coneH / 2)));
-      if (axis === 'x') coneNeg.rotation.z = Math.PI / 2;
-      else if (axis === 'z') coneNeg.rotation.x = -Math.PI / 2;
-      else coneNeg.rotation.z = Math.PI; // -Y
+      coneNeg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize().multiplyScalar(-1));
       coneNeg.renderOrder = 999;
       coneNeg.userData = { isViewerHelper: true, isGizmoHandle: true, axis, negative: true };
       this._gizmoGroup.add(coneNeg);
@@ -804,7 +821,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
     const dir = new THREE.Vector3();
     if (axis === 'x') dir.set(negative ? -1 : 1, 0, 0);
     else if (axis === 'y') dir.set(0, negative ? -1 : 1, 0);
-    else dir.set(0, 0, negative ? -1 : 1);
+    else dir.set(0, 0, negative ? 1 : -1);
 
     const toPos = target.clone().add(dir.multiplyScalar(dist));
     // choose up vector that avoids gimbal lock on the Y axis
@@ -906,28 +923,102 @@ export class ModelViewer extends SignalWatcher(LitElement)
     }
 
     // Apply user-controlled node visibility on top of style overrides
-    this._applyNodeVisibility(this._pendingHiddenNodes);
+    this._applyScenegraphVisibility(this._pendingScenegraph);
 
     this._dirty = true;
   }
 
-  private _applyNodeVisibility(hidden: ReadonlySet<string>)
+  /** Walk the scenegraph; for every node with `style.visible === false`,
+   *  look up its Three.js object by path and hide it. Restores previously
+   *  user-hidden objects first so toggling back to visible always succeeds. */
+  private _applyScenegraphVisibility(graph: SmartSceneNodeData | null)
   {
-    // Restore previously user-hidden objects before re-applying the new set
     for (const obj of this._userHiddenObjects) obj.visible = true;
     this._userHiddenObjects = [];
 
-    if (!this._currentModel) return;
-    this._currentModel.traverse((node) =>
+    if (!graph || !this._currentModel) return;
+
+    const walk = (node: SmartSceneNodeData, parentPath: string) =>
     {
-      if (node.userData.isViewerHelper) return;
-      if (hidden.has(node.uuid))
+      const path = buildScenegraphPath(parentPath, node.name);
+      if (node.style.visible === false)
       {
-        node.visible = false;
-        this._userHiddenObjects.push(node);
+        const obj = this._pathToObject.get(path);
+        if (obj)
+        {
+          obj.visible = false;
+          this._userHiddenObjects.push(obj);
+        }
       }
-    });
+      node.children.forEach(c => walk(c, path));
+    };
+    walk(graph, '');
     this._dirty = true;
+  }
+
+  /** Rebuild `_pathToObject` from the freshly loaded model. When the runner
+   *  scenegraph is available, use its canonical names directly so UI paths and
+   *  viewer lookups stay aligned after refactors that changed GLTF node names.
+   *  For standalone GLBs without state, fall back to inferred object names. */
+  private _buildPathMap(root: THREE.Object3D, graph?: SmartSceneNodeData | null): void
+  {
+    this._pathToObject.clear();
+    const geoTypes = ModelViewer._GEO_TYPES;
+
+    const semanticChildrenOf = (obj: THREE.Object3D) =>
+      obj.children.filter((child) => !child.userData.isViewerHelper && !geoTypes.has(child.type));
+
+    if (graph)
+    {
+      const recurWithGraph = (
+        obj: THREE.Object3D,
+        node: SmartSceneNodeData,
+        parentPath: string,
+      ) =>
+      {
+        const path = buildScenegraphPath(parentPath, node.name);
+        this._pathToObject.set(path, obj);
+
+        const objectChildren = semanticChildrenOf(obj);
+        const childCount = Math.min(objectChildren.length, node.children.length);
+        for (let i = 0; i < childCount; i++)
+        {
+          recurWithGraph(objectChildren[i], node.children[i], path);
+        }
+      };
+
+      recurWithGraph(root, graph, '');
+      return;
+    }
+
+    const recur = (obj: THREE.Object3D, parentPath: string, nameOverride?: string) =>
+    {
+      const name = nameOverride ?? (parentPath === '' ? 'Scene' : (obj.name || obj.type));
+      const path = parentPath ? `${parentPath}/${name}` : name;
+      this._pathToObject.set(path, obj);
+
+      const semanticChildren = semanticChildrenOf(obj);
+
+      const nameCounts: Record<string, number> = {};
+      for (const c of semanticChildren)
+      {
+        const cname = c.name || c.type;
+        nameCounts[cname] = (nameCounts[cname] ?? 0) + 1;
+      }
+      const seen: Record<string, number> = {};
+
+      for (const c of semanticChildren)
+      {
+        let cname = c.name || c.type;
+        if (nameCounts[cname] > 1)
+        {
+          const idx = seen[cname] = (seen[cname] ?? 0) + 1;
+          cname = `${cname}[${idx - 1}]`;
+        }
+        recur(c, path, cname);
+      }
+    };
+    recur(root, '');
   }
 
   private _applyMeshStyleOverride(mesh: THREE.Mesh, style: ViewStyle)
@@ -1089,56 +1180,6 @@ export class ModelViewer extends SignalWatcher(LitElement)
     'Mesh', 'LineSegments', 'LineSegments2', 'Line', 'Line2', 'Points',
   ]);
 
-  private _buildSceneTree(obj: THREE.Object3D): SceneNodeData
-  {
-    const geoTypes = ModelViewer._GEO_TYPES;
-
-    // Bubble material up from the first geometry child when the container has none
-    const ownMaterial = this._extractMaterial(obj);
-    let material = ownMaterial
-      ?? this._extractMaterial(
-        obj.children.find(c => geoTypes.has(c.type)) ?? obj,
-      );
-
-    const semanticChildren = obj.children.filter(
-      c => !c.userData.isViewerHelper && !geoTypes.has(c.type),
-    );
-
-    // Infer semantic type from direct geometry children so the scene-explorer
-    // can show the correct icon (e.g. 'Mesh' instead of 'Object3D').
-    const geoChild = obj.children.find(c => !c.userData.isViewerHelper && geoTypes.has(c.type));
-    const semanticType = geoChild?.type ?? obj.type;
-
-    return {
-      uuid: obj.uuid,
-      name: obj.name || obj.type,
-      type: semanticType,
-      visible: obj.visible,
-      material,
-      children: semanticChildren.map(c => this._buildSceneTree(c)),
-    };
-  }
-
-  private _extractMaterial(obj: THREE.Object3D): SceneMaterialData | undefined
-  {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const raw = (obj as any).material;
-    if (!raw) return undefined;
-    const m: THREE.Material = Array.isArray(raw) ? raw[0] : raw;
-    if (!m) return undefined;
-
-    const result: SceneMaterialData = { opacity: m.opacity, transparent: m.transparent };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const col = (m as any).color;
-    if (col instanceof THREE.Color) result.color = '#' + col.getHexString();
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ('wireframe' in m) result.wireframe = (m as any).wireframe as boolean;
-
-    return result;
-  }
-
   // ── 10. Model loading ──
 
   private async _loadGLTFString(data: string | ArrayBuffer)
@@ -1215,10 +1256,15 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // Render CAD hard edges from custom GLTF extensions
     await applyEdgeExtensions(gltf, model);
 
-    // Render annotations from GLB root extras: dimension lines as 3D arrows
-    // (geometry) + HTML overlay value text; labels as HTML overlay elements
-    // (optionally with a CSS leader line/arrow). Projected each frame.
-    const { htmlLabels } = await applyAnnotations(gltf, model);
+    // Render annotations: prefer the live execution result; fall back to GLB
+    // extras for standalone .glb loads. Dimensions become 3D arrows + HTML
+    // overlay value text; labels become HTML overlay elements.
+    // Arrow geometry scales with the viewer's last-known scene radius so
+    // arrows stay legible across very different model sizes.
+    const anns = executionResult.get()?.state?.annotations as any[] | undefined;
+    const r = this._lastSceneRadius ?? VIEWER_GRID_FALLBACK_SCENE_RADIUS;
+    const arrowScale = r / VIEWER_DIMENSION_REFERENCE_SCENE_RADIUS;
+    const { htmlLabels } = await applyAnnotations(gltf, model, anns, arrowScale);
     this._htmlLabels = htmlLabels;
     const overlay = this.renderRoot.querySelector('viewer-labels-overlay') as ViewerLabelsOverlay | null;
     if (overlay)
@@ -1243,26 +1289,15 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // Ensure LineMaterial resolution is set for pixel-accurate line width
     this._resize();
 
-    // Pre-populate hiddenNodes with any nodes the exporter marked as default-hidden
-    // so the scene explorer shows them with eye-slash and they start invisible.
-    const initiallyHidden = new Set<string>();
-    model.traverse((n) => { if (n.userData.defaultVisible === false) initiallyHidden.add(n.uuid); });
-    if (initiallyHidden.size > 0)
-    {
-      hiddenNodes.set(initiallyHidden);
-      this._pendingHiddenNodes = initiallyHidden;
-      this._lastAppliedHiddenNodes = initiallyHidden;
-    }
-
-    // Publish scene tree for the scene explorer (after edges are attached).
-    // Skip the Three.js gltf.scene Group wrapper; start from the GLTFBuilder
-    // 'root' node directly and label it 'Scene'.
+    // Build path → Three.js object map (mirrors the runner-side path rules).
+    // Skip the gltf.scene wrapper Group; start from the GLTFBuilder content root
+    // and label it 'Scene' so paths line up with the runner's emission.
     const contentRoot = model.children.find(c => !c.userData.isViewerHelper) ?? model;
-    const treeRoot = this._buildSceneTree(contentRoot);
-    treeRoot.name = 'Scene';
-    setSceneTree(treeRoot);
+    this._buildPathMap(contentRoot, this._pendingScenegraph);
 
-    // Re-apply current view style to newly loaded geometry
+    // Re-apply current view style to newly loaded geometry. This also calls
+    // _applyScenegraphVisibility against the latest scenegraph signal so any
+    // user-toggled or runner-declared hidden nodes are hidden from the start.
     this._applyViewStyle(this._activeStyleId);
   }
 
@@ -1308,8 +1343,10 @@ export class ModelViewer extends SignalWatcher(LitElement)
   {
     if (!this._currentModel) return;
 
-    // Clear scene explorer state; new UUIDs after reload won't match old hidden set
-    clearSceneState();
+    // The path → object map is rebuilt on the next GLB load. We don't clear
+    // the scenegraph signal here — `setExecutionResult` already reconciled it
+    // before this dispose runs.
+    this._pathToObject.clear();
 
     // Restore style overrides first so we dispose originals (not override mats) below
     this._restoreStyleOverrides();

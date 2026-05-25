@@ -103,7 +103,7 @@ export class ParamItem extends LitElement
   {
     if (this._dragLocked) { e.preventDefault(); return; }
     e.dataTransfer!.effectAllowed = 'move';
-    e.dataTransfer!.setData('text/plain', this.param.id ?? '');
+    e.dataTransfer!.setData('text/plain', this.param.name);
     this.setAttribute('dragging', '');
     this._confirmingDelete = false;
   };
@@ -131,8 +131,8 @@ export class ParamItem extends LitElement
     const trimmed = this._labelDraft.trim();
     if (trimmed && trimmed !== this.param.name)
     {
-      this.dispatchEvent(new CustomEvent<{ id: string; name: string }>('param-rename', {
-        detail: { id: this.param.id ?? '', name: trimmed },
+      this.dispatchEvent(new CustomEvent<{ oldName: string; name: string }>('param-rename', {
+        detail: { oldName: this.param.name, name: trimmed },
         bubbles: true,
         composed: true,
       }));
@@ -165,7 +165,7 @@ export class ParamItem extends LitElement
   private _confirmDelete()
   {
     this.dispatchEvent(new CustomEvent<string>('param-delete', {
-      detail: this.param.id ?? '',
+      detail: this.param.name,
       bubbles: true,
       composed: true,
     }));

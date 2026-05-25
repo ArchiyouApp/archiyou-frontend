@@ -40,7 +40,7 @@ export const configuratorPresets = computed<ScriptPreset[]>(() =>
 
 //// RUNTIME VALUES + UI STATE ////
 
-/** End-user values, keyed by param id. Falls back to the param default. */
+/** End-user values, keyed by param name. Falls back to the param default. */
 export const configuratorValues   = signal<Record<string, any>>({});
 export const configuratorExecuting = signal<boolean>(false);
 
@@ -48,12 +48,12 @@ export const configuratorExecuting = signal<boolean>(false);
 export function configuratorValueFor(p: ScriptParam): any
 {
   const v = configuratorValues.get();
-  return (p.id && p.id in v) ? v[p.id] : (p._value ?? p.default);
+  return (p.name in v) ? v[p.name] : (p._value ?? p.default);
 }
 
-export function setConfiguratorValue(id: string, value: any): void
+export function setConfiguratorValue(name: string, value: any): void
 {
-  configuratorValues.set({ ...configuratorValues.get(), [id]: value });
+  configuratorValues.set({ ...configuratorValues.get(), [name]: value });
 }
 
 export function resetConfiguratorValues(): void
@@ -66,7 +66,7 @@ export function setConfiguratorExecuting(value: boolean): void
   configuratorExecuting.set(value);
 }
 
-/** Apply a preset's values into the configurator runtime values (by param id). */
+/** Apply a preset's values into the configurator runtime values (by param name). */
 export function applyConfiguratorPreset(name: string): void
 {
   const s = editorScript.get();
@@ -79,7 +79,7 @@ export function applyConfiguratorPreset(name: string): void
   for (const [pname, pdata] of Object.entries(preset))
   {
     const target = byName[pname];
-    if (target?.id) next[target.id] = (pdata as ScriptParamData)._value ?? (pdata as ScriptParamData).default;
+    if (target) next[target.name] = (pdata as ScriptParamData)._value ?? (pdata as ScriptParamData).default;
   }
   configuratorValues.set(next);
 }

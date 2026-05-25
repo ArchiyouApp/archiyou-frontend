@@ -1,6 +1,8 @@
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
+import { ifDefined } from 'lit/directives/if-defined.js';
+import { repeat } from 'lit/directives/repeat.js';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
@@ -106,7 +108,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
             @param-value-change=${this._onParamValueChange}>
           ${params.length === 0
             ? html`<div class="empty-list">No parameters — add one below</div>`
-            : params.map(p => this._renderParamItem(p))
+            : repeat(params, (p) => p.name, (p) => this._renderParamItem(p))
           }
         </div>
 
@@ -239,12 +241,12 @@ export class ParamMenu extends SignalWatcher(LitElement)
 
   private _renderParamItem(p: ScriptParam)
   {
-    const isDragOver = p.id === this._dragOverId;
+    const isDragOver = p.name === this._dragOverId;
     return html`
       <param-item
         .param=${p}
         class=${isDragOver ? 'drag-over' : ''}
-        data-id=${p.id}
+        data-name=${ifDefined(p.name)}
       >
         ${this._renderParamControl(p)}
       </param-item>
@@ -379,12 +381,12 @@ export class ParamMenu extends SignalWatcher(LitElement)
     else
     {
       // Param moved to a different group via tab drop
-      const paramId = data;
-      if (!paramId) return;
-      const param = scriptParams.get().find(p => p.id === paramId);
+      const paramName = data;
+      if (!paramName) return;
+      const param = scriptParams.get().find(p => p.name === paramName);
       if (!param || param.group === targetGroup) return;
       const targetParams = this._paramsForGroup(targetGroup);
-      updateParam(paramId, { group: targetGroup, order: targetParams.length });
+      updateParam(paramName, { group: targetGroup, order: targetParams.length });
       this._activeTab = targetGroup;
     }
   }
@@ -395,7 +397,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
     // Move all params in this group to 'main' then remove from pendingGroups
     const params = this._paramsForGroup(group);
     const mainParams = this._paramsForGroup('main');
-    params.forEach((p, i) => updateParam(p.id!, { group: 'main', order: mainParams.length + i }));
+    params.forEach((p, i) => updateParam(p.name, { group: 'main', order: mainParams.length + i }));
 
     if (this._pendingGroups.has(group))
     {
@@ -412,29 +414,29 @@ export class ParamMenu extends SignalWatcher(LitElement)
   {
     e.preventDefault();
     e.dataTransfer!.dropEffect = 'move';
-    const target = (e.target as HTMLElement).closest('param-item[data-id]') as HTMLElement | null;
-    this._dragOverId = target?.dataset['id'] ?? null;
+    const target = (e.target as HTMLElement).closest('param-item[data-name]') as HTMLElement | null;
+    this._dragOverId = target?.dataset['name'] ?? null;
   }
 
   private _onParamDrop(e: DragEvent)
   {
     e.preventDefault();
-    const sourceId = e.dataTransfer!.getData('text/plain');
-    if (sourceId.startsWith('__tab__:')) return;
+    const sourceName = e.dataTransfer!.getData('text/plain');
+    if (sourceName.startsWith('__tab__:')) return;
 
-    const targetId = this._dragOverId;
+    const targetName = this._dragOverId;
     this._dragOverId = null;
-    if (!sourceId || !targetId || sourceId === targetId) return;
+    if (!sourceName || !targetName || sourceName === targetName) return;
 
     const params = this._paramsForGroup(this._activeTab);
-    const sourceIdx = params.findIndex(p => p.id === sourceId);
-    const targetIdx = params.findIndex(p => p.id === targetId);
+    const sourceIdx = params.findIndex(p => p.name === sourceName);
+    const targetIdx = params.findIndex(p => p.name === targetName);
     if (sourceIdx === -1 || targetIdx === -1) return;
 
     const reordered = [...params];
     const [moved] = reordered.splice(sourceIdx, 1);
     reordered.splice(targetIdx, 0, moved);
-    reorderParams(this._activeTab, reordered.map(p => p.id!).filter(Boolean));
+    reorderParams(this._activeTab, reordered.map(p => p.name));
   }
 
   private _onParamDragLeave(e: DragEvent)
@@ -450,17 +452,17 @@ export class ParamMenu extends SignalWatcher(LitElement)
 
   private _onParamValueChange(e: CustomEvent<ParamValueChangeDetail>)
   {
-    const { id, value, units, options } = e.detail;
+    const { name, value, units, options } = e.detail;
     const updates: ParamSpec = {};
     if (value   !== undefined) updates.value   = value;
     if (units   !== undefined) updates.units   = units;
     if (options !== undefined) updates.options = options;
-    updateParam(id, updates);
+    updateParam(name, updates);
   }
 
-  private _onParamRename(e: CustomEvent<{ id: string; name: string }>)
+  private _onParamRename(e: CustomEvent<{ oldName: string; name: string }>)
   {
-    updateParam(e.detail.id, { name: e.detail.name });
+    updateParam(e.detail.oldName, { name: e.detail.name });
   }
 
   private _onParamEdit(e: CustomEvent<ScriptParam>)
@@ -495,12 +497,13 @@ export class ParamMenu extends SignalWatcher(LitElement)
 
     if (d.id)
     {
-      updateParamDirect(d.id, d);
+      const currentName = this._editingParam?.name ?? d.name;
+      if (currentName) updateParamDirect(currentName, d);
     }
     else
     {
       const order = this._paramsForGroup(group).length;
-      addParamDirect({ ...d, id: crypto.randomUUID(), order });
+      addParamDirect({ ...d, order });
     }
 
     this._activeTab = group;

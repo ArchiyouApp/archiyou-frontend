@@ -3,6 +3,8 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
+import '@awesome.me/webawesome/dist/components/dropdown/dropdown.js';
+import '@awesome.me/webawesome/dist/components/dropdown-item/dropdown-item.js';
 
 import { scripts, editorScript } from '../../state/workspace.js';
 import { OVERLAY_MENU_WIDTH, OVERLAY_MENU_HEIGHT } from '../../settings.js';
@@ -15,6 +17,7 @@ export class ScriptManager extends SignalWatcher(LitElement)
   @property({ type: Boolean, reflect: true }) open = false;
 
   @state() private _selectedFileId: string | null = null;
+  @state() private _sortBy: 'name' | 'date-updated' | 'date-created' = 'date-updated';
 
   // ── Render ──
 
@@ -24,7 +27,12 @@ export class ScriptManager extends SignalWatcher(LitElement)
 
     // Exclude the currently-active script — opening it would be a no-op.
     const activeFileId = editorScript.get()?.fileId ?? null;
-    const list = scripts.get().filter(s => s.fileId !== activeFileId);
+    const unsorted = scripts.get().filter(s => s.fileId !== activeFileId);
+    const list = this._sortBy === 'name'
+      ? [...unsorted].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+      : this._sortBy === 'date-created'
+        ? [...unsorted].sort((a, b) => (b.created?.getTime() ?? 0) - (a.created?.getTime() ?? 0))
+        : [...unsorted].sort((a, b) => (b.updated?.getTime() ?? 0) - (a.updated?.getTime() ?? 0));
 
     return html`
       <div class="backdrop" @click=${this._cancel}></div>
@@ -33,7 +41,22 @@ export class ScriptManager extends SignalWatcher(LitElement)
 
         <div class="dialog-header">
           <wa-icon library="lucide" name="folder-open"></wa-icon>
-          <span>Open Script</span>
+          <span class="header-title">Open Script</span>
+          <wa-dropdown
+            class="sort-dropdown"
+            placement="bottom-end"
+            hoist
+            @wa-select=${(e: CustomEvent) => { this._sortBy = (e.detail.item as { value: string }).value as 'name' | 'date-updated' | 'date-created'; }}
+          >
+            <button slot="trigger" class="sort-btn" title="Sort scripts">
+              <wa-icon library="lucide" name="arrow-up-down"></wa-icon>
+              <span>${this._sortBy === 'name' ? 'Name' : this._sortBy === 'date-created' ? 'Date created' : 'Date updated'}</span>
+              <wa-icon library="lucide" name="chevron-down"></wa-icon>
+            </button>
+            <wa-dropdown-item value="date-updated" ?checked=${this._sortBy === 'date-updated'}>Date updated</wa-dropdown-item>
+            <wa-dropdown-item value="date-created" ?checked=${this._sortBy === 'date-created'}>Date created</wa-dropdown-item>
+            <wa-dropdown-item value="name" ?checked=${this._sortBy === 'name'}>Name</wa-dropdown-item>
+          </wa-dropdown>
           <button class="close-btn" @click=${this._cancel}>
             <wa-icon library="lucide" name="x"></wa-icon>
           </button>
@@ -155,7 +178,6 @@ export class ScriptManager extends SignalWatcher(LitElement)
     }
 
     .close-btn {
-      margin-left: auto;
       width: 24px;
       height: 24px;
       border: none;
@@ -170,6 +192,36 @@ export class ScriptManager extends SignalWatcher(LitElement)
 
     .close-btn:hover {
       background: color-mix(in srgb, var(--color-border) 40%, transparent);
+    }
+
+    /* Sort dropdown sits between the title and close button */
+
+    .sort-btn {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm, 4px);
+      background: transparent;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      white-space: nowrap;
+    }
+
+    .sort-btn:hover {
+      background: color-mix(in srgb, var(--color-border) 30%, transparent);
+      color: var(--color-text);
+    }
+
+    .sort-dropdown {
+      /* no margin needed — header-title pushes it right */
+    }
+
+    .header-title {
+      flex: 1;
     }
 
     /* ── Body ── */

@@ -35,6 +35,11 @@ interface DimensionLineData
   round?: boolean;
   roundDecimals?: number;
   _labelPosition?: [number, number, number];
+  /** Name of a script parameter bound via DimensionLine.bindParam(name).
+   *  Combined with `interactive`, the overlay turns this label into an
+   *  inline editor that writes back to the param-menu. */
+  param?: string;
+  interactive?: boolean;
 }
 
 interface LabelData
@@ -64,6 +69,13 @@ export interface HtmlLabelDef
   offset?: number;
   angle?: number;
   circle?: boolean;
+  /** When set, the overlay renders this label as an inline editor that
+   *  writes back to the named script parameter on commit. */
+  param?: string;
+  interactive?: boolean;
+  /** Raw numeric value (for dimensions) — used as the starting input value
+   *  when the user clicks the label to edit it. */
+  rawValue?: number | string;
 }
 
 export interface AnnotationsResult
@@ -166,6 +178,9 @@ export async function applyAnnotations(
       text: _formatValue(d),
       variant: 'dimension',
       anchorLocal: lp,
+      param: d.param,
+      interactive: !!d.interactive && !!d.param,
+      rawValue: d.value,
     });
   });
 

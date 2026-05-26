@@ -57,15 +57,38 @@ export function buildScenegraphPath(parentPath: string, name: string): string
 
 //// EDITOR UI MUTATORS ////
 
+/** User-applied visibility overrides, keyed by scenegraph path. Only written
+ *  by toggleNodeVisibility (user clicks in the scene explorer). Read by
+ *  reconcileScenegraph to override script-written `style.visible` on every
+ *  re-run. Persists for the lifetime of the page so the user's choice sticks
+ *  across parameter tweaks. */
+const _userVisibilityOverrides = new Map<string, boolean>();
+
 /** Toggle visibility for the scenegraph node at `path` (slash-separated names
- *  from the root). Mutates the tree in place then notifies. */
+ *  from the root). Mutates the tree in place then notifies. Records the new
+ *  value in `_userVisibilityOverrides` so it survives subsequent script runs
+ *  (the script's `Shape.hide()`/`Shape.show()` no longer wins over a user
+ *  toggle until the user toggles again). */
 export function toggleNodeVisibility(path: string): void
 {
   const root = scenegraph.get();
   if (!root) return;
+  const node = findNodeByPath(root, path);
+  if (!node) return;
+
+  const currentVisible = node.style.visible !== false;
+  _userVisibilityOverrides.set(path, !currentVisible);
+
   const next = _toggleNodeVisibilityByPath(root, path);
   if (!next) return;
   scenegraph.set(next);
+}
+
+/** Drop all user visibility overrides. Call when loading a new script so the
+ *  next execution shows the script's intended visibility from scratch. */
+export function clearUserVisibilityOverrides(): void
+{
+  _userVisibilityOverrides.clear();
 }
 
 /** Walk a scenegraph by `/`-joined path. Empty path returns the root. */
@@ -142,43 +165,57 @@ function _toggleNodeVisibilityByPath(
   return toggle(root, 0);
 }
 
-/** Reconcile a previous scenegraph against an incoming one (by path):
- *  carry over any explicit `style.visible` the user toggled on still-existing
- *  paths; otherwise the incoming default wins. Pure function: returns a fresh
- *  deep clone of `incoming` and never mutates either input. */
+/** Reconcile an incoming scenegraph against accumulated user visibility
+ *  overrides. The script's `Shape.hide()`/`Shape.show()` writes `style.visible`
+ *  on `incoming`; we let those values through *unless* the user has explicitly
+ *  toggled the node in the scene explorer — only then does the override win.
+ *
+ *  Previously this read the override from the *previous* tree's `style.visible`,
+ *  but that couldn't distinguish "user toggled it" from "script wrote it last
+ *  time," so any script-written visibility from run #1 was treated as a user
+ *  preference on run #2, freezing it forever. The override map is mutated only
+ *  by `toggleNodeVisibility`, so it's an unambiguous record of user intent.
+ *
+ *  Stale overrides (paths no longer in `incoming`) are purged here to keep the
+ *  map bounded. Pure w.r.t. `incoming`: returns a fresh deep clone. */
 export function reconcileScenegraph(
-  prev: SmartSceneNodeData | null,
+  _prev: SmartSceneNodeData | null,
   incoming: SmartSceneNodeData | null,
 ): SmartSceneNodeData | null
 {
   if (!incoming) return null;
   const clone = _cloneNode(incoming);
-  if (!prev) return clone;
 
-  // Build lookup of previous visibility-by-path. Only carry explicit values.
-  const prevVis = new Map<string, boolean>();
-  const collect = (n: SmartSceneNodeData, parentPath: string) =>
-  {
-    const p = buildScenegraphPath(parentPath, n.name);
-    if (typeof n.style.visible === 'boolean') prevVis.set(p, n.style.visible);
-    n.children.forEach(c => collect(c, p));
-  };
-  collect(prev, '');
+  if (_userVisibilityOverrides.size === 0) return clone;
 
+  // Walk the new tree: apply any user override for the path; collect all
+  // paths so we can drop stale entries afterwards.
+  const seenPaths = new Set<string>();
   const apply = (n: SmartSceneNodeData, parentPath: string) =>
   {
     const p = buildScenegraphPath(parentPath, n.name);
-    if (prevVis.has(p)) n.style.visible = prevVis.get(p);
+    seenPaths.add(p);
+    if (_userVisibilityOverrides.has(p))
+    {
+      n.style.visible = _userVisibilityOverrides.get(p);
+    }
     n.children.forEach(c => apply(c, p));
   };
   apply(clone, '');
+
+  for (const path of _userVisibilityOverrides.keys())
+  {
+    if (!seenPaths.has(path)) _userVisibilityOverrides.delete(path);
+  }
   return clone;
 }
 
-/** Drop the scenegraph (called when no model is loaded). */
+/** Drop the scenegraph (called when no model is loaded). Also clears any
+ *  user visibility overrides so a new script starts from its own intent. */
 export function clearSceneState(): void
 {
   scenegraph.set(null);
+  clearUserVisibilityOverrides();
 }
 
 export function setActiveBottomPanel(panel: 'console' | 'scene' | 'none'): void
@@ -352,6 +389,18 @@ export function addParamDirect(data: ScriptParamData): void
   if (!s) return;
 
   const p = ScriptParam.fromData(data);
+  // Guard against silently overwriting an existing param. Updates must go
+  // through updateParamDirect so the original `order` is preserved and the
+  // map is re-keyed cleanly on rename. Without this check, a wrong edit-vs-
+  // add routing decision in the UI would clobber the order and orphan the
+  // old key.
+  if (s.params[p.name])
+  {
+    console.warn(
+      `addParamDirect: param "${p.name}" already exists — use updateParamDirect to modify it.`
+    );
+    return;
+  }
   p.order = data.order ?? Object.keys(s.params).length;
   s.params[p.name] = p;
   bumpScript();

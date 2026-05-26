@@ -125,6 +125,39 @@ export class CodeBox extends SignalWatcher(LitElement)
           autocompletion({ override: [archiyouCompletions] }),
           keymap.of([
             {
+              key: 'Tab',
+              run: (view) =>
+              {
+                view.dispatch(view.state.update(view.state.replaceSelection('  '), { scrollIntoView: true, userEvent: 'input' }));
+                return true;
+              },
+            },
+            {
+              key: 'Shift-Tab',
+              run: (view) =>
+              {
+                const { state } = view;
+                const changes = state.changeByRange(range =>
+                {
+                  const line = state.doc.lineAt(range.from);
+                  const text = line.text;
+                  const stripped = text.startsWith('    ') ? text.slice(4)
+                    : text.startsWith('  ') ? text.slice(2)
+                    : text.startsWith('\t') ? text.slice(1)
+                    : text;
+                  const removed = text.length - stripped.length;
+                  return removed === 0
+                    ? { range }
+                    : {
+                        changes: { from: line.from, to: line.from + removed, insert: '' },
+                        range: range.map(state.changes({ from: line.from, to: line.from + removed, insert: '' })),
+                      };
+                });
+                view.dispatch(state.update(changes, { userEvent: 'delete' }));
+                return true;
+              },
+            },
+            {
               key: 'Ctrl-Enter',
               mac: 'Cmd-Enter',
               run: () => { this._fireExecute(); return true; },

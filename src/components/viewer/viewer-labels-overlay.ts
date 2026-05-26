@@ -13,6 +13,20 @@ export interface OverlayLabel
   offset?: number;    // leader length in screen px
   angle?: number;     // leader angle in deg (90 = straight up)
   circle?: boolean;   // circle marker at the anchor end of the leader
+  /** When set, clicking the label turns it into an inline editor that
+   *  fires `dim-param-change` with `{ param, value }` on commit. */
+  param?: string;
+  interactive?: boolean;
+  rawValue?: number | string;
+}
+
+/** Event payload fired when a bound dimension's value is edited and
+ *  committed (Enter / debounced typing / blur). The host re-validates
+ *  against the parameter schema before applying. */
+export interface DimensionParamChangeDetail
+{
+  param: string;
+  value: string;
 }
 
 export interface OverlayLabelPos
@@ -41,12 +55,20 @@ const DEFAULT_ANGLE = 90;
  *   - CSS custom properties (see `:host` defaults below), e.g.
  *     `viewer-labels-overlay { --ay-label-bg:#000; --ay-leader-color:red }`
  */
+/** Debounce delay (ms) for typed value commits — long enough to let the user
+ *  finish typing a multi-digit number but short enough to feel live. */
+const EDIT_DEBOUNCE_MS = 400;
+
 @customElement('viewer-labels-overlay')
 export class ViewerLabelsOverlay extends LitElement
 {
   @property({ attribute: false }) labels: OverlayLabel[] = [];
 
   private _nodes = new Map<string, HTMLElement>();
+  /** ID of the label currently in edit mode (only one at a time). */
+  @property({ attribute: false }) private _editingId: string | null = null;
+  /** Per-label debounce timers so typing only commits after a pause. */
+  private _editTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   override render()
   {
@@ -62,6 +84,10 @@ export class ViewerLabelsOverlay extends LitElement
         const dy = -Math.sin(rad) * len;            // screen Y is down
         const phi = (Math.atan2(dy, dx) * 180) / Math.PI; // leader rotation
 
+        const editing = l.interactive && this._editingId === l.id;
+        const interactive = !!l.interactive && !!l.param;
+        const initialValue = String(l.rawValue ?? l.text);
+
         return html`
           <div class="ay-anchor" data-id=${l.id}>
             ${hasLeader ? html`
@@ -69,14 +95,102 @@ export class ViewerLabelsOverlay extends LitElement
                    style="width:${len}px;transform:rotate(${phi}deg)">
                 ${l.circle ? html`<span class="ay-circle" part="circle"></span>` : ''}
               </div>` : ''}
-            <div
-              class="ay-label ay-label--${l.variant} ${l.class ?? ''}"
-              part="label"
-              style="left:${dx}px;top:${dy}px"
-            >${l.text}</div>
+            ${editing ? html`
+              <input
+                class="ay-label ay-label--${l.variant} ay-label--editing ${l.class ?? ''}"
+                part="label"
+                type="text"
+                .value=${initialValue}
+                style="left:${dx}px;top:${dy}px"
+                @click=${(e: Event) => e.stopPropagation()}
+                @input=${(e: Event) => this._onEditInput(l, e)}
+                @keydown=${(e: KeyboardEvent) => this._onEditKey(l, e)}
+                @blur=${(e: Event) => this._onEditBlur(l, e)}
+              />
+            ` : html`
+              <div
+                class="ay-label ay-label--${l.variant} ${interactive ? 'ay-label--interactive' : ''} ${l.class ?? ''}"
+                part="label"
+                style="left:${dx}px;top:${dy}px"
+                @click=${interactive ? (e: Event) => this._onLabelClick(l, e) : null}
+              >${l.text}</div>
+            `}
           </div>`;
       })}
     `;
+  }
+
+  private _onLabelClick(l: OverlayLabel, e: Event)
+  {
+    e.stopPropagation();
+    this._editingId = l.id;
+    // After Lit renders the input, focus + select all so typing replaces the value.
+    this.updateComplete.then(() =>
+    {
+      const input = this.renderRoot
+        .querySelector<HTMLInputElement>(`.ay-anchor[data-id="${l.id}"] input.ay-label--editing`);
+      input?.focus();
+      input?.select();
+    });
+  }
+
+  private _onEditInput(l: OverlayLabel, e: Event)
+  {
+    const value = (e.target as HTMLInputElement).value;
+    // Debounced commit so each keystroke doesn't trigger a re-execute.
+    this._clearEditTimer(l.id);
+    this._editTimers.set(l.id, setTimeout(() =>
+    {
+      this._commitEdit(l, value, /* keepEditing */ true);
+    }, EDIT_DEBOUNCE_MS));
+  }
+
+  private _onEditKey(l: OverlayLabel, e: KeyboardEvent)
+  {
+    e.stopPropagation();
+    if (e.key === 'Enter')
+    {
+      e.preventDefault();
+      this._clearEditTimer(l.id);
+      const value = (e.target as HTMLInputElement).value;
+      this._commitEdit(l, value, /* keepEditing */ false);
+    }
+    else if (e.key === 'Escape')
+    {
+      e.preventDefault();
+      this._clearEditTimer(l.id);
+      this._editingId = null;
+    }
+  }
+
+  private _onEditBlur(l: OverlayLabel, e: Event)
+  {
+    this._clearEditTimer(l.id);
+    const value = (e.target as HTMLInputElement).value;
+    this._commitEdit(l, value, /* keepEditing */ false);
+  }
+
+  private _commitEdit(l: OverlayLabel, value: string, keepEditing: boolean)
+  {
+    if (!l.param) return;
+    // Schema validation happens in the host (model-viewer), which knows the
+    // current script params. We just emit; the host silently drops invalid.
+    this.dispatchEvent(new CustomEvent<DimensionParamChangeDetail>('dim-param-change', {
+      detail: { param: l.param, value },
+      bubbles: true,
+      composed: true,
+    }));
+    if (!keepEditing) this._editingId = null;
+  }
+
+  private _clearEditTimer(id: string)
+  {
+    const t = this._editTimers.get(id);
+    if (t)
+    {
+      clearTimeout(t);
+      this._editTimers.delete(id);
+    }
   }
 
   override updated()
@@ -169,6 +283,39 @@ export class ViewerLabelsOverlay extends LitElement
       border: none;
       box-shadow: none;
       font-variant-numeric: tabular-nums;
+    }
+
+    /* Bound-to-param dimensions: clickable, accept pointer events even though
+       the overlay host swallows them by default. */
+    .ay-label--interactive {
+      pointer-events: auto;
+      cursor: pointer;
+      text-decoration: underline dotted;
+      text-underline-offset: 2px;
+    }
+    .ay-label--interactive:hover {
+      background: color-mix(in srgb, var(--ay-label-bg) 70%, var(--ay-label-color) 30%);
+    }
+
+    /* Inline editor for interactive dimensions */
+    .ay-label--editing {
+      pointer-events: auto;
+      cursor: text;
+      font: inherit;
+      font-family: var(--font-sans, sans-serif);
+      font-size: var(--ay-label-font-size);
+      color: var(--ay-dim-color);
+      background: var(--ay-label-bg);
+      border: 1px solid var(--ay-label-border-color);
+      border-radius: var(--ay-label-radius);
+      padding: var(--ay-label-padding);
+      outline: none;
+      width: 6ch;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .ay-label--editing:focus {
+      border-color: var(--ay-label-color);
     }
 
     /* Leader line from the anchor to the label box */

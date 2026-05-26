@@ -19,8 +19,11 @@ export class ScriptManagerItem extends LitElement
   {
     const name      = this.script.name || 'untitled';
     const loc       = (this.script.code ?? '').split('\n').length;
-    const created   = this.script.created ? this.script.created.toLocaleDateString() : '';
-    const updated   = this.script.updated ? this.script.updated.toLocaleDateString() : '';
+    const fmt = (d: Date | undefined) => d
+      ? `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+      : '';
+    const created = fmt(this.script.created);
+    const updated = fmt(this.script.updated);
 
     return html`
       <span class="icon">

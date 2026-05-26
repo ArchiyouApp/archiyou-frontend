@@ -51,8 +51,8 @@ doc.create('myDoc')
 // The value text is an HTML overlay label, styled via CSS in
 // `viewer-labels-overlay` (not configured here).
 export const DIMENSION_LINE_COLOR       = 0x222222; // line + arrowheads
-export const DIMENSION_ARROW_LENGTH     = 0.05;     // arrowhead cone length
-export const DIMENSION_ARROW_RADIUS     = 0.01;    // arrowhead cone base radius
+export const DIMENSION_ARROW_LENGTH     = 0.3;     // arrowhead cone length
+export const DIMENSION_ARROW_RADIUS     = 0.1;    // arrowhead cone base radius
 
 // 3D viewer
 export const VIEWER_BACKGROUND_COLOR = 0xf1f5f9; // scene + renderer clear color

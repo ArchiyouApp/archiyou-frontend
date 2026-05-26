@@ -7,6 +7,10 @@
         "/^node -e \"const p = require\\('\\./node_modules/lucide-static/package\\.json'\\); console\\.log\\(p\\.version\\)\" && ls node_modules/lucide-static/icons/ \\| head -10 && ls node_modules/lucide-static/icons/ \\| wc -l$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^cat devlibs/archiyou-core-next/node_modules/typebox/package\\.json \\| python3 -c \"import json,sys; d=json\\.load\\(sys\\.stdin\\); print\\(list\\(d\\.get\\('exports',\\{\\}\\)\\.keys\\(\\)\\)\\[:20\\]\\)\"$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

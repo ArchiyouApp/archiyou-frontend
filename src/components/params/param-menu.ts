@@ -491,14 +491,22 @@ export class ParamMenu extends SignalWatcher(LitElement)
 
   private _handleParamDefine(e: CustomEvent<ScriptParamData>)
   {
+    // Snapshot edit state before clearing, so the param-define-menu re-opens
+    // in a clean "add" state on next use even if the update path throws.
+    const editing = this._editingParam;
+    this._editingParam = null;
     this._defineMenuOpen = false;
+
     const d = e.detail;
     const group = d.group ?? 'main';
 
-    if (d.id)
+    if (editing)
     {
-      const currentName = this._editingParam?.name ?? d.name;
-      if (currentName) updateParamDirect(currentName, d);
+      // Edit: route by the param's *current* name (the key in script.params).
+      // updateParamDirect preserves `order` and re-keys the map on rename.
+      // Use this snapshot, not anything on `d`, to decide edit-vs-add — the
+      // event payload alone can't reliably distinguish them.
+      updateParamDirect(editing.name, d);
     }
     else
     {
@@ -507,7 +515,6 @@ export class ParamMenu extends SignalWatcher(LitElement)
     }
 
     this._activeTab = group;
-    this._editingParam = null;
   }
 
   private _handleDefineCancel()

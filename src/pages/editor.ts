@@ -328,6 +328,12 @@ export class PageEditor extends SignalWatcher(LitElement)
       return;
     }
 
+    if (value === 'export-script-data')
+    {
+      this._exportScriptDataAsJson();
+      return;
+    }
+
     this.dispatchEvent(new CustomEvent('editor-action', {
       detail: value,
       bubbles: true,
@@ -351,6 +357,24 @@ export class PageEditor extends SignalWatcher(LitElement)
   private _handleScriptImporterCancel()
   {
     this._showScriptImporter = false;
+  }
+
+  private _exportScriptDataAsJson()
+  {
+    const script = editorScript.get();
+    if (!script) return;
+
+    const data = script.toData();
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const filename = (data as any).name ? `${(data as any).name}.json` : 'script-data.json';
+
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   private _handleScriptImporterImport(e: CustomEvent<ScriptData>)

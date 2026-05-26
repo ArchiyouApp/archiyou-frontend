@@ -63,6 +63,10 @@ export class MainMenuFileMenu extends LitElement
             <wa-icon slot="icon" library="lucide" name="package"></wa-icon>
             OBJ
           </wa-dropdown-item>
+          <wa-dropdown-item slot="submenu" value="export-script-data">
+            <wa-icon slot="icon" library="lucide" name="brackets"></wa-icon>
+            Script data
+          </wa-dropdown-item>
         </wa-dropdown-item>
 
         <wa-dropdown-item value="share">

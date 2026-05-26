@@ -37,7 +37,7 @@ export class ScriptImporter extends SignalWatcher(LitElement)
             <textarea
               class="paste-input"
               .value=${this._text}
-              placeholder=${`{\n  name: 'my-script',\n  code: 'box(10)'\n}`}
+              placeholder=${`{\n  name: 'my-script',\n  code: 'box(10)'\n}\n\n// or:\nexport default { name: 'my-script', code: 'box(10)' };`}
               @input=${this._onInput}
             ></textarea>
           </label>
@@ -48,7 +48,7 @@ export class ScriptImporter extends SignalWatcher(LitElement)
                 library="lucide"
                 name=${this._state === 'valid' ? 'circle-check' : this._state === 'invalid' ? 'circle-alert' : 'info'}
               ></wa-icon>
-              <span>${this._message}</span>
+              <span class="status-message">${this._message}</span>
             </div>
             ${this._previewName
               ? html`<div class="preview">Imported name: <strong>${this._previewName}</strong></div>`
@@ -70,7 +70,7 @@ export class ScriptImporter extends SignalWatcher(LitElement)
 
   @state() private _text = '';
   @state() private _state: ValidationState = 'idle';
-  @state() private _message = 'Paste ScriptData as JSON or a plain object literal.';
+  @state() private _message = 'Paste ScriptData as JSON, object literal, or export default module.';
   @state() private _previewName = '';
 
   private _validatedData: ScriptData | null = null;
@@ -87,7 +87,7 @@ export class ScriptImporter extends SignalWatcher(LitElement)
   {
     this._text = '';
     this._state = 'idle';
-    this._message = 'Paste ScriptData as JSON or a plain object literal.';
+    this._message = 'Paste ScriptData as JSON, object literal, or export default module.';
     this._previewName = '';
     this._validatedData = null;
   }
@@ -107,7 +107,7 @@ export class ScriptImporter extends SignalWatcher(LitElement)
     if (!text)
     {
       this._state = 'idle';
-      this._message = 'Paste ScriptData as JSON or a plain object literal.';
+      this._message = 'Paste ScriptData as JSON, object literal, or export default module.';
       return;
     }
 
@@ -122,7 +122,12 @@ export class ScriptImporter extends SignalWatcher(LitElement)
       const script = Script.fromData(parsed as Record<string, any>);
       if (!script)
       {
-        throw new Error('Input is not valid ScriptData. Make sure fields like code and params are correctly shaped.');
+        const fieldErrors = Script.diagnoseData(parsed as Record<string, any>);
+        if (fieldErrors.length > 0)
+        {
+          throw new Error(`Invalid ScriptData:\n${fieldErrors.join('\n')}`);
+        }
+        throw new Error('Input is not valid ScriptData.');
       }
 
       this._validatedData = script.toData();
@@ -143,17 +148,29 @@ export class ScriptImporter extends SignalWatcher(LitElement)
     {
       return JSON.parse(text);
     }
-    catch
+    catch { /* fall through */ }
+
+    // Strip `export default` wrapper (ES module format)
+    const stripped = text.replace(/^\s*export\s+default\s+/, '').replace(/;\s*$/, '');
+
+    // Try JSON5 first (handles unquoted keys, trailing commas, etc.)
+    try
     {
-      try
-      {
-        return JSON5.parse(text);
-      }
-      catch (error)
-      {
-        const message = error instanceof Error ? error.message : 'Unable to parse input.';
-        throw new Error(`Could not parse as JSON or object literal: ${message}`);
-      }
+      return JSON5.parse(stripped);
+    }
+    catch { /* fall through — may contain template literals */ }
+
+    // Fall back to JS evaluation to support template literals in code fields.
+    // This is intentional: the user is pasting their own script data.
+    try
+    {
+      // eslint-disable-next-line no-new-func
+      return new Function(`return (${stripped})`)();
+    }
+    catch (error)
+    {
+      const message = error instanceof Error ? error.message : 'Unable to parse input.';
+      throw new Error(`Could not parse as JSON or object literal: ${message}`);
     }
   }
 
@@ -297,6 +314,12 @@ export class ScriptImporter extends SignalWatcher(LitElement)
       display: flex;
       align-items: flex-start;
       gap: 8px;
+    }
+
+    .status-message {
+      font-size: var(--text-sm);
+      white-space: pre-line;
+      line-height: 1.5;
     }
 
     .status.valid {

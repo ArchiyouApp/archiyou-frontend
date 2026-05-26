@@ -6,14 +6,14 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { buildScenegraphPath, executionResult, scenegraph } from '../../state/workspace.js';
+import { buildScenegraphPath, executionResult, scenegraph, scriptParams, updateParam } from '../../state/workspace.js';
 import type { ScriptOutputData } from '../../../devlibs/archiyou-core-next/src/execution/types.js';
 import type { SmartSceneNodeData } from '../../../devlibs/archiyou-core-next/src/modeler/types.js';
 import { applyEdgeExtensions } from './gltf-edge-extensions.js';
 import { applyAnnotations } from './gltf-annotations.js';
 import type { HtmlLabelDef } from './gltf-annotations.js';
 import './viewer-labels-overlay.js';
-import type { ViewerLabelsOverlay, OverlayLabel, OverlayLabelPos } from './viewer-labels-overlay.js';
+import type { ViewerLabelsOverlay, OverlayLabel, OverlayLabelPos, DimensionParamChangeDetail } from './viewer-labels-overlay.js';
 import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR,
   VIEWER_SCENE_TO_GRID_SIZE, VIEWER_GRID_CELLS_PER_SCENE, VIEWER_GRID_FALLBACK_SCENE_RADIUS,
   VIEWER_GIZMO_AXIS_LENGTH, VIEWER_GIZMO_SCENE_FRACTION, VIEWER_GIZMO_COLOR_X, VIEWER_GIZMO_COLOR_Y,
@@ -52,7 +52,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     return html`
       <canvas></canvas>
-      <viewer-labels-overlay></viewer-labels-overlay>
+      <viewer-labels-overlay
+        @dim-param-change=${this._onDimParamChange}
+      ></viewer-labels-overlay>
       <viewer-menu
         .activeStyleId=${this._activeStyleId}
         .arSupported=${this._arSupported}
@@ -1172,6 +1174,55 @@ export class ModelViewer extends SignalWatcher(LitElement)
     }
   }
 
+  // ── 8b. Dimension → param updates ──
+
+  /** Forwarded from <viewer-labels-overlay> when the user edits a bound
+   *  dimension label. We coerce to the parameter's declared type, validate
+   *  against its JSON schema, and only call updateParam() on success — silent
+   *  drops on invalid input per the design (mid-typing values can fail
+   *  min/multipleOf, that's fine). */
+  private _onDimParamChange = (e: Event) =>
+  {
+    const detail = (e as CustomEvent<DimensionParamChangeDetail>).detail;
+    if (!detail?.param) return;
+
+    const param = scriptParams.get().find(p => p.name === detail.param);
+    if (!param)
+    {
+      console.warn(`Dimension bound to unknown param "${detail.param}"`);
+      return;
+    }
+
+    const coerced = this._coerceParamValue(param, detail.value);
+    if (coerced === undefined) return;
+    if (!param.validateValue(coerced)) return; // silent — wait for the user to type more
+
+    updateParam(detail.param, { value: coerced });
+  };
+
+  /** Coerce the raw input string to the parameter's value type.
+   *  Returns undefined when the string can't be interpreted as the target type
+   *  (e.g. letters for a number) — the caller treats that as "drop silently". */
+  private _coerceParamValue(param: { schema: { type?: string } }, raw: string): unknown
+  {
+    const t = param.schema?.type;
+    if (t === 'number')
+    {
+      const trimmed = raw.trim();
+      if (trimmed === '' || trimmed === '-' || trimmed === '.') return undefined;
+      const n = Number(trimmed);
+      return Number.isFinite(n) ? n : undefined;
+    }
+    if (t === 'boolean')
+    {
+      const s = raw.trim().toLowerCase();
+      if (s === 'true' || s === '1') return true;
+      if (s === 'false' || s === '0') return false;
+      return undefined;
+    }
+    return raw;
+  }
+
   // ── 9. Scene tree ──
 
   // Raw geometry node types that are implementation details — never shown as tree nodes.
@@ -1282,6 +1333,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
         offset: l.offset,
         angle: l.angle,
         circle: l.circle,
+        param: l.param,
+        interactive: l.interactive,
+        rawValue: l.rawValue,
       }));
     }
     this._dirty = true; // ensure a frame so labels appear/position

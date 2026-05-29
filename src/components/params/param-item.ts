@@ -128,7 +128,7 @@ export class ParamItem extends LitElement
   private _commitLabel()
   {
     this._editingLabel = false;
-    const trimmed = this._labelDraft.trim();
+    const trimmed = this._labelDraft.trim().toUpperCase();
     if (trimmed && trimmed !== this.param.name)
     {
       this.dispatchEvent(new CustomEvent<{ oldName: string; name: string }>('param-rename', {
@@ -143,7 +143,7 @@ export class ParamItem extends LitElement
   {
     if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
     if (e.key === 'Escape') this._editingLabel = false;
-    this._labelDraft = (e.target as HTMLInputElement).value;
+    this._labelDraft = (e.target as HTMLInputElement).value.toUpperCase();
   }
 
   // ── Actions ──

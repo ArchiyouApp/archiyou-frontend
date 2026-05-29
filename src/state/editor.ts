@@ -297,7 +297,7 @@ function _applySpec(p: ScriptParam, spec: ParamSpec): void
 {
   const schema = p.schema as any;
 
-  if (spec.name  !== undefined) p.name  = spec.name;
+  if (spec.name  !== undefined) p.name  = spec.name.toUpperCase();
   if (spec.group !== undefined) p.group = spec.group;
   if (spec.order !== undefined) p.order = spec.order;
   if (spec.units !== undefined) p.units = spec.units as any;
@@ -325,8 +325,9 @@ function _findByName(name: string): { key: string; param: ScriptParam } | null
 {
   const s = editorScript.get();
   if (!s) return null;
+  const upper = name.toUpperCase();
   for (const [key, param] of Object.entries(s.params))
-    if (param.name === name) return { key, param };
+    if (param.name === upper) return { key, param };
   return null;
 }
 

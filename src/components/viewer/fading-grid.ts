@@ -5,7 +5,7 @@ export type ColorRepresentation = THREE.ColorRepresentation;
 /**
  * GridHelper variant whose lines fade radially toward a target color
  * (typically the scene background) as they move away from the grid origin
- * on the XZ plane.
+ * on the XY plane (Z-up coordinate system).
  *
  * Draws two line weights:
  *   - secondaryColor: every grid line.
@@ -93,7 +93,7 @@ export class FadingGrid extends THREE.GridHelper
           #ifdef USE_COLOR
             lineCol = vColor;
           #endif
-          float d = length(vWorldPos.xz);
+          float d = length(vWorldPos.xy); // Z-up: ground plane is XY
           float t = smoothstep(0.0, max(uFadeRadius, 1e-4), d);
           gl_FragColor = vec4(mix(lineCol, uFadeColor, t), 1.0);
           #include <colorspace_fragment>

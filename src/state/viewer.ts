@@ -17,3 +17,18 @@ export function setViewStyleId(id: string | null): void { viewStyleId.set(id); }
 export function setCameraOrtho(ortho: boolean): void { cameraOrtho.set(ortho); }
 export function setArActive(active: boolean): void { arActive.set(active); }
 export function setActiveAnimation(name: string | null): void { activeAnimation.set(name); }
+
+/** Callback registered by the editor (or any execution host) so that
+ *  viewer-side interactions (e.g. handle drag-end) can trigger a
+ *  re-execute without the editor being in the component tree. */
+let _scheduleExecutionCb: (() => void) | null = null;
+
+export function registerScheduleExecution(cb: () => void): void
+{
+  _scheduleExecutionCb = cb;
+}
+
+export function scheduleExecution(): void
+{
+  _scheduleExecutionCb?.();
+}

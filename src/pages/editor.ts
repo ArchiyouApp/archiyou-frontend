@@ -23,6 +23,7 @@ import '../components/editor/script-importer.js';
 import type { ToolDef } from '../components/editor/toolbar.js';
 
 import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, deleteScriptById, importScriptFromData } from '../state/workspace';
+import { registerScheduleExecution } from '../state/viewer';
 import { RunnerScriptExecutionRequest } from '../../devlibs/archiyou-core-next/src/runner/types';
 import type { ScriptData } from '../../devlibs/archiyou-core-next/src/execution/types';
 
@@ -114,6 +115,9 @@ export class PageEditor extends SignalWatcher(LitElement)
   override connectedCallback()
   {
     super.connectedCallback();
+    // Register execution callback so the viewer can trigger re-execution
+    // when a handle (or other interaction) changes a param value.
+    registerScheduleExecution(() => this._scheduleParamExecute());
     // Default: open scene tool
     const sceneTool = this.TOOLS.find(t => t.id === 'scene');
     if (sceneTool) this._activeTools = [sceneTool];

@@ -83,6 +83,17 @@ export interface AnnotationsResult
   htmlLabels: HtmlLabelDef[]; // projected to screen by the caller each frame
 }
 
+// Z-up: world space (kernel Z-up) == Three.js world space when camera.up=(0,0,1)
+function _worldToViewerPoint(point: [number, number, number]): THREE.Vector3
+{
+  return new THREE.Vector3(point[0], point[1], point[2]);
+}
+
+function _worldToViewerVector(vector: [number, number, number]): THREE.Vector3
+{
+  return new THREE.Vector3(vector[0], vector[1], vector[2]);
+}
+
 export async function applyAnnotations(
   gltf: GLTF,
   modelGroup: THREE.Object3D,
@@ -113,7 +124,7 @@ export async function applyAnnotations(
         id: `label-${i}`,
         text: String(l.value ?? ''),
         variant: 'label',
-        anchorLocal: new THREE.Vector3(...l.position),
+        anchorLocal: _worldToViewerPoint(l.position),
         class: l.class,
         line: l.line,
         offset: l.offset,
@@ -148,9 +159,9 @@ export async function applyAnnotations(
   {
     if (!d?.start || !d?.end) return;
 
-    const a = new THREE.Vector3(...d.start);
-    const b = new THREE.Vector3(...d.end);
-    const dir = (d.dir ? new THREE.Vector3(...d.dir) : b.clone().sub(a)).normalize();
+    const a = _worldToViewerPoint(d.start);
+    const b = _worldToViewerPoint(d.end);
+    const dir = (d.dir ? _worldToViewerVector(d.dir) : b.clone().sub(a)).normalize();
 
     // main line
     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), lineMat));
@@ -171,7 +182,7 @@ export async function applyAnnotations(
 
     // value text → HTML overlay label at the midpoint / _labelPosition
     const lp = d._labelPosition
-      ? new THREE.Vector3(...d._labelPosition)
+      ? _worldToViewerPoint(d._labelPosition)
       : a.clone().add(b).multiplyScalar(0.5);
     htmlLabels.push({
       id: `dim-${i}`,

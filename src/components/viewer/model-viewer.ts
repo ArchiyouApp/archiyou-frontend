@@ -7,6 +7,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildScenegraphPath, executionResult, scenegraph, scriptParams, updateParam } from '../../state/workspace.js';
+import { scheduleExecution } from '../../state/viewer.js';
 import type { ScriptOutputData } from '../../../devlibs/archiyou-core-next/src/execution/types.js';
 import type { SmartSceneNodeData } from '../../../devlibs/archiyou-core-next/src/modeler/types.js';
 import { applyEdgeExtensions } from './gltf-edge-extensions.js';
@@ -14,15 +15,87 @@ import { applyAnnotations } from './gltf-annotations.js';
 import type { HtmlLabelDef } from './gltf-annotations.js';
 import './viewer-labels-overlay.js';
 import type { ViewerLabelsOverlay, OverlayLabel, OverlayLabelPos, DimensionParamChangeDetail } from './viewer-labels-overlay.js';
+import { buildHandles } from './gltf-handles.js';
+import type { HandleDef } from './gltf-handles.js';
+import './viewer-handles-overlay.js';
+import type { ViewerHandlesOverlay, HandleOverlay, HandleOverlayPos, HandleDragEventDetail } from './viewer-handles-overlay.js';
 import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR,
   VIEWER_SCENE_TO_GRID_SIZE, VIEWER_GRID_CELLS_PER_SCENE, VIEWER_GRID_FALLBACK_SCENE_RADIUS,
   VIEWER_GIZMO_AXIS_LENGTH, VIEWER_GIZMO_SCENE_FRACTION, VIEWER_GIZMO_COLOR_X, VIEWER_GIZMO_COLOR_Y,
   VIEWER_GIZMO_COLOR_Z, VIEWER_GIZMO_COLOR_ORIGIN, VIEWER_GIZMO_LABEL_SIZE,
-  VIEWER_ESSENTIALS_RESCALE_THRESHOLD, VIEWER_DIMENSION_REFERENCE_SCENE_RADIUS } from '../../settings.js';
+  VIEWER_ESSENTIALS_RESCALE_THRESHOLD, VIEWER_DIMENSION_REFERENCE_SCENE_RADIUS,
+  VIEWER_MODEL_COORDSYSTEM, VIEWER_HANDLE_RANGE_LINE_COLOR, VIEWER_HANDLE_RANGE_LINE_WIDTH } from '../../settings.js';
 import { VIEW_STYLES } from './view-styles.js';
 import type { ViewStyle, ViewStyleMaterialConfig } from './view-styles.js';
 import { FadingGrid } from './fading-grid.js';
 import './viewer-menu.js';
+
+// ── Handle drag helpers ───────────────────────────────────────────────────────
+
+/** Project a 3-D hit point onto the handle's u/v axes.
+ *  Relative: project relative to the plane origin (offset from start).
+ *  Absolute: project in world space (raw world coordinate along the axis). */
+function _resolveHandleScalars(
+  h: { plane: { origin: THREE.Vector3; uAxis: THREE.Vector3; vAxis: THREE.Vector3 }; rangeRelative: boolean },
+  hit: THREE.Vector3,
+): { uScalar: number; vScalar: number }
+{
+  const ref = h.rangeRelative ? hit.clone().sub(h.plane.origin) : hit.clone();
+  return { uScalar: ref.dot(h.plane.uAxis), vScalar: ref.dot(h.plane.vAxis) };
+}
+
+/** Compute the base world position for placing the handle anchor, preserving
+ *  the origin's components that are perpendicular to the drag axes.
+ *
+ *  Relative: base = origin  →  anchor = origin + uClamped·uAxis
+ *  Absolute: base = origin stripped of its uAxis (and vAxis) component
+ *            →  anchor = base + uClamped·uAxis   (preserves Z/Y of origin)
+ *
+ *  Example: origin=(50,0,50), uAxis=(1,0,0)
+ *    Absolute base = (0,0,50)  →  anchor = (uClamped, 0, 50)  ✓  Z preserved
+ */
+function _handleBase(
+  h: { plane: { origin: THREE.Vector3; uAxis: THREE.Vector3; vAxis: THREE.Vector3 }; rangeType: '1d'|'2d'; rangeRelative: boolean },
+): THREE.Vector3
+{
+  if (h.rangeRelative) return h.plane.origin.clone();
+  // Absolute: remove the u-component (and v-component for 2D) from origin
+  const base = h.plane.origin.clone()
+    .addScaledVector(h.plane.uAxis, -h.plane.origin.dot(h.plane.uAxis));
+  if (h.rangeType === '2d')
+    base.addScaledVector(h.plane.vAxis, -h.plane.origin.dot(h.plane.vAxis));
+  return base;
+}
+
+function _clampHandleScalars(
+  h: { rangeType: '1d' | '2d'; rangeMin: number | [number,number]; rangeMax: number | [number,number] },
+  u: number, v: number,
+): [number, number]
+{
+  if (h.rangeType === '1d')
+  {
+    return [Math.max(h.rangeMin as number, Math.min(h.rangeMax as number, u)), v];
+  }
+  const [minU, minV] = h.rangeMin as [number,number];
+  const [maxU, maxV] = h.rangeMax as [number,number];
+  return [Math.max(minU, Math.min(maxU, u)), Math.max(minV, Math.min(maxV, v))];
+}
+
+/** Postcondition checks applied to the map-function return value before
+ *  `param.validateValue()`. Add entries here to handle common schema constraints
+ *  automatically so script authors don't need to guard every map function. */
+const PARAM_MAP_PRECHECKS: Array<{
+  check: (param: { schema: any }) => boolean;
+  fix:   (value: any) => any;
+}> = [
+  // Integer-step number params → round to nearest integer
+  {
+    check: (p) => p.schema?.type === 'number' && p.schema?.multipleOf === 1,
+    fix:   (v) => Math.round(v),
+  },
+];
+
+// ── Grid helper ───────────────────────────────────────────────────────────────
 
 /** Round a raw step size up to the nearest "nice" number (1, 2, 5, 10, 20, …). */
 function _niceGridStep(rawStep: number): number
@@ -55,6 +128,11 @@ export class ModelViewer extends SignalWatcher(LitElement)
       <viewer-labels-overlay
         @dim-param-change=${this._onDimParamChange}
       ></viewer-labels-overlay>
+      <viewer-handles-overlay
+        @handle-drag-start=${this._onHandleDragStart}
+        @handle-drag-move=${this._onHandleDragMove}
+        @handle-drag-end=${this._onHandleDragEnd}
+      ></viewer-handles-overlay>
       <viewer-menu
         .activeStyleId=${this._activeStyleId}
         .arSupported=${this._arSupported}
@@ -171,6 +249,11 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _dirty = true;
   private _currentModel?: THREE.Object3D;
   private _htmlLabels: HtmlLabelDef[] = [];
+  private _htmlHandles: HandleDef[] = [];
+  private _activeHandle: HandleDef | null = null;
+  private _handleHitPlane = new THREE.Plane();
+  private _handleRaycaster = new THREE.Raycaster();
+  private _rangeHelper?: THREE.Object3D;
   private _projV = new THREE.Vector3(); // reused for world→screen projection
   private _lastGlbOutput?: ScriptOutputData;
   private _pendingGlbOutput?: ScriptOutputData;
@@ -235,7 +318,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
     pmrem.dispose();
 
     this._camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
-    this._camera.position.set(3, 2, 3);
+    // Z-up coordinate system: camera looks from above-right-front in CAD space
+    this._camera.up.set(0, 0, VIEWER_MODEL_COORDSYSTEM.up === 'z' ? 1 : 0);
+    this._camera.position.set(3, -3, 2);
   }
 
   private _initLights()
@@ -245,7 +330,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     // Key spotlight with VSM soft shadows
     const spot = new THREE.SpotLight(0xffffff, 5);
-    spot.position.set(3, 5, 2);
+    spot.position.set(3, -3, 5); // Z-up: light comes from above (+Z)
     spot.angle = Math.PI / 5;
     spot.penumbra = 0.5;
     spot.decay = 2;
@@ -266,7 +351,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
       new THREE.PlaneGeometry(20, 20),
       new THREE.ShadowMaterial({ opacity: 0.15 }),
     );
-    mesh.rotation.x = -Math.PI / 2;
+    // PlaneGeometry lies in the XY plane by default, which is the Z=0 ground in Z-up
     mesh.receiveShadow = true;
     mesh.userData.isViewerHelper = true;
     this._scene.add(mesh);
@@ -280,7 +365,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
     c.maxPolarAngle = Math.PI / 2 - 0.05;
     c.minDistance = 0.1;
     c.maxDistance = 50;
-    c.target.set(0, 0.5, 0);
+    c.target.set(0, 0, 0);
     c.update();
 
     // Belt-and-suspenders: mark dirty on any camera change event, in addition
@@ -383,8 +468,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
     }
     else
     {
-      this._controls.target.set(0, 0.5, 0);
-      this._camera.position.set(3, 2, 3);
+      this._controls.target.set(0, 0, 0);
+      this._camera.position.set(3, -3, 2);
       this._controls.update();
       this._dirty = true;
     }
@@ -587,7 +672,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
     const box = new THREE.Box3().setFromObject(this._currentModel);
     if (box.isEmpty()) return undefined;
     const sz = box.getSize(new THREE.Vector3());
-    return Math.max(Math.max(sz.x, sz.z) * 0.5, 0.5);
+    // Z-up: the ground plane is XY, so horizontal extent is X and Y
+    return Math.max(Math.max(sz.x, sz.y) * 0.5, 0.5);
   }
 
   /**
@@ -647,6 +733,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
         size, divisions, primary, secondary,
         VIEWER_BACKGROUND_COLOR, primaryEvery,
       );
+      // GridHelper is XZ by default; rotate to XY for Z-up ground plane
+      this._gridHelper.rotation.x = -Math.PI / 2;
       this._gridHelper.userData.isViewerHelper = true;
       this._scene.add(this._gridHelper);
       this._appliedGridSize         = size;
@@ -676,6 +764,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
         primary, secondary,
         VIEWER_BACKGROUND_COLOR, primaryEvery,
       );
+      this._gridHelper.rotation.x = -Math.PI / 2; // XZ → XY for Z-up
       this._gridHelper.userData.isViewerHelper = true;
       this._scene.add(this._gridHelper);
       this._appliedGridPrimary      = primary;
@@ -704,12 +793,11 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._gizmoGroup = new THREE.Group();
     this._gizmoGroup.userData.isViewerHelper = true;
 
-    // label is the CAD-space name (Z=up system); axis is the Three.js geometric axis
-    // Three.js Y (up) = CAD Z (up); Three.js -Z (depth) = CAD +Y
+    // Z-up: camera.up = (0,0,1), so world axes align directly with CAD axes
     const axes: Array<{ axis: 'x' | 'y' | 'z'; label: string; dir: THREE.Vector3; color: number }> = [
-      { axis: 'x', label: 'X', dir: new THREE.Vector3(1, 0, 0), color: VIEWER_GIZMO_COLOR_X },
-      { axis: 'y', label: 'Z', dir: new THREE.Vector3(0, 1, 0), color: VIEWER_GIZMO_COLOR_Z },
-      { axis: 'z', label: 'Y', dir: new THREE.Vector3(0, 0, -1), color: VIEWER_GIZMO_COLOR_Y },
+      { axis: 'x', label: 'X', dir: new THREE.Vector3(1,  0,  0), color: VIEWER_GIZMO_COLOR_X },
+      { axis: 'y', label: 'Y', dir: new THREE.Vector3(0,  1,  0), color: VIEWER_GIZMO_COLOR_Y },
+      { axis: 'z', label: 'Z', dir: new THREE.Vector3(0,  0,  1), color: VIEWER_GIZMO_COLOR_Z },
     ];
 
     const L = VIEWER_GIZMO_AXIS_LENGTH;
@@ -826,10 +914,10 @@ export class ModelViewer extends SignalWatcher(LitElement)
     else dir.set(0, 0, negative ? 1 : -1);
 
     const toPos = target.clone().add(dir.multiplyScalar(dist));
-    // choose up vector that avoids gimbal lock on the Y axis
-    const upTarget = axis === 'y'
-      ? new THREE.Vector3(0, 0, negative ? -1 : 1)
-      : new THREE.Vector3(0, 1, 0);
+    // Z-up: camera.up is normally (0,0,1); avoid gimbal lock when looking along Z
+    const upTarget = axis === 'z'
+      ? new THREE.Vector3(0, negative ? -1 : 1, 0)
+      : new THREE.Vector3(0, 0, 1);
 
     this._cameraTween = {
       from:      this._camera.position.clone(),
@@ -1338,7 +1426,23 @@ export class ModelViewer extends SignalWatcher(LitElement)
         rawValue: l.rawValue,
       }));
     }
-    this._dirty = true; // ensure a frame so labels appear/position
+
+    // Load interaction handles (prefer live execution result; fall back to GLB extras)
+    const rawHandles = executionResult.get()?.state?.handles as any[] | undefined;
+    this._htmlHandles = buildHandles(gltf, rawHandles);
+    const handlesOverlay = this.renderRoot.querySelector('viewer-handles-overlay') as ViewerHandlesOverlay | null;
+    if (handlesOverlay)
+    {
+      handlesOverlay.handles = this._htmlHandles.map((h): HandleOverlay => ({
+        id:         h.id,
+        icon:       h.icon,
+        visible:    h.visible,
+        param:      h.param,
+        paramFnSrc: h.paramFnSrc,
+      }));
+    }
+
+    this._dirty = true; // ensure a frame so labels/handles appear/position
 
     // Ensure LineMaterial resolution is set for pixel-accurate line width
     this._resize();
@@ -1421,6 +1525,13 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._htmlLabels = [];
     const overlay = this.renderRoot.querySelector('viewer-labels-overlay') as ViewerLabelsOverlay | null;
     if (overlay) overlay.labels = [];
+
+    // Clear interaction handles
+    this._htmlHandles = [];
+    this._activeHandle = null;
+    const handlesOverlay = this.renderRoot.querySelector('viewer-handles-overlay') as ViewerHandlesOverlay | null;
+    if (handlesOverlay) handlesOverlay.handles = [];
+    if (this._rangeHelper) { this._scene.remove(this._rangeHelper); this._rangeHelper = undefined; }
 
     this._currentModel = undefined;
     this._mixer = undefined;
@@ -1528,6 +1639,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
       // Project HTML overlay labels to screen
       if (this._htmlLabels.length) this._updateLabelOverlay();
+      // Project interaction handles to screen
+      if (this._htmlHandles.length) this._updateHandleOverlay();
 
       this._dirty = false;
     }
@@ -1561,7 +1674,209 @@ export class ModelViewer extends SignalWatcher(LitElement)
     overlay.setPositions(positions);
   }
 
-  // ── 10. Styles ──
+  // ── 10. Interaction handles ──
+
+  /** Project each handle's world anchor to screen px and push to the overlay. */
+  private _updateHandleOverlay()
+  {
+    const overlay = this.renderRoot.querySelector('viewer-handles-overlay') as ViewerHandlesOverlay | null;
+    if (!overlay || !this._currentModel) return;
+
+    const cam = this._isOrtho ? this._orthoCamera! : this._camera;
+    const w = this.clientWidth;
+    const height = this.clientHeight;
+    if (!w || !height) return;
+
+    const positions: Record<string, HandleOverlayPos> = {};
+    for (const hd of this._htmlHandles)
+    {
+      if (!hd.visible) { positions[hd.id] = { x: 0, y: 0, visible: false }; continue; }
+      this._projV.copy(hd.anchorLocal).applyMatrix4(this._currentModel.matrixWorld).project(cam);
+      const visible = this._projV.z < 1 &&
+        this._projV.x >= -1 && this._projV.x <= 1 &&
+        this._projV.y >= -1 && this._projV.y <= 1;
+      positions[hd.id] = {
+        x: (this._projV.x * 0.5 + 0.5) * w,
+        y: (-this._projV.y * 0.5 + 0.5) * height,
+        visible,
+      };
+    }
+    overlay.setPositions(positions);
+  }
+
+  private _getNDC(e: PointerEvent): THREE.Vector2
+  {
+    const canvas = this.renderRoot.querySelector('canvas') as HTMLCanvasElement;
+    const rect = canvas.getBoundingClientRect();
+    return new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width)  *  2 - 1,
+      -((e.clientY - rect.top)  / rect.height) *  2 + 1,
+    );
+  }
+
+  private _onHandleDragStart = (e: Event) =>
+  {
+    const detail = (e as CustomEvent<HandleDragEventDetail>).detail;
+    const handle = this._htmlHandles.find(h => h.id === detail.id);
+    if (!handle) return;
+
+    this._activeHandle = handle;
+
+    // Build the hit-plane from handle's boundary plane (normal = uAxis × vAxis)
+    const n = new THREE.Vector3().crossVectors(handle.plane.uAxis, handle.plane.vAxis).normalize();
+    this._handleHitPlane.setFromNormalAndCoplanarPoint(n, handle.plane.origin);
+
+    // Build visible range geometry and add to scene
+    if (this._rangeHelper) this._scene.remove(this._rangeHelper);
+    this._rangeHelper = this._buildRangeHelper(handle);
+    if (this._rangeHelper) this._scene.add(this._rangeHelper);
+
+    this._controls.enabled = false;
+    this._dirty = true;
+  };
+
+  private _onHandleDragMove = (e: Event) =>
+  {
+    const detail = (e as CustomEvent<HandleDragEventDetail>).detail;
+    if (!this._activeHandle || this._activeHandle.id !== detail.id) return;
+
+    const ndc = this._getNDC(detail.pointerEvent);
+    const cam = this._isOrtho ? this._orthoCamera! : this._camera;
+    this._handleRaycaster.setFromCamera(ndc, cam);
+
+    const hit = new THREE.Vector3();
+    if (!this._handleRaycaster.ray.intersectPlane(this._handleHitPlane, hit)) return;
+
+    const h = this._activeHandle;
+    const { uScalar, vScalar } = _resolveHandleScalars(h, hit);
+    const [uClamped, vClamped] = _clampHandleScalars(h, uScalar, vScalar);
+    const base = _handleBase(h);
+
+    h.anchorLocal.copy(base).addScaledVector(h.plane.uAxis, uClamped);
+    if (h.rangeType === '2d') h.anchorLocal.addScaledVector(h.plane.vAxis, vClamped);
+
+    this._dirty = true;
+  };
+
+  private _onHandleDragEnd = async (e: Event) =>
+  {
+    const detail = (e as CustomEvent<HandleDragEventDetail>).detail;
+    const handle = this._activeHandle;
+    this._activeHandle = null;
+    this._controls.enabled = true;
+
+    if (this._rangeHelper) { this._scene.remove(this._rangeHelper); this._rangeHelper = undefined; }
+    this._dirty = true;
+
+    if (!handle || handle.id !== detail.id) return;
+    if (!handle.param || !handle.paramFnSrc) return;
+
+    // Compute the final u/v scalar values for this drag position
+    const { uScalar, vScalar } = _resolveHandleScalars(handle, handle.anchorLocal);
+    const [uClamped, vClamped] = _clampHandleScalars(handle, uScalar, vScalar);
+    const rangeValue: number | [number, number] = handle.rangeType === '1d'
+      ? uClamped
+      : [uClamped, vClamped];
+
+    // Reconstruct the map function and compute new param value
+    let fn: ((h: any, p: any) => any) | null = null;
+    try
+    {
+      // eslint-disable-next-line no-eval
+      fn = (0, eval)('(' + handle.paramFnSrc + ')');
+    }
+    catch (err)
+    {
+      console.error(`Handle map function could not be reconstructed:`, err);
+      return;
+    }
+
+    const handleObj = {
+      x:     handle.anchorLocal.x,
+      y:     handle.anchorLocal.y,
+      z:     handle.anchorLocal.z,
+      u:     uClamped,
+      v:     vClamped,
+      value: rangeValue,
+      range: [handle.rangeMin, handle.rangeMax],
+    };
+
+    const param = scriptParams.get().find(p => p.name === handle.param);
+    if (!param)
+    {
+      console.warn(`Handle bound to unknown param "${handle.param}"`);
+      return;
+    }
+
+    const { paramValue } = await import('../../state/types.js').catch(() => ({ paramValue: (p: any) => p._value ?? p.default }));
+    const currentVal = paramValue(param);
+    const copy = structuredClone(currentVal);
+
+    let next: any;
+    try
+    {
+      const returned = fn!(handleObj, copy);
+      next = returned !== undefined ? returned : copy;
+    }
+    catch (err)
+    {
+      console.error(`Handle map function threw:`, err);
+      return;
+    }
+
+    // Apply param-type prechecks (e.g. round integer-step params)
+    for (const { check, fix } of PARAM_MAP_PRECHECKS)
+    {
+      if (check(param)) next = fix(next);
+    }
+
+    if (!param.validateValue(next))
+    {
+      console.warn(`Handle map function returned invalid value:`, next);
+      return
+    };
+    console.info('Handle updated param', handle.param, '→', next);
+    updateParam(handle.param, { value: next });
+    scheduleExecution();
+  };
+
+  /** Build a visible line (1D) or rect (2D) showing the handle's drag range. */
+  private _buildRangeHelper(handle: HandleDef): THREE.Object3D | undefined
+  {
+    const mat = new THREE.LineBasicMaterial({
+      color: VIEWER_HANDLE_RANGE_LINE_COLOR,
+      linewidth: VIEWER_HANDLE_RANGE_LINE_WIDTH,
+      toneMapped: false,
+      depthTest: false,
+    });
+
+    const base = _handleBase(handle);
+
+    if (handle.rangeType === '1d')
+    {
+      const min = handle.rangeMin as number;
+      const max = handle.rangeMax as number;
+      const start = base.clone().addScaledVector(handle.plane.uAxis, min);
+      const end   = base.clone().addScaledVector(handle.plane.uAxis, max);
+      const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
+      return new THREE.Line(geo, mat);
+    }
+    else
+    {
+      const [minU, minV] = handle.rangeMin as [number, number];
+      const [maxU, maxV] = handle.rangeMax as [number, number];
+      const u = handle.plane.uAxis;
+      const v = handle.plane.vAxis;
+      const p00 = base.clone().addScaledVector(u, minU).addScaledVector(v, minV);
+      const p10 = base.clone().addScaledVector(u, maxU).addScaledVector(v, minV);
+      const p11 = base.clone().addScaledVector(u, maxU).addScaledVector(v, maxV);
+      const p01 = base.clone().addScaledVector(u, minU).addScaledVector(v, maxV);
+      const geo = new THREE.BufferGeometry().setFromPoints([p00, p10, p11, p01, p00]);
+      return new THREE.Line(geo, mat);
+    }
+  }
+
+  // ── 11. Styles ──
   static override styles = css`
     :host {
       display: block;

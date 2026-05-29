@@ -67,7 +67,11 @@ export class ParamItemNumber extends LitElement
 
     // ── 2. State & Properties ──
 
-    @property({ attribute: false }) param!: ScriptParam;
+    // hasChanged: always true so Lit re-renders this component whenever the
+    // parent (param-menu SignalWatcher) passes the same ScriptParam object
+    // after an external value change (e.g. handle drag), which mutates
+    // _value in-place without changing the object reference.
+    @property({ attribute: false, hasChanged: () => true }) param!: ScriptParam;
     @state() private _value = 0;
 
     // ── 3. Lifecycle ──
@@ -80,7 +84,15 @@ export class ParamItemNumber extends LitElement
 
     override updated(changed: Map<string, unknown>)
     {
-        if (changed.has('param')) this._syncValue();
+        if (!changed.has('param')) return;
+        // Sync the displayed value from the param state, but only when the
+        // external value actually differs — prevents resetting a slider that
+        // the user is actively dragging (mid-drag _value ≠ committed param value).
+        const external = this.param ? paramValue(this.param) : undefined;
+        if (external !== undefined && Number(external) !== this._value)
+        {
+            this._syncValue();
+        }
     }
 
     // ── 4. Behaviour ──

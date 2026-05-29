@@ -77,7 +77,15 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
                             placeholder="e.g. Height"
                             @input=${(e: InputEvent) =>
                             {
-                                this._name      = (e.target as HTMLInputElement).value;
+                                const input = e.target as HTMLInputElement;
+                                const upper = input.value.toUpperCase();
+                                if (input.value !== upper)
+                                {
+                                    const sel = input.selectionStart;
+                                    input.value = upper;
+                                    input.setSelectionRange(sel, sel);
+                                }
+                                this._name      = upper;
                                 this._nameError = '';
                             }}
                         />

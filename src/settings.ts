@@ -55,6 +55,14 @@ export const DIMENSION_ARROW_LENGTH     = 0.3;     // arrowhead cone length
 export const DIMENSION_ARROW_RADIUS     = 0.1;    // arrowhead cone base radius
 
 // 3D viewer
+
+/** Coordinate system of models as exported by the kernel/meshup pipeline.
+ *  The viewer configures Three.js to match this system so no per-vertex
+ *  remap is needed at runtime — the spatial transform is applied once at
+ *  the camera/scene level.
+ */
+export const VIEWER_MODEL_COORDSYSTEM = { up: 'z', forward: 'y', right: 'x' } as const;
+
 export const VIEWER_BACKGROUND_COLOR = 0xf1f5f9; // scene + renderer clear color
 export const VIEWER_AUTO_FRAME_ON_FIRST_LOAD = true;
 
@@ -80,6 +88,13 @@ export const VIEWER_ESSENTIALS_RESCALE_THRESHOLD = 0.5;
 // Scene radius at which DIMENSION_ARROW_LENGTH / DIMENSION_ARROW_RADIUS look
 // "right". Arrow sizes scale by (currentSceneRadius / reference).
 export const VIEWER_DIMENSION_REFERENCE_SCENE_RADIUS = VIEWER_GRID_FALLBACK_SCENE_RADIUS;
+
+// Interaction handles
+export const VIEWER_HANDLE_DEFAULT_ICON   = 'move';
+export const VIEWER_HANDLE_COLOR          = 0x2563EB; // blue-600
+export const VIEWER_HANDLE_RANGE_LINE_COLOR  = 0x93C5FD; // blue-300
+export const VIEWER_HANDLE_RANGE_LINE_WIDTH  = 1.5;    // px
+export const VIEWER_HANDLE_ICON_SIZE      = 24;        // px — icon box side length
 
 // Origin UCS / navigation gizmo
 export const VIEWER_GIZMO_AXIS_LENGTH    = 0.6;    // positive-arm length, world units (base scale)

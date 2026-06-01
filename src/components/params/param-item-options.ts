@@ -1,7 +1,5 @@
-import { LitElement, html, css, nothing } from 'lit';
+import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-
-import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import type { ScriptParam } from '../../state/workspace.js';
 import { paramValue, paramOptions } from '../../state/workspace.js';
@@ -13,96 +11,61 @@ export class ParamItemOptions extends LitElement
 
     override render()
     {
-        const available = (this.param ? paramOptions(this.param) : []).filter(o => !this._selected.includes(o));
+        const options = this.param ? paramOptions(this.param) : [];
 
         return html`
-            <div class="wrap">
-                ${this._selected.map(opt => html`
-                    <span class="chip">
-                        <span class="chip-label">${opt}</span>
-                        <button
-                            class="chip-remove"
-                            title="Remove"
-                            @click=${() => this._remove(opt)}
-                        >
-                            <wa-icon library="lucide" name="x"></wa-icon>
-                        </button>
-                    </span>
-                `)}
-
-                ${this._picking
-                    ? html`
-                        <select
-                            class="pick-select"
-                            @change=${this._onPick}
-                            @blur=${() => { this._picking = false; }}
-                        >
-                            <option value="" disabled selected>Pick…</option>
-                            ${available.map(o => html`<option value=${o}>${o}</option>`)}
-                        </select>`
-                    : available.length > 0
-                        ? html`
-                            <button class="add-btn" title="Add option" @click=${this._startPick}>
-                                <wa-icon library="lucide" name="plus"></wa-icon>
-                            </button>`
-                        : nothing
+            <select
+                class="select"
+                .value=${this._value}
+                @change=${this._onChange}
+                @mousedown=${(e: MouseEvent) => e.stopPropagation()}
+                @dragstart=${(e: DragEvent) => e.stopPropagation()}
+            >
+                ${options.length === 0
+                    ? html`<option value="" disabled>No options defined</option>`
+                    : options.map(o => html`
+                        <option value=${o} ?selected=${String(o) === this._value}>${o}</option>
+                    `)
                 }
-            </div>
+            </select>
         `;
     }
 
     // ── 2. State & Properties ──
 
     @property({ attribute: false }) param!: ScriptParam;
-    @state() private _selected: string[] = [];
-    @state() private _picking  = false;
+    @state() private _value = '';
 
     // ── 3. Lifecycle ──
 
     override connectedCallback()
     {
         super.connectedCallback();
-        this._selected = (this.param ? paramValue(this.param) : []) as string[] ?? [];
+        this._value = String(this.param ? (paramValue(this.param) ?? '') : '');
     }
 
     override updated(changed: Map<string, unknown>)
     {
-        if (changed.has('param')) this._selected = (this.param ? paramValue(this.param) : []) as string[] ?? [];
-        if (changed.has('_picking') && this._picking)
+        if (changed.has('param'))
         {
-            this.updateComplete.then(() =>
-            {
-                this.renderRoot.querySelector<HTMLSelectElement>('.pick-select')?.focus();
-            });
+            this._value = String(this.param ? (paramValue(this.param) ?? '') : '');
         }
     }
 
     // ── 4. Behaviour ──
 
-    private _startPick()
+    private _onChange(e: Event)
     {
-        this._picking = true;
-    }
+        const raw = (e.target as HTMLSelectElement).value;
+        this._value = raw;
 
-    private _onPick(e: Event)
-    {
-        const val = (e.target as HTMLSelectElement).value;
-        this._picking  = false;
-        if (!val) return;
-        this._selected = [...this._selected, val];
-        this._dispatch();
-    }
+        // If all enum entries are numbers, dispatch as number
+        const options = this.param ? paramOptions(this.param) : [];
+        const isNumericEnum = options.length > 0 && options.every(o => typeof o === 'number');
+        const dispatched: string | number = isNumericEnum ? Number(raw) : raw;
 
-    private _remove(opt: string)
-    {
-        this._selected = this._selected.filter(o => o !== opt);
-        this._dispatch();
-    }
-
-    private _dispatch()
-    {
         this.dispatchEvent(new CustomEvent('param-value-change', {
-            detail:   { name: this.param.name, value: this._selected },
+            detail:   { name: this.param.name, value: dispatched },
             bubbles:  true,
             composed: true,
         }));
@@ -113,90 +76,24 @@ export class ParamItemOptions extends LitElement
     static override styles = css`
         :host { display: block; }
 
-        .wrap
+        .select
         {
-            display:     flex;
-            flex-wrap:   wrap;
-            gap:         3px;
-            align-items: center;
-        }
-
-        /* ── chips ── */
-        .chip
-        {
-            display:       inline-flex;
-            align-items:   center;
-            gap:           2px;
-            padding:       2px 6px;
-            border-radius: var(--radius-full, 100px);
+            width:         100%;
+            font-family:   var(--font-sans);
+            font-size:     var(--text-xs);
+            color:         var(--color-text);
+            background:    var(--color-bg-elevated);
             border:        1px solid var(--color-border);
-            background:    var(--color-bg-elevated);
-            font-family:   var(--font-sans);
-            font-size:     var(--text-xs);
-            color:         var(--color-text);
-            white-space:   nowrap;
-        }
-
-        .chip-label
-        {
-            max-width:     80px;
-            overflow:      hidden;
-            text-overflow: ellipsis;
-            white-space:   nowrap;
-        }
-
-        .chip-remove
-        {
-            display:     inline-flex;
-            align-items: center;
-            padding:     0;
-            border:      none;
-            background:  transparent;
-            cursor:      pointer;
-            font-size:   9px;
-            color:       var(--color-text-muted);
-            opacity:     0.5;
-        }
-
-        .chip-remove:hover
-        {
-            color:   var(--color-alert);
-            opacity: 1;
-        }
-
-        /* ── add button ── */
-        .add-btn
-        {
-            display:         inline-flex;
-            align-items:     center;
-            justify-content: center;
-            width:           20px;
-            height:          20px;
-            padding:         0;
-            border:          none;
-            border-radius:   var(--radius-full, 100px);
-            background:      var(--color-primary);
-            cursor:          pointer;
-            color:           #fff;
-            font-size:       10px;
-        }
-
-        .add-btn:hover { opacity: 0.85; }
-
-        /* ── pick dropdown ── */
-        .pick-select
-        {
-            font-family:   var(--font-sans);
-            font-size:     var(--text-xs);
-            color:         var(--color-text);
-            background:    var(--color-bg-elevated);
-            border:        1px solid var(--color-primary);
             border-radius: var(--radius-sm, 3px);
-            padding:       2px 4px;
+            padding:       3px 6px;
             cursor:        pointer;
         }
 
-        .pick-select:focus { outline: none; }
+        .select:focus
+        {
+            outline:      none;
+            border-color: var(--color-primary);
+        }
     `;
 }
 

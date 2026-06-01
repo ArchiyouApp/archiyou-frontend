@@ -53,6 +53,9 @@ export interface ViewStyle {
 
   // Grid
   grid?: ViewStyleGridConfig;
+
+  // Ground plane (shadow receiver)
+  groundPlane?: boolean;
 }
 
 export const VIEW_STYLES: ViewStyle[] = [
@@ -67,8 +70,9 @@ export const VIEW_STYLES: ViewStyle[] = [
     toneMappingExposure: 1.0,
     environment: 'room',
     ambientLight: { enabled: true, color: 0xffffff, intensity: 0.3 },
-    spotlight: { enabled: true, color: 0xffffff, intensity: 5, castShadow: true },
-    grid: { visible: true, primaryColor: 0xAAAAAA, secondaryColor: 0xDDDDDD, primaryEvery: 5 },
+    spotlight: { enabled: true, color: 0xffffff, intensity: 20, castShadow: true },
+    grid: { visible: true, primaryColor: 0xDDDDDD, secondaryColor: 0xEEEEEE, primaryEvery: 5 },
+    groundPlane: true,
   },
   {
     id: 'xray',

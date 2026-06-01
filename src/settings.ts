@@ -21,7 +21,7 @@ export const EDITOR_START_SCRIPT: ScriptData =
   code: `// Welcome to Archiyou!
 myMainBox = box($SIZE).color('red');
 myMainBox.subtract(
-      box(50).color('blue')
+      box($SIZE*0.5).color('blue')
         .moveTo(myMainBox.bbox().corner('leftfronttop'))
         .hide()
     )
@@ -51,8 +51,8 @@ doc.create('myDoc')
 // The value text is an HTML overlay label, styled via CSS in
 // `viewer-labels-overlay` (not configured here).
 export const DIMENSION_LINE_COLOR       = 0x222222; // line + arrowheads
-export const DIMENSION_ARROW_LENGTH     = 0.3;     // arrowhead cone length
-export const DIMENSION_ARROW_RADIUS     = 0.1;    // arrowhead cone base radius
+export const DIMENSION_ARROW_LENGTH     = 3;     // arrowhead cone length
+export const DIMENSION_ARROW_RADIUS     = 1;    // arrowhead cone base radius
 
 // 3D viewer
 
@@ -66,44 +66,36 @@ export const VIEWER_MODEL_COORDSYSTEM = { up: 'z', forward: 'y', right: 'x' } as
 export const VIEWER_BACKGROUND_COLOR = 0xf1f5f9; // scene + renderer clear color
 export const VIEWER_AUTO_FRAME_ON_FIRST_LOAD = true;
 
-// 3D viewer grid (auto-sized to the loaded model on first load).
-// Total grid extent along each axis = sceneRadius × VIEWER_SCENE_TO_GRID_SIZE.
-// FadingGrid fades to the background near the edges, so the visually useful
-// area is smaller than the full extent.
-export const VIEWER_SCENE_TO_GRID_SIZE   = 30;
-// Target number of grid cells across the scene diameter. The actual cell
+// 3D viewer helpers use a fixed scene size for now.
+// This is the total grid / ground-plane size in world units.
+export const VIEWER_SCENE_SIZE = 5000;
+// Target number of grid cells across the fixed scene size. The actual cell
 // step is snapped to the nearest "nice" value (1, 2, 5, 10, …) so labels and
 // snap distances stay readable.
-export const VIEWER_GRID_CELLS_PER_SCENE = 10;
-// Scene radius assumed for the very first grid build, before any model has
-// loaded. Once a model arrives the grid rebuilds from its bounding box.
-export const VIEWER_GRID_FALLBACK_SCENE_RADIUS = 5;
+export const VIEWER_GRID_CELLS_PER_SCENE = 500;
 
-// Relative change in scene radius (XZ half-extent) that triggers a rebuild of
-// the grid, gizmo and dimension arrows on subsequent model loads. 0.5 = rebuild
-// when the new model is >50% larger/smaller than the last one we sized for.
-// Lower = jumpier, higher = stickier.
-export const VIEWER_ESSENTIALS_RESCALE_THRESHOLD = 0.5;
-
-// Scene radius at which DIMENSION_ARROW_LENGTH / DIMENSION_ARROW_RADIUS look
-// "right". Arrow sizes scale by (currentSceneRadius / reference).
-export const VIEWER_DIMENSION_REFERENCE_SCENE_RADIUS = VIEWER_GRID_FALLBACK_SCENE_RADIUS;
+// Key directional light for shadow casting.
+// VIEWER_LIGHT_POSITION defines the direction and distance from the scene centre
+// to the light. At runtime the vector is normalised into a fixed unit direction
+// and both the light position and its target are offset from the model centre by
+// that same direction — so the shadow angle is always exactly constant, regardless
+// of where the model sits in world space or how its bounding box grows.
+export const VIEWER_LIGHT_POSITION: [number, number, number] = [1000, -1000, 1000];
 
 // Interaction handles
 export const VIEWER_HANDLE_DEFAULT_ICON   = 'move';
 export const VIEWER_HANDLE_COLOR          = 0x2563EB; // blue-600
 export const VIEWER_HANDLE_RANGE_LINE_COLOR  = 0x93C5FD; // blue-300
-export const VIEWER_HANDLE_RANGE_LINE_WIDTH  = 1.5;    // px
-export const VIEWER_HANDLE_ICON_SIZE      = 24;        // px — icon box side length
+export const VIEWER_HANDLE_RANGE_LINE_WIDTH  = 2;    // px
+export const VIEWER_HANDLE_ICON_SIZE      = 18;        // px — icon box side length
 
 // Origin UCS / navigation gizmo
-export const VIEWER_GIZMO_AXIS_LENGTH    = 0.6;    // positive-arm length, world units (base scale)
-export const VIEWER_GIZMO_SCENE_FRACTION = 0.40;   // gizmo arm length as fraction of scene radius
+export const VIEWER_GIZMO_AXIS_LENGTH    = 20;    // positive-arm length, world units (base scale)
 export const VIEWER_GIZMO_COLOR_X        = 0xFF0000; // red   (+X)
 export const VIEWER_GIZMO_COLOR_Y        = 0x00FF00; // green (+Y)
 export const VIEWER_GIZMO_COLOR_Z        = 0x0000FF; // blue  (+Z)
 export const VIEWER_GIZMO_COLOR_ORIGIN   = 0xFFFFFF; // origin sphere at (0,0,0)
-export const VIEWER_GIZMO_LABEL_SIZE     = 0.14;   // sprite scale, world units
+export const VIEWER_GIZMO_LABEL_SIZE     = 10;   // sprite scale, world units
 
 // ── File Manager ──────────────────────────────────────────────────────────────
 

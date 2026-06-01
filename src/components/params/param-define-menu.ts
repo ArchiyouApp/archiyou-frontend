@@ -437,7 +437,7 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
                     this._maxLength   = paramMaxLength(p)?.toString() ?? '';
                     break;
                 case 'options':
-                    this._options       = [...paramOptions(p)];
+                    this._options       = paramOptions(p).map(String);
                     this._defaultOption = p.default ?? '';
                     this._optionDraft   = '';
                     break;
@@ -555,10 +555,18 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
                 break;
 
             case 'options':
-                s.enum     = this._options;
-                p.default  = this._defaultOption || this._options[0];
-                s.default  = p.default;
+            {
+                const allNumeric = this._options.length > 0
+                    && this._options.every(o => o.trim() !== '' && Number.isFinite(Number(o)));
+
+                s.enum    = allNumeric ? this._options.map(Number) : this._options;
+                s.type    = allNumeric ? 'number' : 'string';
+                p.default = allNumeric
+                    ? Number(this._defaultOption || this._options[0])
+                    : (this._defaultOption || this._options[0]);
+                s.default = p.default;
                 break;
+            }
 
             case 'list':
             {

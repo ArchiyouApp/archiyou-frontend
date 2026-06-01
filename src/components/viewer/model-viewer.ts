@@ -15,16 +15,17 @@ import { applyAnnotations } from './gltf-annotations.js';
 import type { HtmlLabelDef } from './gltf-annotations.js';
 import './viewer-labels-overlay.js';
 import type { ViewerLabelsOverlay, OverlayLabel, OverlayLabelPos, DimensionParamChangeDetail } from './viewer-labels-overlay.js';
-import { buildHandles } from './gltf-handles.js';
+import { handleDefFromData } from './gltf-handles.js';
 import type { HandleDef } from './gltf-handles.js';
+import type { ManagedHandlesData } from '../../../devlibs/archiyou-core-next/src/interaction/types.js';
 import './viewer-handles-overlay.js';
 import type { ViewerHandlesOverlay, HandleOverlay, HandleOverlayPos, HandleDragEventDetail } from './viewer-handles-overlay.js';
 import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR,
-  VIEWER_SCENE_TO_GRID_SIZE, VIEWER_GRID_CELLS_PER_SCENE, VIEWER_GRID_FALLBACK_SCENE_RADIUS,
-  VIEWER_GIZMO_AXIS_LENGTH, VIEWER_GIZMO_SCENE_FRACTION, VIEWER_GIZMO_COLOR_X, VIEWER_GIZMO_COLOR_Y,
+  VIEWER_SCENE_SIZE, VIEWER_GRID_CELLS_PER_SCENE,
+  VIEWER_GIZMO_AXIS_LENGTH, VIEWER_GIZMO_COLOR_X, VIEWER_GIZMO_COLOR_Y,
   VIEWER_GIZMO_COLOR_Z, VIEWER_GIZMO_COLOR_ORIGIN, VIEWER_GIZMO_LABEL_SIZE,
-  VIEWER_ESSENTIALS_RESCALE_THRESHOLD, VIEWER_DIMENSION_REFERENCE_SCENE_RADIUS,
-  VIEWER_MODEL_COORDSYSTEM, VIEWER_HANDLE_RANGE_LINE_COLOR, VIEWER_HANDLE_RANGE_LINE_WIDTH } from '../../settings.js';
+  VIEWER_MODEL_COORDSYSTEM, VIEWER_HANDLE_RANGE_LINE_COLOR, VIEWER_HANDLE_RANGE_LINE_WIDTH,
+  VIEWER_LIGHT_POSITION } from '../../settings.js';
 import { VIEW_STYLES } from './view-styles.js';
 import type { ViewStyle, ViewStyleMaterialConfig } from './view-styles.js';
 import { FadingGrid } from './fading-grid.js';
@@ -81,17 +82,18 @@ function _clampHandleScalars(
   return [Math.max(minU, Math.min(maxU, u)), Math.max(minV, Math.min(maxV, v))];
 }
 
-/** Postcondition checks applied to the map-function return value before
- *  `param.validateValue()`. Add entries here to handle common schema constraints
- *  automatically so script authors don't need to guard every map function. */
+/** Postcondition checks applied to mapped values before `param.validateValue()`.
+ *  Applied automatically to every handle path (single-param and multi-param)
+ *  so script authors don't need to guard map functions against schema constraints. */
 const PARAM_MAP_PRECHECKS: Array<{
   check: (param: { schema: any }) => boolean;
-  fix:   (value: any) => any;
+  fix:   (value: any, param: { schema: any }) => any;
 }> = [
-  // Integer-step number params → round to nearest integer
+  // Number params with a multipleOf step → round to nearest valid multiple.
+  // Covers integers (multipleOf:1) and any other step size (multipleOf:5, 0.1, …).
   {
-    check: (p) => p.schema?.type === 'number' && p.schema?.multipleOf === 1,
-    fix:   (v) => Math.round(v),
+    check: (p) => p.schema?.type === 'number' && typeof p.schema?.multipleOf === 'number' && p.schema.multipleOf > 0,
+    fix:   (v, p) => Math.round(v / p.schema.multipleOf) * p.schema.multipleOf,
   },
 ];
 
@@ -223,18 +225,14 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _orthoCamera?: THREE.OrthographicCamera;
   private _controls!: OrbitControls;
   private _ambientLight!: THREE.AmbientLight;
-  private _spotlight!: THREE.SpotLight;
+  private _keyLight!: THREE.DirectionalLight;
   private _hemiLight?: THREE.HemisphereLight;
+  private _groundMesh?: THREE.Mesh;
+  private _groundShadowMesh?: THREE.Mesh;
   private _gridHelper?: FadingGrid;
-  private _appliedGridSize?: number;
-  private _appliedGridDivisions?: number;
   private _appliedGridPrimary?:   number;
   private _appliedGridSecondary?: number;
   private _appliedGridPrimaryEvery?: number;
-  // Scene radius the grid/gizmo/dimension arrows were last sized to.
-  // `undefined` = still on the fallback build (no real model has informed sizing yet).
-  // Used to detect bbox changes that exceed VIEWER_ESSENTIALS_RESCALE_THRESHOLD.
-  private _lastSceneRadius?: number;
   private _gizmoGroup?: THREE.Group;
   private _roomEnvTexture?: THREE.Texture;
 
@@ -299,7 +297,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
     r.toneMapping = THREE.AgXToneMapping;
     r.toneMappingExposure = 1.0;
     r.shadowMap.enabled = true;
-    r.shadowMap.type = THREE.VSMShadowMap;
+    r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.setClearColor(VIEWER_BACKGROUND_COLOR);
     this._renderer = r;
   }
@@ -328,33 +326,55 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
     this._scene.add(this._ambientLight);
 
-    // Key spotlight with VSM soft shadows
-    const spot = new THREE.SpotLight(0xffffff, 5);
-    spot.position.set(3, -3, 5); // Z-up: light comes from above (+Z)
-    spot.angle = Math.PI / 5;
-    spot.penumbra = 0.5;
-    spot.decay = 2;
-    spot.castShadow = true;
-    spot.shadow.mapSize.set(1024, 1024);
-    spot.shadow.bias = -0.0001;
-    spot.shadow.radius = 4;
-    spot.shadow.camera.near = 0.5;
-    spot.shadow.camera.far = 20;
-    this._scene.add(spot);
-    this._scene.add(spot.target);
-    this._spotlight = spot;
+    // Key directional light (parallel rays, no cone) for shadow casting.
+    const dir = new THREE.DirectionalLight(0xffffff, 3);
+    dir.position.set(...VIEWER_LIGHT_POSITION);
+    dir.castShadow = true;
+    dir.shadow.mapSize.set(2048, 2048);
+    dir.shadow.bias = 0;
+    dir.shadow.normalBias = 0.02;
+    dir.shadow.radius = 6;
+    // Frustum will be resized per model in _updateSpotlightForModel().
+    // Use safe defaults until then.
+    dir.shadow.camera.near = 1;
+    dir.shadow.camera.far = 3000;
+    dir.shadow.camera.left   = -10;
+    dir.shadow.camera.right  =  10;
+    dir.shadow.camera.top    =  10;
+    dir.shadow.camera.bottom = -10;
+    this._scene.add(dir);
+    this._scene.add(dir.target);
+    this._keyLight = dir;
   }
 
   private _initGround()
   {
     const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(20, 20),
-      new THREE.ShadowMaterial({ opacity: 0.15 }),
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshStandardMaterial({
+        color: 0xe5e7eb,
+        roughness: 1,
+        metalness: 0,
+      }),
     );
     // PlaneGeometry lies in the XY plane by default, which is the Z=0 ground in Z-up
     mesh.receiveShadow = true;
     mesh.userData.isViewerHelper = true;
+    mesh.visible = false;
     this._scene.add(mesh);
+    this._groundMesh = mesh;
+
+    const shadowMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.ShadowMaterial({ opacity: 0.28 }),
+    );
+    shadowMesh.receiveShadow = true;
+    shadowMesh.userData.isViewerHelper = true;
+    shadowMesh.visible = false;
+    this._scene.add(shadowMesh);
+    this._groundShadowMesh = shadowMesh;
+
+    this._updateGroundPlane();
   }
 
   private _initControls(canvas: HTMLCanvasElement)
@@ -661,74 +681,120 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._dirty = true;
   };
 
-  /**
-   * Half-extent of the current model along its largest XZ axis, or `undefined`
-   * if there's no model / it has an empty bbox. The grid + gizmo + dimension
-   * arrows are sized from this value.
-   */
-  private _computeSceneRadius(): number | undefined
+  private _updateGroundPlane()
   {
-    if (!this._currentModel) return undefined;
+    if (!this._groundMesh || !this._groundShadowMesh) return;
+
+    const size = VIEWER_SCENE_SIZE;
+    const zOffset = 1;
+    const shadowOffset = 0.25;
+
+    this._groundMesh.scale.set(size, size, 1);
+    this._groundShadowMesh.scale.set(size, size, 1);
+
+    if (!this._currentModel)
+    {
+      this._groundMesh.position.set(0, 0, -zOffset);
+      this._groundShadowMesh.position.set(0, 0, -zOffset + shadowOffset);
+      return;
+    }
+
     const box = new THREE.Box3().setFromObject(this._currentModel);
-    if (box.isEmpty()) return undefined;
-    const sz = box.getSize(new THREE.Vector3());
-    // Z-up: the ground plane is XY, so horizontal extent is X and Y
-    return Math.max(Math.max(sz.x, sz.y) * 0.5, 0.5);
+    if (box.isEmpty())
+    {
+      this._groundMesh.position.set(0, 0, -zOffset);
+      this._groundShadowMesh.position.set(0, 0, -zOffset + shadowOffset);
+      return;
+    }
+
+    const center = box.getCenter(new THREE.Vector3());
+    this._groundMesh.position.set(center.x, center.y, -zOffset);
+    this._groundShadowMesh.position.set(center.x, center.y, -zOffset + shadowOffset);
+  }
+
+  private _updateSpotlightForModel()
+  {
+    // Derive a fixed unit direction and distance from VIEWER_LIGHT_POSITION.
+    // We then offset BOTH the light position and its target from the model centre
+    // by that direction, so the direction vector is always exactly constant
+    // regardless of model position or bounding-box size.
+    const lightVec = new THREE.Vector3(...VIEWER_LIGHT_POSITION);
+    const lightDistance = lightVec.length();
+    const lightDir = lightVec.clone().normalize();
+
+    const center = (() =>
+    {
+      if (this._currentModel)
+      {
+        const b = new THREE.Box3().setFromObject(this._currentModel);
+        if (!b.isEmpty()) return b.getCenter(new THREE.Vector3());
+      }
+      return new THREE.Vector3(0, 0, 0);
+    })();
+
+    const sceneRadius = (() =>
+    {
+      if (this._currentModel)
+      {
+        const b = new THREE.Box3().setFromObject(this._currentModel);
+        if (!b.isEmpty())
+        {
+          const s = b.getSize(new THREE.Vector3());
+          return Math.max(Math.max(s.x, s.y, s.z) * 0.5, 1);
+        }
+      }
+      return 50;
+    })();
+
+    // Light position = model centre + light direction * fixed distance.
+    // Target = model centre. Direction = lightDir always.
+    const lightPos = center.clone().addScaledVector(lightDir, lightDistance);
+    // Keep the frustum tight around the model — just enough to cast the shadow
+    // onto the ground catcher. A tight frustum = more shadow-map texels per
+    // world unit = no acne without needing a huge normalBias.
+    const halfExtent = sceneRadius * 1.5;
+
+    this._keyLight.position.copy(lightPos);
+    this._keyLight.target.position.copy(center);
+    this._keyLight.shadow.mapSize.set(2048, 2048);
+    this._keyLight.shadow.camera.near = Math.max(lightDistance - sceneRadius * 6, 1);
+    this._keyLight.shadow.camera.far  = lightDistance + sceneRadius * 6;
+    this._keyLight.shadow.camera.left   = -halfExtent;
+    this._keyLight.shadow.camera.right  =  halfExtent;
+    this._keyLight.shadow.camera.top    =  halfExtent;
+    this._keyLight.shadow.camera.bottom = -halfExtent;
+    this._keyLight.shadow.bias = 0;
+    this._keyLight.shadow.normalBias = 0.02;
+    this._keyLight.shadow.radius = 6;
+    this._keyLight.shadow.camera.updateProjectionMatrix();
+    this._keyLight.target.updateMatrixWorld();
   }
 
   /**
-   * Rebuild the GridHelper and rescale the gizmo to match the current model
-   * bounding box. Rebuilds on first load, when a real model first arrives, or
-   * when the scene radius changes by more than
-   * VIEWER_ESSENTIALS_RESCALE_THRESHOLD — otherwise keeps the existing
-   * geometry so small parameter tweaks don't make the grid jump.
+  * Build the GridHelper once at a fixed scene size.
    * The grid colour is always allowed to change (driven by the active style).
    */
   private _updateGrid()
   {
     const style = VIEW_STYLES.find(s => s.id === this._activeStyleId);
 
-    if (!style?.grid?.visible || !this._gridVisible)
+    if (!this._gridVisible)
     {
       if (this._gridHelper) this._gridHelper.visible = false;
       return;
     }
 
-    const primary      = style.grid.primaryColor   ?? 0x666666;
-    const secondary    = style.grid.secondaryColor ?? 0xAAAAAA;
-    const primaryEvery = style.grid.primaryEvery   ?? 5;
+    // Use a neutral fallback color when the active style has no grid config
+    const primary      = style?.grid?.primaryColor   ?? 0x666666;
+    const secondary    = style?.grid?.secondaryColor ?? 0xAAAAAA;
+    const primaryEvery = style?.grid?.primaryEvery   ?? 5;
 
-    // ── Geometry: build on first call, when a real model first arrives, or
-    // when a new model's scene radius differs from the last one by more than
-    // VIEWER_ESSENTIALS_RESCALE_THRESHOLD (otherwise small parameter tweaks
-    // would make the grid jump on every edit).
-    const newRadius = this._computeSceneRadius();
-    const onFallback = this._lastSceneRadius === undefined;
-    const exceedsThreshold = newRadius !== undefined
-      && this._lastSceneRadius !== undefined
-      && Math.abs(newRadius - this._lastSceneRadius) / this._lastSceneRadius
-           > VIEWER_ESSENTIALS_RESCALE_THRESHOLD;
-    const needsBuild = !this._appliedGridSize
-                       || (onFallback && newRadius !== undefined)
-                       || exceedsThreshold;
-    if (needsBuild)
+    if (!this._gridHelper)
     {
-      const sceneRadius = newRadius ?? VIEWER_GRID_FALLBACK_SCENE_RADIUS;
-
-      // Target cell size: one cell per `1 / VIEWER_GRID_CELLS_PER_SCENE` of the
-      // scene diameter, snapped to a "nice" round step (1, 2, 5, 10, …).
-      const cellStep  = _niceGridStep((sceneRadius * 2) / VIEWER_GRID_CELLS_PER_SCENE);
-      // Total grid extent snapped to a whole multiple of the cell step so
-      // primary lines line up cleanly with the centre.
-      const size      = Math.ceil((sceneRadius * VIEWER_SCENE_TO_GRID_SIZE) / cellStep) * cellStep;
+      const cellStep  = _niceGridStep(VIEWER_SCENE_SIZE / VIEWER_GRID_CELLS_PER_SCENE);
+      const size      = Math.ceil(VIEWER_SCENE_SIZE / cellStep) * cellStep;
       const divisions = Math.round(size / cellStep);
 
-      if (this._gridHelper)
-      {
-        this._scene.remove(this._gridHelper);
-        this._gridHelper.geometry.dispose();
-        (this._gridHelper.material as THREE.Material).dispose();
-      }
       this._gridHelper = new FadingGrid(
         size, divisions, primary, secondary,
         VIEWER_BACKGROUND_COLOR, primaryEvery,
@@ -737,43 +803,15 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._gridHelper.rotation.x = -Math.PI / 2;
       this._gridHelper.userData.isViewerHelper = true;
       this._scene.add(this._gridHelper);
-      this._appliedGridSize         = size;
-      this._appliedGridDivisions    = divisions;
       this._appliedGridPrimary      = primary;
       this._appliedGridSecondary    = secondary;
       this._appliedGridPrimaryEvery = primaryEvery;
-      this._lastSceneRadius         = newRadius;
-
-      // Scale the gizmo so its arm length = sceneRadius × VIEWER_GIZMO_SCENE_FRACTION
-      if (this._gizmoGroup)
-      {
-        const targetLength = sceneRadius * VIEWER_GIZMO_SCENE_FRACTION;
-        const s = targetLength / VIEWER_GIZMO_AXIS_LENGTH;
-        this._gizmoGroup.scale.setScalar(s);
-      }
-      return;
-    }
-
-    // ── Grid already built: just show it and update colour if style changed ──
-    if (!this._gridHelper)
-    {
-      // Geometry params known — recreate with existing values (e.g. after dispose)
-      this._gridHelper = new FadingGrid(
-        this._appliedGridSize,
-        this._appliedGridDivisions!,
-        primary, secondary,
-        VIEWER_BACKGROUND_COLOR, primaryEvery,
-      );
-      this._gridHelper.rotation.x = -Math.PI / 2; // XZ → XY for Z-up
-      this._gridHelper.userData.isViewerHelper = true;
-      this._scene.add(this._gridHelper);
-      this._appliedGridPrimary      = primary;
-      this._appliedGridSecondary    = secondary;
-      this._appliedGridPrimaryEvery = primaryEvery;
+      this._gridHelper.position.z = 0;
       return;
     }
 
     this._gridHelper.visible = true;
+    this._gridHelper.position.z = 0;
 
     if (this._appliedGridPrimary !== primary || this._appliedGridSecondary !== secondary)
     {
@@ -948,7 +986,20 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // Shadows
     const shadows = style.shadows ?? true;
     this._renderer.shadowMap.enabled = shadows;
-    this._spotlight.castShadow = shadows;
+    this._keyLight.castShadow = shadows;
+
+    // Ground plane (shadow catcher only)
+    if (this._groundMesh)
+    {
+      this._groundMesh.visible = false;
+      this._updateGroundPlane();
+    }
+    if (this._groundShadowMesh)
+    {
+      this._groundShadowMesh.visible = style.groundPlane ?? false;
+      const shadowMaterial = this._groundShadowMesh.material as THREE.ShadowMaterial;
+      shadowMaterial.opacity = shadows ? 0.16 : 0;
+    }
 
     // IBL environment
     if (style.environment === 'room')
@@ -970,7 +1021,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     // Lighting
     this._applyLightConfig(this._ambientLight, style.ambientLight);
-    this._applyLightConfig(this._spotlight, style.spotlight);
+    this._applyLightConfig(this._keyLight, style.spotlight);
 
     if (style.hemiLight)
     {
@@ -988,6 +1039,10 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     // Grid + Fog (auto-sized to scene bounds)
     this._activeStyleId = styleId;
+    // Sync the user toggle to the style's default each time the style changes
+    // so switching to realistic (grid off by default) hides the grid, but the
+    // user can still toggle it on manually afterwards.
+    this._gridVisible = style.grid?.visible ?? true;
     this._updateGrid();
 
     // Material overrides — traverse scene only when the style has mesh/line config
@@ -1258,7 +1313,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
     if (cfg.intensity !== undefined) light.intensity = cfg.intensity;
     if (cfg.castShadow !== undefined && 'castShadow' in light)
     {
-      (light as THREE.SpotLight).castShadow = cfg.castShadow;
+      light.castShadow = cfg.castShadow;
     }
   }
 
@@ -1286,6 +1341,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
     if (!param.validateValue(coerced)) return; // silent — wait for the user to type more
 
     updateParam(detail.param, { value: coerced });
+    scheduleExecution();
   };
 
   /** Coerce the raw input string to the parameter's value type.
@@ -1341,14 +1397,18 @@ export class ModelViewer extends SignalWatcher(LitElement)
   {
     const model = gltf.scene;
 
-    // Enable shadow casting / receiving on every mesh; polygon offset pushes
-    // surfaces back so coplanar edge lines never z-fight with them.
+    // Enable shadow casting on every mesh so the model projects onto the
+    // ground catcher. Avoid mesh self-receive here: the viewer's main shadow
+    // use-case is the ground shadow, and self-shadowing from a single
+    // directional shadow map is the main source of front-face acne / moire.
+    // polygonOffset still pushes surfaces back so coplanar edge lines never
+    // z-fight with them.
     model.traverse((n) =>
     {
       if ((n as THREE.Mesh).isMesh)
       {
         n.castShadow = true;
-        n.receiveShadow = true;
+        n.receiveShadow = false;
         const mats = Array.isArray((n as THREE.Mesh).material)
           ? (n as THREE.Mesh).material as THREE.Material[]
           : [(n as THREE.Mesh).material as THREE.Material];
@@ -1364,12 +1424,10 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._scene.add(model);
     this._currentModel = model;
 
-    // Resize the grid to match the now-known model scale (first model load).
+    // Reposition fixed-size helpers against the current model.
     this._updateGrid();
-
-    // Aim spotlight at model center
-    const mc = new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3());
-    this._spotlight.target.position.copy(mc);
+    this._updateGroundPlane();
+    this._updateSpotlightForModel();
 
     this._updateCameraRangesForObject(model);
 
@@ -1398,12 +1456,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // Render annotations: prefer the live execution result; fall back to GLB
     // extras for standalone .glb loads. Dimensions become 3D arrows + HTML
     // overlay value text; labels become HTML overlay elements.
-    // Arrow geometry scales with the viewer's last-known scene radius so
-    // arrows stay legible across very different model sizes.
     const anns = executionResult.get()?.state?.annotations as any[] | undefined;
-    const r = this._lastSceneRadius ?? VIEWER_GRID_FALLBACK_SCENE_RADIUS;
-    const arrowScale = r / VIEWER_DIMENSION_REFERENCE_SCENE_RADIUS;
-    const { htmlLabels } = await applyAnnotations(gltf, model, anns, arrowScale);
+    const { htmlLabels } = await applyAnnotations(gltf, model, anns);
     this._htmlLabels = htmlLabels;
     const overlay = this.renderRoot.querySelector('viewer-labels-overlay') as ViewerLabelsOverlay | null;
     if (overlay)
@@ -1427,19 +1481,14 @@ export class ModelViewer extends SignalWatcher(LitElement)
       }));
     }
 
-    // Load interaction handles (prefer live execution result; fall back to GLB extras)
-    const rawHandles = executionResult.get()?.state?.handles as any[] | undefined;
-    this._htmlHandles = buildHandles(gltf, rawHandles);
-    const handlesOverlay = this.renderRoot.querySelector('viewer-handles-overlay') as ViewerHandlesOverlay | null;
-    if (handlesOverlay)
+    // Reconcile interaction handles via the op stream from the execution result.
+    // _reconcileHandles preserves dragged positions and only re-renders the overlay
+    // when the set of handle ids changes (add/delete ops). A quiet param re-exec
+    // emits [] and leaves all handles untouched.
+    const managedHandles = executionResult.get()?.state?.managedHandles as ManagedHandlesData | undefined;
+    if (managedHandles)
     {
-      handlesOverlay.handles = this._htmlHandles.map((h): HandleOverlay => ({
-        id:         h.id,
-        icon:       h.icon,
-        visible:    h.visible,
-        param:      h.param,
-        paramFnSrc: h.paramFnSrc,
-      }));
+      this._reconcileHandles(managedHandles);
     }
 
     this._dirty = true; // ensure a frame so labels/handles appear/position
@@ -1526,17 +1575,98 @@ export class ModelViewer extends SignalWatcher(LitElement)
     const overlay = this.renderRoot.querySelector('viewer-labels-overlay') as ViewerLabelsOverlay | null;
     if (overlay) overlay.labels = [];
 
-    // Clear interaction handles
-    this._htmlHandles = [];
-    this._activeHandle = null;
-    const handlesOverlay = this.renderRoot.querySelector('viewer-handles-overlay') as ViewerHandlesOverlay | null;
-    if (handlesOverlay) handlesOverlay.handles = [];
+    // Handles are NOT cleared here — they persist across reloads and are
+    // reconciled via managedHandles ops. Only the range helper (drag guide) is removed.
+    // Handles are removed when the script emits 'delete' ops or on page reload.
     if (this._rangeHelper) { this._scene.remove(this._rangeHelper); this._rangeHelper = undefined; }
+    // If a drag was in progress, cancel it cleanly
+    if (this._activeHandle) { this._activeHandle = null; this._controls.enabled = true; }
 
     this._currentModel = undefined;
+    this._updateSpotlightForModel();
+    this._updateGroundPlane();
     this._mixer = undefined;
     this._animationClips = [];
     this._activeAnimationName = null;
+  }
+
+  /** Reconcile the viewer's handle list from the op stream produced by
+   *  Interactor.getManagedHandlesData(). Only re-renders the HTML overlay when the
+   *  set of handle ids changes — a quiet param re-exec emits [] and leaves
+   *  all handles (including their dragged positions) completely untouched. */
+  private _reconcileHandles(ops: ManagedHandlesData): void
+  {
+    let idsChanged = false;
+    for (const op of ops)
+    {
+      if (op._operation === 'add')
+      {
+        const def = handleDefFromData(op.data as any);
+        const idx = this._htmlHandles.findIndex(h => h.id === op.id);
+        if (idx >= 0)
+        {
+          const existing = this._htmlHandles[idx];
+          // Definition update (function, range, icon changed) — replace the def
+          // but always preserve the user's dragged position and plane.origin.
+          // plane.origin is the fixed drag-zone anchor (center for relative ranges,
+          // perp-axis reference for absolute) and must only move via explicit
+          // at()/position() mutator update ops — never from a definition re-add.
+          def.anchorLocal.copy(existing.anchorLocal);
+          def.plane.origin.copy(existing.plane.origin);
+          this._htmlHandles[idx] = def;
+        }
+        else { this._htmlHandles.push(def); idsChanged = true; }
+      }
+      else if (op._operation === 'update')
+      {
+        const h = this._htmlHandles.find(h => h.id === op.id);
+        if (h)
+        {
+          if (op.position)
+          {
+            h.anchorLocal.set(op.position[0], op.position[1], op.position[2]);
+            // For relative ranges plane.origin is the drag-zone center.
+            // at()/position() mutators explicitly command a new center, so update it.
+            // For absolute ranges plane.origin is just a reference point — also update.
+            h.plane.origin.set(op.position[0], op.position[1], op.position[2]);
+          }
+          if (op.visible !== undefined) h.visible = op.visible;
+        }
+      }
+      else if (op._operation === 'delete')
+      {
+        const idx = this._htmlHandles.findIndex(h => h.id === op.id);
+        if (idx >= 0)
+        {
+          if (this._activeHandle?.id === op.id)
+          {
+            this._activeHandle = null;
+            this._controls.enabled = true;
+            if (this._rangeHelper) { this._scene.remove(this._rangeHelper); this._rangeHelper = undefined; }
+          }
+          this._htmlHandles.splice(idx, 1);
+          idsChanged = true;
+        }
+      }
+    }
+    if (idsChanged) this._syncOverlayHandles();
+    this._dirty = true;
+  }
+
+  /** Push the current _htmlHandles id-set to the HTML overlay (Lit re-render).
+   *  Only call when handles are added or removed — not on every param re-exec. */
+  private _syncOverlayHandles(): void
+  {
+    const overlay = this.renderRoot.querySelector('viewer-handles-overlay') as ViewerHandlesOverlay | null;
+    if (!overlay) return;
+    overlay.handles = this._htmlHandles.map((h): HandleOverlay => ({
+      id:          h.id,
+      icon:        h.icon,
+      visible:     h.visible,
+      param:       h.param,
+      paramFnSrc:  h.paramFnSrc,
+      paramsFnSrc: h.paramsFnSrc,
+    }));
   }
 
   private _frameCamera(obj: THREE.Object3D)
@@ -1769,7 +1899,6 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._dirty = true;
 
     if (!handle || handle.id !== detail.id) return;
-    if (!handle.param || !handle.paramFnSrc) return;
 
     // Compute the final u/v scalar values for this drag position
     const { uScalar, vScalar } = _resolveHandleScalars(handle, handle.anchorLocal);
@@ -1777,19 +1906,6 @@ export class ModelViewer extends SignalWatcher(LitElement)
     const rangeValue: number | [number, number] = handle.rangeType === '1d'
       ? uClamped
       : [uClamped, vClamped];
-
-    // Reconstruct the map function and compute new param value
-    let fn: ((h: any, p: any) => any) | null = null;
-    try
-    {
-      // eslint-disable-next-line no-eval
-      fn = (0, eval)('(' + handle.paramFnSrc + ')');
-    }
-    catch (err)
-    {
-      console.error(`Handle map function could not be reconstructed:`, err);
-      return;
-    }
 
     const handleObj = {
       x:     handle.anchorLocal.x,
@@ -1801,6 +1917,58 @@ export class ModelViewer extends SignalWatcher(LitElement)
       range: [handle.rangeMin, handle.rangeMax],
     };
 
+    const { paramValue, paramMin, paramMax } = await import('../../state/types.js')
+      .catch(() => ({ paramValue: (p: any) => p._value ?? p.default, paramMin: () => 0, paramMax: () => 100 }));
+
+    // ── Multi-param path (.params(fn)) ────────────────────────────────────────
+    if (handle.paramsFnSrc)
+    {
+      let fn: ((h: any, p: Record<string, any>) => void) | null = null;
+      try
+      {
+        // eslint-disable-next-line no-eval
+        fn = (0, eval)('(' + handle.paramsFnSrc + ')');
+      }
+      catch (err)
+      {
+        console.error(`Handle params function could not be reconstructed:`, err);
+        return;
+      }
+
+      // Build snapshot of all current param values: { PARAM_NAME: value, ... }
+      const allParams = scriptParams.get();
+      const before: Record<string, any> = {};
+      for (const p of allParams) before[p.name] = paramValue(p);
+      const paramsObj = structuredClone(before);
+
+      try { fn!(handleObj, paramsObj); }
+      catch (err) { console.error(`Handle params function threw:`, err); return; }
+
+      // Apply each key that was mutated
+      let anyChanged = false;
+      for (const p of allParams)
+      {
+        if (paramsObj[p.name] === undefined) continue;
+        // Deep-equal check via JSON (params are plain scalars/arrays/objects)
+        if (JSON.stringify(paramsObj[p.name]) === JSON.stringify(before[p.name])) continue;
+        // Apply schema prechecks (e.g. round to multipleOf step) before validating
+        let newVal = paramsObj[p.name];
+        for (const { check, fix } of PARAM_MAP_PRECHECKS)
+        {
+          if (check(p)) newVal = fix(newVal, p);
+        }
+        if (!p.validateValue(newVal)) { console.warn(`Handle params fn: invalid value for "${p.name}":`, newVal); continue; }
+        console.info('Handle updated param', p.name, '→', newVal);
+        updateParam(p.name, { value: newVal });
+        anyChanged = true;
+      }
+      if (anyChanged) scheduleExecution();
+      return;
+    }
+
+    // ── Single-param path (.param(name, fn?) or autoMap) ─────────────────────
+    if (!handle.param) return;
+
     const param = scriptParams.get().find(p => p.name === handle.param);
     if (!param)
     {
@@ -1808,35 +1976,78 @@ export class ModelViewer extends SignalWatcher(LitElement)
       return;
     }
 
-    const { paramValue } = await import('../../state/types.js').catch(() => ({ paramValue: (p: any) => p._value ?? p.default }));
-    const currentVal = paramValue(param);
-    const copy = structuredClone(currentVal);
-
     let next: any;
-    try
+
+    if (handle.paramFnSrc)
     {
-      const returned = fn!(handleObj, copy);
-      next = returned !== undefined ? returned : copy;
+      // Explicit map function
+      let fn: ((h: any, p: any) => any) | null = null;
+      try
+      {
+        // eslint-disable-next-line no-eval
+        fn = (0, eval)('(' + handle.paramFnSrc + ')');
+      }
+      catch (err)
+      {
+        console.error(`Handle map function could not be reconstructed:`, err);
+        return;
+      }
+
+      const currentVal = paramValue(param);
+      const copy = structuredClone(currentVal);
+      try
+      {
+        const returned = fn!(handleObj, copy);
+        next = returned !== undefined ? returned : copy;
+      }
+      catch (err)
+      {
+        console.error(`Handle map function threw:`, err);
+        return;
+      }
     }
-    catch (err)
+    else
     {
-      console.error(`Handle map function threw:`, err);
-      return;
+      // autoMap: linear remap of handle range → param schema min/max.
+      // Requires 1D, non-relative, number param.
+      if (handle.rangeType !== '1d')
+      {
+        console.warn(`Handle autoMap only supports 1D handles (handle "${handle.id}")`);
+        return;
+      }
+      if (handle.rangeRelative)
+      {
+        console.warn(`Handle autoMap does not support relative ranges (handle "${handle.id}"). Provide an explicit map fn.`);
+        return;
+      }
+      if ((param as any).type !== 'number')
+      {
+        console.warn(`Handle autoMap requires a number param (handle "${handle.id}" → param "${handle.param}")`);
+        return;
+      }
+      const rMin = handle.rangeMin as number;
+      const rMax = handle.rangeMax as number;
+      const t = rMax === rMin ? 0 : (uClamped - rMin) / (rMax - rMin);
+      next = paramMin(param) + t * (paramMax(param) - paramMin(param));
     }
 
-    // Apply param-type prechecks (e.g. round integer-step params)
+    await this._applyHandleParam(param, next);
+  };
+
+  /** Shared tail for single-param path: prechecks → validate → updateParam → scheduleExecution. */
+  private async _applyHandleParam(param: any, next: any): Promise<void>
+  {
     for (const { check, fix } of PARAM_MAP_PRECHECKS)
     {
-      if (check(param)) next = fix(next);
+      if (check(param)) next = fix(next, param);
     }
-
     if (!param.validateValue(next))
     {
       console.warn(`Handle map function returned invalid value:`, next);
-      return
-    };
-    console.info('Handle updated param', handle.param, '→', next);
-    updateParam(handle.param, { value: next });
+      return;
+    }
+    console.info('Handle updated param', param.name, '→', next);
+    updateParam(param.name, { value: next });
     scheduleExecution();
   };
 

@@ -514,8 +514,9 @@ export class EditorFileManager extends SignalWatcher(LitElement)
       flex-shrink: 0;
       user-select: none;
       cursor: pointer;
-      background: var(--color-gray);
-      border-bottom: 1px solid var(--color-border);
+      color: color-mix(in srgb, var(--color-primary) 72%, var(--color-text) 28%);
+      background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg-elevated) 90%);
+      border-bottom: 1px solid color-mix(in srgb, var(--color-primary) 22%, var(--color-border) 78%);
     }
 
     :host([collapsed]) .header
@@ -526,7 +527,7 @@ export class EditorFileManager extends SignalWatcher(LitElement)
     .script-name
     {
       font-weight: 500;
-      color: var(--color-text);
+      color: color-mix(in srgb, var(--color-primary) 68%, var(--color-text) 32%);
       font-size: var(--text-sm);
       white-space: nowrap;
       overflow: hidden;
@@ -558,7 +559,7 @@ export class EditorFileManager extends SignalWatcher(LitElement)
       background: none;
       border: none;
       cursor: pointer;
-      color: var(--color-text-muted);
+      color: color-mix(in srgb, var(--color-primary) 52%, var(--color-text-muted) 48%);
       border-radius: var(--radius-sm, 4px);
       opacity: 0;
       transition: opacity 0.1s;

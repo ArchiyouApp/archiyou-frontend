@@ -101,6 +101,7 @@ export class FadingGrid extends THREE.GridHelper
       `,
       vertexColors: true,
       toneMapped: false,
+      depthWrite: false,
       transparent: false,
     });
 
@@ -109,6 +110,11 @@ export class FadingGrid extends THREE.GridHelper
     const old = this.material as THREE.Material | THREE.Material[];
     if (Array.isArray(old)) old.forEach(m => m.dispose()); else old.dispose();
     (this as unknown as { material: THREE.Material }).material = this._shaderMaterial;
+
+    // Keep the grid visually behind coplanar 2D geometry at Z=0 without
+    // moving it off the world plane. Rendering early + no depth writes lets
+    // later scene geometry cleanly draw over the grid instead of fighting it.
+    this.renderOrder = -10;
 
     this._applyLineColors();
   }

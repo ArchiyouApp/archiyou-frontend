@@ -97,7 +97,9 @@ export class CodeBox extends SignalWatcher(LitElement)
         </div>
         ${result?.status === 'error'
           ? html`
-              <div class="subheader subheader-error" title=${this._fullErrorMessage(error?.message)}>
+              <div class="subheader subheader-error ${typeof error?.lineStart === 'number' && error.lineStart > 0 ? 'subheader-error--clickable' : ''}"
+                title=${this._fullErrorMessage(error?.message)}
+                @click=${() => this._goToErrorLine(error?.lineStart)}>
                 ${this._shortErrorMessage(error)}
               </div>
             `
@@ -128,7 +130,32 @@ export class CodeBox extends SignalWatcher(LitElement)
               key: 'Tab',
               run: (view) =>
               {
-                view.dispatch(view.state.update(view.state.replaceSelection('  '), { scrollIntoView: true, userEvent: 'input' }));
+                const { state } = view;
+                // If the selection spans multiple lines, indent each line
+                const sel = state.selection.main;
+                const fromLine = state.doc.lineAt(sel.from);
+                const toLine   = state.doc.lineAt(sel.to);
+                if (fromLine.number !== toLine.number || sel.empty === false && sel.to > sel.from)
+                {
+                  // Indent every line that the selection touches
+                  const changes = state.changeByRange(range =>
+                  {
+                    const startLine = state.doc.lineAt(range.from);
+                    const endLine   = state.doc.lineAt(range.to);
+                    const inserts: { from: number; insert: string }[] = [];
+                    for (let ln = startLine.number; ln <= endLine.number; ln++)
+                    {
+                      inserts.push({ from: state.doc.line(ln).from, insert: '  ' });
+                    }
+                    const cs = state.changes(inserts);
+                    return { changes: cs, range: range.map(cs) };
+                  });
+                  view.dispatch(state.update(changes, { userEvent: 'input' }));
+                }
+                else
+                {
+                  view.dispatch(state.update(state.replaceSelection('  '), { scrollIntoView: true, userEvent: 'input' }));
+                }
                 return true;
               },
             },
@@ -299,6 +326,20 @@ export class CodeBox extends SignalWatcher(LitElement)
     return `${prefix}${text}`;
   }
 
+  /** Navigate CodeMirror to the given 1-based line number. */
+  private _goToErrorLine(lineStart: number | undefined): void
+  {
+    if (!this._view || typeof lineStart !== 'number' || lineStart < 1) return;
+    const doc = this._view.state.doc;
+    if (lineStart > doc.lines) return;
+    const line = doc.line(lineStart);
+    this._view.dispatch({
+      selection: { anchor: line.from },
+      scrollIntoView: true,
+    });
+    this._view.focus();
+  }
+
   /** Return the full message for the tooltip. */
   private _fullErrorMessage(msg: string | undefined): string
   {
@@ -357,6 +398,15 @@ export class CodeBox extends SignalWatcher(LitElement)
     .subheader-error {
       color: var(--wa-color-danger-500, #ef4444);
       background: color-mix(in srgb, var(--wa-color-danger-500, #ef4444) 8%, transparent);
+    }
+
+    .subheader-error--clickable {
+      cursor: pointer;
+    }
+
+    .subheader-error--clickable:hover {
+      background: color-mix(in srgb, var(--wa-color-danger-500, #ef4444) 16%, transparent);
+      text-decoration: underline;
     }
 
     .title {

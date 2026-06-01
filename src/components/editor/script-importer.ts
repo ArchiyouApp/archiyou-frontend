@@ -119,10 +119,13 @@ export class ScriptImporter extends SignalWatcher(LitElement)
         throw new Error('Input must evaluate to a plain object.');
       }
 
-      const script = Script.fromData(parsed as Record<string, any>);
+      // Strip `published` from old-format scripts — it often contains stale/incompatible data
+      const { published: _ignored, ...cleanedParsed } = parsed as Record<string, any>;
+
+      const script = Script.fromData(cleanedParsed as Record<string, any>);
       if (!script)
       {
-        const fieldErrors = Script.diagnoseData(parsed as Record<string, any>);
+        const fieldErrors = Script.diagnoseData(cleanedParsed as Record<string, any>);
         if (fieldErrors.length > 0)
         {
           throw new Error(`Invalid ScriptData:\n${fieldErrors.join('\n')}`);

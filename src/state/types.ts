@@ -30,7 +30,7 @@ export const paramMax          = (p: ScriptParamClass): number => _s(p).maximum 
 export const paramStep         = (p: ScriptParamClass): number => _s(p).multipleOf ?? 1;
 export const paramMinLength    = (p: ScriptParamClass): number => _s(p).minLength ?? 0;
 export const paramMaxLength    = (p: ScriptParamClass): number | undefined => _s(p).maxLength;
-export const paramOptions      = (p: ScriptParamClass): string[] => _s(p).enum ?? [];
+export const paramOptions      = (p: ScriptParamClass): (string | number)[] => _s(p).enum ?? [];
 export const paramListItemType = (p: ScriptParamClass): 'string' | 'number' | 'boolean' =>
   _s(p).items?.type ?? 'string';
 /** Effective current value: runtime `_value`, falling back to `default`. */

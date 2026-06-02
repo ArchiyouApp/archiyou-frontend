@@ -6,8 +6,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { buildScenegraphPath, executionResult, scenegraph, scriptParams, updateParam } from '../../state/workspace.js';
-import { scheduleExecution } from '../../state/viewer.js';
+import { buildScenegraphPath, executionResult, scenegraph, scriptParams, updateParam, selectedPath, setSelectedPath, interactiveShapes } from '../../state/workspace.js';
+import { scheduleExecution, resetCameraCounter } from '../../state/viewer.js';
 import type { ScriptOutputData } from '../../../devlibs/archiyou-core-next/src/execution/types.js';
 import type { SmartSceneNodeData } from '../../../devlibs/archiyou-core-next/src/modeler/types.js';
 import { applyEdgeExtensions } from './gltf-edge-extensions.js';
@@ -124,6 +124,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._pendingGlbOutput = executionResult.get()?.outputs
       ?.find(o => o.path.requestedPath === 'default/model/glb');
     this._pendingScenegraph = scenegraph.get();
+    this._pendingResetCount = resetCameraCounter.get();
+    this._pendingSelectedPath = selectedPath.get();
+    this._interactiveShapes = interactiveShapes.get();
 
     return html`
       <canvas></canvas>
@@ -174,6 +177,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._loop();
 
     canvas.addEventListener('pointerdown', this._hitTestGizmo);
+    canvas.addEventListener('pointerdown', this._onPickPointerDown);
+    canvas.addEventListener('pointerup', this._onPickPointerUp);
 
     this._resizeObserver = new ResizeObserver(() => this._resize());
     this._resizeObserver.observe(this);
@@ -181,6 +186,13 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
   override updated(_changed: Map<string, unknown>)
   {
+    if (this._pendingResetCount !== this._lastHandledResetCount)
+    {
+      this._lastHandledResetCount = this._pendingResetCount;
+      this._forceFrameOnNextLoad  = true;
+      this._hasFramedCamera       = false;
+    }
+
     const glbOutput = this._pendingGlbOutput;
     if (glbOutput && glbOutput !== this._lastGlbOutput && this._renderer)
     {
@@ -195,6 +207,13 @@ export class ModelViewer extends SignalWatcher(LitElement)
     {
       this._lastAppliedScenegraph = this._pendingScenegraph;
       this._applyViewStyle(this._activeStyleId);
+    }
+
+    // Selection highlight (driven by the selectedPath signal, identity by path).
+    if (this._pendingSelectedPath !== this._lastAppliedSelectedPath && this._renderer)
+    {
+      this._lastAppliedSelectedPath = this._pendingSelectedPath;
+      this._applySelectionHighlight(this._pendingSelectedPath);
     }
   }
 
@@ -256,6 +275,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _lastGlbOutput?: ScriptOutputData;
   private _pendingGlbOutput?: ScriptOutputData;
   private _hasFramedCamera = false;
+  private _pendingResetCount     = 0;
+  private _lastHandledResetCount = 0;
+  private _forceFrameOnNextLoad  = false;
 
   // View-style override tracking
   private _savedMaterials = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
@@ -273,6 +295,21 @@ export class ModelViewer extends SignalWatcher(LitElement)
   /** Path → Three.js object map rebuilt on every GLB load; matches the
    *  filtering rules used by the runner-side path emitter so paths line up. */
   private _pathToObject = new Map<string, THREE.Object3D>();
+
+  // Click-selection (identity by scene path; see state/editor.ts selectedPath).
+  private _pendingSelectedPath: string | null = null;
+  /** Sentinel `undefined` so the first apply always runs (null is a valid state). */
+  private _lastAppliedSelectedPath: string | null | undefined = undefined;
+  /** Scene paths the last run declared interactive (onClick). A click on one of
+   *  these triggers a re-run; other clicks only highlight + select. */
+  private _interactiveShapes: string[] = [];
+  /** Wireframe box drawn around the currently selected node. */
+  private _selectionBox?: THREE.BoxHelper;
+  // Pointer-down tracking so an orbit/pan drag isn't treated as a select-click.
+  private _pickDownPos?: { x: number; y: number };
+  private _pickDownTime = 0;
+  /** Set when a pointerdown hit the gizmo, so the matching pointerup doesn't also pick. */
+  private _skipNextPick = false;
 
   // Camera tween state for smooth axis-snap
   private _cameraTween?: {
@@ -937,9 +974,113 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     e.stopPropagation();
     e.preventDefault();
+    this._skipNextPick = true; // don't let the matching pointerup select a shape behind the gizmo
     const hit = hits[0].object;
     this._snapCameraToAxis(hit.userData.axis as 'x' | 'y' | 'z', hit.userData.negative as boolean);
   };
+
+  // ── Shape click-selection ──
+
+  private _onPickPointerDown = (e: PointerEvent) =>
+  {
+    if (e.button !== 0) return;
+    this._pickDownPos = { x: e.clientX, y: e.clientY };
+    this._pickDownTime = performance.now();
+  };
+
+  private _onPickPointerUp = (e: PointerEvent) =>
+  {
+    const down = this._pickDownPos;
+    this._pickDownPos = undefined;
+    if (this._skipNextPick) { this._skipNextPick = false; return; }
+    if (e.button !== 0 || !down) return;
+    // Treat as a click only if the pointer barely moved and wasn't held long —
+    // otherwise it's an OrbitControls rotate/pan, not a selection.
+    const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+    if (moved > 5 || performance.now() - this._pickDownTime > 500) return;
+    this._pickShapeAt(e);
+  };
+
+  /** Raycast the cursor against the loaded model and select the first shape hit
+   *  (or clear selection on an empty-space click). */
+  private _pickShapeAt(e: PointerEvent)
+  {
+    if (!this._currentModel) return;
+    const canvas = this.renderRoot.querySelector('canvas') as HTMLCanvasElement;
+    const rect = canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    const cam = this._isOrtho ? (this._orthoCamera ?? this._camera) : this._camera;
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(ndc, cam);
+
+    const hits = raycaster.intersectObject(this._currentModel, true);
+    let path: string | null = null;
+    for (const hit of hits)
+    {
+      if (this._isHelperObject(hit.object)) continue;
+      const p = this._scenePathOf(hit.object);
+      if (p) { path = p; break; }
+    }
+    this._setSelection(path);
+  }
+
+  /** True if the object or any ancestor is a viewer helper (gizmo, grid, …). */
+  private _isHelperObject(obj: THREE.Object3D): boolean
+  {
+    for (let o: THREE.Object3D | null = obj; o; o = o.parent)
+      if (o.userData.isViewerHelper) return true;
+    return false;
+  }
+
+  /** Walk up from a hit object to the nearest ancestor stamped with a scenePath
+   *  (set by _buildPathMap), the identity used for selection. */
+  private _scenePathOf(obj: THREE.Object3D): string | null
+  {
+    for (let o: THREE.Object3D | null = obj; o; o = o.parent)
+      if (typeof o.userData.scenePath === 'string') return o.userData.scenePath;
+    return null;
+  }
+
+  /** Apply a new selection. Re-runs the script only when the old or new shape is
+   *  script-interactive (onClick), so handles appear/disappear; pure selection
+   *  (highlight + scene navigator) needs no re-run. */
+  private _setSelection(path: string | null)
+  {
+    const prev = selectedPath.get();
+    if (path === prev) return;
+    setSelectedPath(path);
+    const wasInteractive = prev != null && this._interactiveShapes.includes(prev);
+    const isInteractive  = path != null && this._interactiveShapes.includes(path);
+    if (wasInteractive || isInteractive) scheduleExecution();
+  }
+
+  /** Draw / move / clear the wireframe box around the selected node. */
+  private _applySelectionHighlight(path: string | null)
+  {
+    if (this._selectionBox)
+    {
+      this._scene.remove(this._selectionBox);
+      this._selectionBox.geometry.dispose();
+      (this._selectionBox.material as THREE.Material).dispose();
+      this._selectionBox = undefined;
+    }
+    const obj = path ? this._pathToObject.get(path) : undefined;
+    if (obj)
+    {
+      const box = new THREE.BoxHelper(obj, 0x3b82f6);
+      box.userData.isViewerHelper = true;
+      const mat = box.material as THREE.LineBasicMaterial;
+      mat.depthTest = false;
+      mat.transparent = true;
+      box.renderOrder = 998;
+      this._scene.add(box);
+      this._selectionBox = box;
+    }
+    this._dirty = true;
+  }
 
   private _snapCameraToAxis(axis: 'x' | 'y' | 'z', negative: boolean)
   {
@@ -1123,6 +1264,10 @@ export class ModelViewer extends SignalWatcher(LitElement)
       {
         const path = buildScenegraphPath(parentPath, node.name);
         this._pathToObject.set(path, obj);
+        // Stamp identity so a raycast hit can be mapped back to its scene path /
+        // shape (used by click-selection). node.shape is the shape UUID or null.
+        obj.userData.scenePath = path;
+        obj.userData.shapeId = node.shape ?? null;
 
         const objectChildren = semanticChildrenOf(obj);
         const childCount = Math.min(objectChildren.length, node.children.length);
@@ -1431,10 +1576,11 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     this._updateCameraRangesForObject(model);
 
-    if (shouldFrameCamera && !this._hasFramedCamera)
+    if ((shouldFrameCamera || this._forceFrameOnNextLoad) && !this._hasFramedCamera)
     {
       this._frameCamera(model);
       this._hasFramedCamera = true;
+      this._forceFrameOnNextLoad = false;
     }
 
     // Store animations for user selection — don't auto-play
@@ -1506,6 +1652,12 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // _applyScenegraphVisibility against the latest scenegraph signal so any
     // user-toggled or runner-declared hidden nodes are hidden from the start.
     this._applyViewStyle(this._activeStyleId);
+
+    // Re-attach the selection highlight to the freshly rebuilt objects (the
+    // selectedPath persists across re-runs, but the old BoxHelper referenced
+    // disposed geometry).
+    this._lastAppliedSelectedPath = this._pendingSelectedPath;
+    this._applySelectionHighlight(this._pendingSelectedPath);
   }
 
   private _loadGlbOutput(entry: ScriptOutputData)
@@ -1579,6 +1731,16 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // reconciled via managedHandles ops. Only the range helper (drag guide) is removed.
     // Handles are removed when the script emits 'delete' ops or on page reload.
     if (this._rangeHelper) { this._scene.remove(this._rangeHelper); this._rangeHelper = undefined; }
+    // Selection box references model geometry — drop it; _applyGLTF re-attaches
+    // it to the rebuilt objects (selectedPath persists).
+    if (this._selectionBox)
+    {
+      this._scene.remove(this._selectionBox);
+      this._selectionBox.geometry.dispose();
+      (this._selectionBox.material as THREE.Material).dispose();
+      this._selectionBox = undefined;
+      this._lastAppliedSelectedPath = undefined;
+    }
     // If a drag was in progress, cancel it cleanly
     if (this._activeHandle) { this._activeHandle = null; this._controls.enabled = true; }
 
@@ -1736,6 +1898,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
     if (this._mixer)
     {
       this._mixer.update(dt);
+      this._selectionBox?.update(); // keep the highlight box on the animated node
       this._dirty = true;
     }
 

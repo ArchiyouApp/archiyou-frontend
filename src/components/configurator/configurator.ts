@@ -4,7 +4,7 @@ import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/split-panel/split-panel.js';
 
-import { runScript, warmupWorker } from '../../services/execution-service.js';
+import { createExecutionFailureResult, runScript, warmupWorker } from '../../services/execution-service.js';
 import { editorScript, setExecutionResult, setExecuting } from '../../state/workspace.js';
 import { configuratorParams, configuratorValueFor } from '../../state/configurator.js';
 import type { RunnerScriptExecutionRequest } from '../../../devlibs/archiyou-core-next/src/runner/types.js';
@@ -53,7 +53,11 @@ export class PageConfigurator extends SignalWatcher(LitElement)
     super.connectedCallback();
     warmupWorker()
       .then(() => this._execute())
-      .catch(err => console.error('Configurator: worker init failed:', err));
+      .catch(err =>
+      {
+        console.error('Configurator: worker init failed:', err);
+        setExecutionResult(createExecutionFailureResult(this._buildRequest(), err));
+      });
   }
 
   override disconnectedCallback()
@@ -87,6 +91,7 @@ export class PageConfigurator extends SignalWatcher(LitElement)
     catch (err)
     {
       console.error('Configurator: execution failed:', err);
+      setExecutionResult(createExecutionFailureResult(this._buildRequest(), err));
     }
     finally
     {

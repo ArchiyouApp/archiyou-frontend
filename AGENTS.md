@@ -144,6 +144,8 @@ declare global
 2. Always use the standards of the components of Webawesome
 3. Use designs tokens as much as possible (src/design-tokens.ts)
 
+### Avoid these recurring problems ####
 
+- Avoid stray .js files output: If you need to do TS checking please always use --noEmit with tsc
 
 

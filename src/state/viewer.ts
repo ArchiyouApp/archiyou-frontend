@@ -13,10 +13,15 @@ export const cameraOrtho      = signal<boolean>(false);
 export const arActive         = signal<boolean>(false);
 export const activeAnimation  = signal<string | null>(null);
 
+/** Incremented each time the user opens a new script.
+ *  model-viewer watches this and forces a camera re-frame on the next GLB load. */
+export const resetCameraCounter = signal<number>(0);
+
 export function setViewStyleId(id: string | null): void { viewStyleId.set(id); }
 export function setCameraOrtho(ortho: boolean): void { cameraOrtho.set(ortho); }
 export function setArActive(active: boolean): void { arActive.set(active); }
 export function setActiveAnimation(name: string | null): void { activeAnimation.set(name); }
+export function triggerResetCamera(): void { resetCameraCounter.set(resetCameraCounter.get() + 1); }
 
 /** Callback registered by the editor (or any execution host) so that
  *  viewer-side interactions (e.g. handle drag-end) can trigger a

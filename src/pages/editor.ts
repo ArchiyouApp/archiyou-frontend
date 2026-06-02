@@ -3,7 +3,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 import type { RouterLocation } from '@vaadin/router';
 
-import { runScript, warmupWorker } from '../services/execution-service';
+import { createExecutionFailureResult, runScript, warmupWorker } from '../services/execution-service';
 
 import '../components/editor/main-menu.js';
 import '../components/editor/codebox.js';
@@ -22,8 +22,8 @@ import '../components/editor/script-manager.js';
 import '../components/editor/script-importer.js';
 import type { ToolDef } from '../components/editor/toolbar.js';
 
-import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, deleteScriptById, importScriptFromData } from '../state/workspace';
-import { registerScheduleExecution } from '../state/viewer';
+import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, deleteScriptById, importScriptFromData, selectedPath } from '../state/workspace';
+import { registerScheduleExecution, triggerResetCamera } from '../state/viewer';
 import { RunnerScriptExecutionRequest } from '../../devlibs/archiyou-core-next/src/runner/types';
 import type { ScriptData } from '../../devlibs/archiyou-core-next/src/execution/types';
 
@@ -128,9 +128,15 @@ export class PageEditor extends SignalWatcher(LitElement)
     warmupWorker()
       .then(() => {
         console.info('Editor::connectedCallback(): Worker ready');
-        this.checkAutoRun();
+        this.checkAutoRun(true);
       })
-      .catch(err => { console.error('Editor: worker init failed:', err); });
+      .catch(err => {
+        console.error('Editor: worker init failed:', err);
+        setExecutionResult(createExecutionFailureResult({
+          kernel: 'mesh',
+          script: editorScript.get()?.toData() as any,
+        } as any, err));
+      });
   }
 
   override willUpdate(changed: Map<string, unknown>)
@@ -183,8 +189,8 @@ export class PageEditor extends SignalWatcher(LitElement)
     this.checkAutoRun();
   }
 
-  /** Check if code meets criteria and schedule auto-run after idle delay */
-  checkAutoRun()
+  /** Check if code meets criteria and auto-run now or after the idle delay. */
+  checkAutoRun(immediate: boolean = false)
   {
     const scriptCode = editorScript.get()?.code ?? '';
     if (this._codeChangeTimeout !== null)
@@ -195,6 +201,13 @@ export class PageEditor extends SignalWatcher(LitElement)
     if (scriptCode.length < this.CONST_AUTORUN_MIN_SIZE)
     {
       this._codeChangeTimeout = null;
+      return;
+    }
+
+    if (immediate)
+    {
+      this._codeChangeTimeout = null;
+      this.execute();
       return;
     }
 
@@ -230,6 +243,7 @@ export class PageEditor extends SignalWatcher(LitElement)
       messages,
       script: scriptData,
       params: paramValues,
+      selection: selectedPath.get() ? [selectedPath.get() as string] : [],
       componentScripts,
     } as RunnerScriptExecutionRequest;
   }
@@ -349,6 +363,7 @@ export class PageEditor extends SignalWatcher(LitElement)
   {
     openScript(e.detail);
     this._showScriptManager = false;
+    triggerResetCamera();
     // Run the freshly-opened script so the viewer/params reflect it immediately.
     this._handleExecute();
   }

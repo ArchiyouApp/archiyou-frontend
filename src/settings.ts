@@ -46,14 +46,6 @@ doc.create('myDoc')
   },
 };
 
-// Dimension lines (3D viewer) — the in-scene line + arrowhead cones.
-// Sizes are world units in viewer/model space.
-// The value text is an HTML overlay label, styled via CSS in
-// `viewer-labels-overlay` (not configured here).
-export const DIMENSION_LINE_COLOR       = 0x222222; // line + arrowheads
-export const DIMENSION_ARROW_LENGTH     = 3;     // arrowhead cone length
-export const DIMENSION_ARROW_RADIUS     = 1;    // arrowhead cone base radius
-
 // 3D viewer
 
 /** Coordinate system of models as exported by the kernel/meshup pipeline.
@@ -66,12 +58,18 @@ export const VIEWER_MODEL_COORDSYSTEM = { up: 'z', forward: 'y', right: 'x' } as
 export const VIEWER_BACKGROUND_COLOR = 0xf1f5f9; // scene + renderer clear color
 export const VIEWER_AUTO_FRAME_ON_FIRST_LOAD = true;
 
+// Dimension lines (3D viewer) — the in-scene line + arrowhead cones.
+// Sizes are world units in viewer/model space.
+// The value text is an HTML overlay label, styled via CSS in
+// `viewer-labels-overlay` (not configured here).
+export const DIMENSION_LINE_COLOR       = 0x222222; // line + arrowheads
+export const DIMENSION_ARROW_LENGTH     = 30;     // arrowhead cone length in model units
+export const DIMENSION_ARROW_RADIUS     = 10;    // arrowhead cone base radius in model units
+
+
 // 3D viewer helpers use a fixed scene size for now.
 // This is the total grid / ground-plane size in world units.
 export const VIEWER_SCENE_SIZE = 5000;
-// Target number of grid cells across the fixed scene size. The actual cell
-// step is snapped to the nearest "nice" value (1, 2, 5, 10, …) so labels and
-// snap distances stay readable.
 export const VIEWER_GRID_CELLS_PER_SCENE = 500;
 
 // Key directional light for shadow casting.
@@ -82,6 +80,14 @@ export const VIEWER_GRID_CELLS_PER_SCENE = 500;
 // of where the model sits in world space or how its bounding box grows.
 export const VIEWER_LIGHT_POSITION: [number, number, number] = [1000, -1000, 1000];
 
+// Origin UCS / navigation gizmo
+export const VIEWER_GIZMO_AXIS_LENGTH    = 300;    // positive-arm length, world units (base scale)
+export const VIEWER_GIZMO_COLOR_X        = 0xFF0000; // red   (+X)
+export const VIEWER_GIZMO_COLOR_Y        = 0x00FF00; // green (+Y)
+export const VIEWER_GIZMO_COLOR_Z        = 0x0000FF; // blue  (+Z)
+export const VIEWER_GIZMO_COLOR_ORIGIN   = 0xFFFFFF; // origin sphere at (0,0,0)
+export const VIEWER_GIZMO_LABEL_SIZE     = 100;   // world units
+
 // Interaction handles
 export const VIEWER_HANDLE_DEFAULT_ICON   = 'move';
 export const VIEWER_HANDLE_COLOR          = 0x2563EB; // blue-600
@@ -89,13 +95,6 @@ export const VIEWER_HANDLE_RANGE_LINE_COLOR  = 0x93C5FD; // blue-300
 export const VIEWER_HANDLE_RANGE_LINE_WIDTH  = 2;    // px
 export const VIEWER_HANDLE_ICON_SIZE      = 18;        // px — icon box side length
 
-// Origin UCS / navigation gizmo
-export const VIEWER_GIZMO_AXIS_LENGTH    = 20;    // positive-arm length, world units (base scale)
-export const VIEWER_GIZMO_COLOR_X        = 0xFF0000; // red   (+X)
-export const VIEWER_GIZMO_COLOR_Y        = 0x00FF00; // green (+Y)
-export const VIEWER_GIZMO_COLOR_Z        = 0x0000FF; // blue  (+Z)
-export const VIEWER_GIZMO_COLOR_ORIGIN   = 0xFFFFFF; // origin sphere at (0,0,0)
-export const VIEWER_GIZMO_LABEL_SIZE     = 10;   // sprite scale, world units
 
 // ── File Manager ──────────────────────────────────────────────────────────────
 

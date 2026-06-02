@@ -13,6 +13,7 @@ import { customElement } from 'lit/decorators.js';
 import { initRouter } from './router.js';
 import { applySystemTheme } from '../../styles/dark-theme.js';
 import { setLocale, detectLocale } from '../../i18n/locale-config.js';
+import { warmupWorker } from '../../services/execution-service.js';
 
 @customElement('app-shell')
 export class AppShell extends LitElement
@@ -30,6 +31,13 @@ export class AppShell extends LitElement
 
     // Initialise locale (best-effort — locale modules may not exist until lit-localize build)
     setLocale(detectLocale()).catch(() => {/* source locale, no module needed */});
+
+    // Start worker + WASM warmup as early as possible so editor/configurator
+    // pages don't pay the full startup cost before their first execution.
+    warmupWorker().catch(err =>
+    {
+      console.warn('AppShell::firstUpdated(): worker warmup failed:', err);
+    });
 
     const outlet = this.renderRoot.querySelector<HTMLElement>('#outlet')!;
     initRouter(outlet);

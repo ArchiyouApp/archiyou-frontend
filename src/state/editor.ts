@@ -26,6 +26,21 @@ import type { ScriptMetadata, ScriptPreset } from './types';
  *  nodes that still exist by path keep their visibility. `equals: () => false`
  *  so in-place node mutations broadcast to watchers. */
 export const scenegraph        = signal<SmartSceneNodeData | null>(null, { equals: () => false });
+
+/** Currently selected scene path (single-select), or null. Set by clicking a
+ *  shape in the 3D viewer or a row in the scene explorer; identity is the
+ *  scenegraph path (same scheme as visibility overrides). Drives the viewer
+ *  selection highlight and the scene-explorer active row, and is threaded into
+ *  the next execution request so shape.onClick()/shape.selected() can react. */
+export const selectedPath = signal<string | null>(null);
+export function setSelectedPath(path: string | null): void { selectedPath.set(path); }
+
+/** Scene paths of shapes that declared onClick() in the last run (from
+ *  result.state.interactiveShapes). The viewer only triggers a re-run when a
+ *  clicked shape's path is in this set; other clicks just highlight/select. */
+export const interactiveShapes = signal<string[]>([]);
+export function setInteractiveShapes(paths: string[]): void { interactiveShapes.set(paths); }
+
 export const activeBottomPanel = signal<'console' | 'scene' | 'none'>('console');
 export const fileManagerCollapsed = signal<boolean>(true);
 export const paramMenuCollapsed   = signal<boolean>(false);

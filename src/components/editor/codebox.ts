@@ -98,9 +98,10 @@ export class CodeBox extends SignalWatcher(LitElement)
         ${result?.status === 'error'
           ? html`
               <div class="subheader subheader-error ${typeof error?.lineStart === 'number' && error.lineStart > 0 ? 'subheader-error--clickable' : ''}"
-                title=${this._fullErrorMessage(error?.message)}
+                title=${this._displayErrorMessage(error)}
                 @click=${() => this._goToErrorLine(error?.lineStart)}>
-                ${this._shortErrorMessage(error)}
+                <wa-icon class="subheader-error-icon" library="lucide" name="triangle-alert" label="error"></wa-icon>
+                <span class="subheader-error-text">ERROR: ${this._displayErrorMessage(error)}</span>
               </div>
             `
           : ''}
@@ -314,16 +315,33 @@ export class CodeBox extends SignalWatcher(LitElement)
     this._view.dispatch({ effects: setErrorLine.of(value) });
   }
 
-  /** Extract an error summary from the result entry, prepending line info. */
-  private _shortErrorMessage(err: { message?: string; lineStart?: number } | undefined): string
+  /** Extract just the useful error message for the header, without execution banners. */
+  private _displayErrorMessage(err: { message?: string; lineStart?: number } | undefined): string
   {
     const msg = err?.message;
-    const lineNum = typeof err?.lineStart === 'number' && err.lineStart > 0 ? err.lineStart : null;
-    const prefix = lineNum !== null ? `Line ${lineNum}: ` : '';
-    if (!msg) return `${prefix}Execution error`;
-    const m = msg.match(/- error: '(.+?)'/);
-    const text = m ? m[1] : (msg.split('\n').find(l => l.trim().length > 0) ?? 'Execution error');
-    return `${prefix}${text}`;
+    if (!msg) return 'Execution error';
+
+    const lines = msg
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .filter(line => !line.startsWith('****'));
+
+    if (lines.length === 0)
+    {
+      return 'Execution error';
+    }
+
+    const quotedMessage = lines
+      .map(line => line.match(/^- error:\s*'(.*)'$/)?.[1])
+      .find((line): line is string => Boolean(line && line.trim().length > 0));
+
+    if (quotedMessage)
+    {
+      return quotedMessage.trim();
+    }
+
+    return lines[0];
   }
 
   /** Navigate CodeMirror to the given 1-based line number. */
@@ -338,12 +356,6 @@ export class CodeBox extends SignalWatcher(LitElement)
       scrollIntoView: true,
     });
     this._view.focus();
-  }
-
-  /** Return the full message for the tooltip. */
-  private _fullErrorMessage(msg: string | undefined): string
-  {
-    return msg ?? '';
   }
 
   /** Format a duration in ms to a human-readable string. */
@@ -386,13 +398,32 @@ export class CodeBox extends SignalWatcher(LitElement)
     }
 
     .subheader {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-xs, 0.5rem);
       padding: var(--space-2xs, 0.25rem) var(--space-md);
       border-bottom: 1px solid var(--color-border);
       font-family: var(--font-sans);
       font-size: var(--text-xs, 0.75rem);
       line-height: 1.35;
-      white-space: normal;
+      height: auto;
+        max-height: 100px;
+      white-space: pre-wrap;
+        overflow-y: auto;
+        overflow-x: hidden;
       overflow-wrap: anywhere;
+      word-break: break-word;
+      flex-shrink: 0;
+    }
+
+    .subheader-error-icon {
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .subheader-error-text {
+      flex: 1;
+      min-width: 0;
     }
 
     .subheader-error {
@@ -437,13 +468,17 @@ export class CodeBox extends SignalWatcher(LitElement)
     }
 
     .cm-container {
-      flex: 1;
+      display: flex;
+      flex: 1 1 0;
       min-height: 0;
+      overflow: hidden;
     }
 
     /* Override CodeMirror to fill available height */
     .cm-editor {
       height: 100%;
+      min-height: 0;
+      flex: 1 1 auto;
     }
 
     /* Smaller font in editor */

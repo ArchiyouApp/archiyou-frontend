@@ -5,7 +5,7 @@ import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import { buildScenegraphPath, scenegraph, toggleNodeVisibility, activeBottomPanel, setActiveBottomPanel } from '../../state/workspace.js';
+import { buildScenegraphPath, scenegraph, toggleNodeVisibility, activeBottomPanel, setActiveBottomPanel, selectedPath, setSelectedPath } from '../../state/workspace.js';
 import type { SmartSceneNodeData } from '../../../devlibs/archiyou-core-next/src/modeler/types.js';
 
 /** Pick a row icon by node kind. Layer/group nodes have no held shape;
@@ -72,11 +72,12 @@ export class SceneExplorer extends SignalWatcher(LitElement)
     const isHidden   = node.style.visible === false;
     const hasKids    = node.children.length > 0;
     const isExpanded = this._expandedNodes.has(path);
+    const isSelected = selectedPath.get() === path;
     const color      = node.style.color;
     const opacity    = node.style.opacity;
 
     return html`
-      <div class="node-row" style="padding-left: ${depth * 14 + 6}px">
+      <div class="node-row ${isSelected ? 'selected' : ''}" style="padding-left: ${depth * 14 + 6}px">
         <button
           class="expand-btn"
           ?disabled=${!hasKids}
@@ -89,7 +90,11 @@ export class SceneExplorer extends SignalWatcher(LitElement)
 
         <wa-icon class="node-icon" name=${nodeIcon(node)}></wa-icon>
 
-        <span class="node-name ${isHidden ? 'faded' : ''}" title=${node.name}>${node.name}</span>
+        <span
+          class="node-name ${isHidden ? 'faded' : ''}"
+          title=${node.name}
+          @click=${() => this._select(path)}
+        >${node.name}</span>
 
         ${color ? html`
           <span class="mat-swatch" style="background:${color}" title=${color}></span>
@@ -117,6 +122,13 @@ export class SceneExplorer extends SignalWatcher(LitElement)
 
   private _activate = () =>
     setActiveBottomPanel(activeBottomPanel.get() === 'scene' ? 'none' : 'scene');
+
+  /** Select this node (toggles off if already selected). Drives the viewer
+   *  highlight and, for onClick shapes, the re-run. */
+  private _select(path: string)
+  {
+    setSelectedPath(selectedPath.get() === path ? null : path);
+  }
 
   private _toggleExpand(path: string)
   {
@@ -200,6 +212,10 @@ export class SceneExplorer extends SignalWatcher(LitElement)
       background: color-mix(in srgb, var(--color-border) 30%, transparent);
     }
 
+    .node-row.selected {
+      background: color-mix(in srgb, var(--color-primary, #3b82f6) 22%, transparent);
+    }
+
     /* expand chevron */
     .expand-btn {
       flex-shrink: 0;
@@ -237,6 +253,7 @@ export class SceneExplorer extends SignalWatcher(LitElement)
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      cursor: pointer;
     }
 
     .node-name.faded { opacity: 0.35; }

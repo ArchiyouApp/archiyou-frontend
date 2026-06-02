@@ -20,7 +20,7 @@ import { uuid4 } from '../../devlibs/archiyou-core-next/src/utils';
 
 import { EDITOR_START_SCRIPT } from '../settings';
 import type { UserState, WorkspaceCoreState } from './types';
-import { scenegraph, reconcileScenegraph } from './editor';
+import { scenegraph, reconcileScenegraph, setInteractiveShapes } from './editor';
 
 //// LOCAL STORAGE ////
 
@@ -378,6 +378,7 @@ export function setExecutionResult(result: RunnerScriptExecutionResult): void
 {
   const next = reconcileScenegraph(scenegraph.get(), result.state?.scenegraph ?? null);
   scenegraph.set(next);
+  setInteractiveShapes(result.state?.interactiveShapes ?? []);
   executionResult.set(result);
 }
 

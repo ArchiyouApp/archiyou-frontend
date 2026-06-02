@@ -30,6 +30,7 @@ export async function applyEdgeExtensions(gltf: GLTF, root: THREE.Object3D): Pro
     });
 
     await Promise.all(tasks);
+    _applyNativeLineStyles(root);
 }
 
 async function _attachEdgeLines(
@@ -177,4 +178,65 @@ function _applyDashPattern(mat: LineMaterial, pattern: number): void
         );
     };
     mat.needsUpdate = true;
+}
+
+function _applyNativeLineStyles(root: THREE.Object3D): void
+{
+    root.traverse((node) =>
+    {
+        if (!(node instanceof THREE.Line) && !(node instanceof THREE.LineSegments)) return;
+
+        const material = Array.isArray(node.material) ? node.material[0] : node.material;
+        const bentley = material?.userData?.gltfExtensions?.['BENTLEY_materials_line_style'];
+        if (!bentley || bentley.pattern === undefined || bentley.pattern === 0xFFFF) return;
+
+        const dashedMaterial = _createDashedNativeMaterial(material, bentley.pattern);
+        node.material = dashedMaterial;
+        node.computeLineDistances();
+    });
+}
+
+function _createDashedNativeMaterial(
+    source: THREE.Material,
+    pattern: number,
+): THREE.LineDashedMaterial
+{
+    const color = source instanceof THREE.LineBasicMaterial
+        ? source.color
+        : new THREE.Color(0x000000);
+    const opacity = source.opacity ?? 1;
+    const { dashSize, gapSize } = _dashSizesFromPattern(pattern);
+
+    return new THREE.LineDashedMaterial({
+        color,
+        opacity,
+        transparent: source.transparent || opacity < 1,
+        dashSize,
+        gapSize,
+        depthTest: source.depthTest,
+        depthWrite: source.depthWrite,
+        toneMapped: source.toneMapped,
+    });
+}
+
+function _dashSizesFromPattern(pattern: number): { dashSize: number; gapSize: number }
+{
+    const bits = Array.from({ length: 16 }, (_, index) => (pattern >> index) & 1);
+    const firstLit = bits.findIndex(bit => bit === 1);
+    if (firstLit === -1) return { dashSize: 20, gapSize: 20 };
+
+    const runLength = (start: number, value: number): number =>
+    {
+        const count = bits
+            .slice(start)
+            .findIndex(bit => bit !== value);
+        return count === -1 ? bits.length - start : count;
+    };
+
+    const dashBits = Math.max(1, runLength(firstLit, 1));
+    const firstGap = bits.findIndex((bit, index) => index > firstLit && bit === 0);
+    const gapBits = Math.max(1, firstGap === -1 ? dashBits : runLength(firstGap, 0));
+
+    const unit = 12;
+    return { dashSize: dashBits * unit, gapSize: gapBits * unit };
 }

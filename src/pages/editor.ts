@@ -348,7 +348,7 @@ export class PageEditor extends SignalWatcher(LitElement)
 
     if (value === 'export-script-data')
     {
-      this._exportScriptDataAsJson();
+      this._exportScriptDataAsJs();
       return;
     }
 
@@ -378,16 +378,15 @@ export class PageEditor extends SignalWatcher(LitElement)
     this._showScriptImporter = false;
   }
 
-  private _exportScriptDataAsJson()
+  private _exportScriptDataAsJs()
   {
     const script = editorScript.get();
     if (!script) return;
 
-    const data = script.toData();
-    const json = JSON.stringify(data, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
+    const js = script.toScriptJs();
+    const blob = new Blob([js], { type: 'text/javascript' });
     const url = URL.createObjectURL(blob);
-    const filename = (data as any).name ? `${(data as any).name}.json` : 'script-data.json';
+    const filename = script.name ? `${script.name}.js` : 'script.js';
 
     const anchor = document.createElement('a');
     anchor.href = url;

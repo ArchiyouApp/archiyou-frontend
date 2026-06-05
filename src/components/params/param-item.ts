@@ -4,13 +4,16 @@ import { customElement, property, state } from 'lit/decorators.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import type { ScriptParam } from '../../state/workspace.js';
-import { toVariableName } from '../../state/workspace.js';
+import { toVariableName, isProgrammatic } from '../../state/workspace.js';
 
 @customElement('param-item')
 export class ParamItem extends LitElement
 {
   @property({ attribute: false }) param!: ScriptParam;
   @property({ type: Boolean, reflect: true }) readonly = false;
+  /** Set by the param menu from a dynamic enableIf() behaviour. Reflected so CSS
+   *  (:host([disabled])) can dim the row and block interaction with the control. */
+  @property({ type: Boolean, reflect: true }) disabled = false;
 
   @state() private _editingLabel = false;
   @state() private _labelDraft = '';
@@ -22,6 +25,8 @@ export class ParamItem extends LitElement
 
   override render()
   {
+    const programmatic = isProgrammatic(this.param);
+
     return html`
       <span class="grip" title="Drag to reorder">
         <wa-icon library="lucide" name="grip-horizontal"></wa-icon>
@@ -36,8 +41,11 @@ export class ParamItem extends LitElement
               @keydown=${this._onLabelKeydown}
             />`
         : html`
-            <span class="label" @dblclick=${this._startEditLabel}
-              title="use in your script with $${toVariableName(this.param.name).toUpperCase()}">
+            <span class="label"
+              @dblclick=${programmatic ? undefined : this._startEditLabel}
+              title=${programmatic
+                ? `defined in script — use $${toVariableName(this.param.name).toUpperCase()}`
+                : `use in your script with $${toVariableName(this.param.name).toUpperCase()}`}>
               ${this.param.name}
             </span>`
       }
@@ -51,27 +59,33 @@ export class ParamItem extends LitElement
       </span>
 
       <span class="actions">
-        ${this._confirmingDelete
+        ${programmatic
           ? html`
-              <span class="confirm-delete">
-                <span class="confirm-label">Delete?</span>
-                <button class="action-btn confirm-yes" title="Confirm delete"
-                    @click=${this._confirmDelete}>
-                  <wa-icon library="lucide" name="check"></wa-icon>
-                </button>
-                <button class="action-btn confirm-no" title="Cancel"
-                    @click=${this._cancelDelete}>
-                  <wa-icon library="lucide" name="x"></wa-icon>
-                </button>
+              <span class="script-lock"
+                  title="Defined in script — value is editable, definition is locked">
+                <wa-icon library="lucide" name="lock"></wa-icon>
               </span>`
-          : html`
-              <button class="action-btn" title="Edit" @click=${this._handleEdit}>
-                <wa-icon library="lucide" name="pen"></wa-icon>
-              </button>
-              <button class="action-btn danger" title="Delete"
-                  @click=${this._handleDelete}>
-                <wa-icon library="lucide" name="trash-2"></wa-icon>
-              </button>`
+          : this._confirmingDelete
+            ? html`
+                <span class="confirm-delete">
+                  <span class="confirm-label">Delete?</span>
+                  <button class="action-btn confirm-yes" title="Confirm delete"
+                      @click=${this._confirmDelete}>
+                    <wa-icon library="lucide" name="check"></wa-icon>
+                  </button>
+                  <button class="action-btn confirm-no" title="Cancel"
+                      @click=${this._cancelDelete}>
+                    <wa-icon library="lucide" name="x"></wa-icon>
+                  </button>
+                </span>`
+            : html`
+                <button class="action-btn" title="Edit" @click=${this._handleEdit}>
+                  <wa-icon library="lucide" name="pen"></wa-icon>
+                </button>
+                <button class="action-btn danger" title="Delete"
+                    @click=${this._handleDelete}>
+                  <wa-icon library="lucide" name="trash-2"></wa-icon>
+                </button>`
         }
       </span>
     `;
@@ -205,6 +219,10 @@ export class ParamItem extends LitElement
     :host([readonly]) .actions { display: none; }
     :host([readonly]) .label { pointer-events: none; }
 
+    /* Disabled by a dynamic enableIf() behaviour: dim the row and block the control. */
+    :host([disabled]) .label { opacity: 0.5; }
+    :host([disabled]) .param-slot { opacity: 0.45; pointer-events: none; }
+
     .grip {
       flex-shrink: 0;
       color: var(--color-gray-dark, #666);
@@ -258,6 +276,19 @@ export class ParamItem extends LitElement
 
     :host(:hover) .actions { opacity: 1; }
     :host .actions:has(.confirm-delete) { opacity: 1; }
+    /* The script-lock badge is always visible (no edit/delete to reveal). */
+    :host .actions:has(.script-lock) { opacity: 0.6; }
+    :host(:hover) .actions:has(.script-lock) { opacity: 1; }
+
+    .script-lock {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      color: var(--color-gray-dark, #666);
+      font-size: 11px;
+    }
 
     .action-btn {
       width: 22px;

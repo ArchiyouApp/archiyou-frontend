@@ -64,8 +64,8 @@ export class MainMenuFileMenu extends LitElement
             OBJ
           </wa-dropdown-item>
           <wa-dropdown-item slot="submenu" value="export-script-data">
-            <wa-icon slot="icon" library="lucide" name="brackets"></wa-icon>
-            Script data
+            <wa-icon slot="icon" library="lucide" name="file-code"></wa-icon>
+            Script JS
           </wa-dropdown-item>
         </wa-dropdown-item>
 

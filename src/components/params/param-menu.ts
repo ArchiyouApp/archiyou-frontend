@@ -26,6 +26,8 @@ import {
   renameParamGroup,
   swapParamGroups,
   saveAsPreset,
+  paramVisible,
+  paramEnabled,
 } from '../../state/workspace';
 
 import { PARAM_TAB_NAME_MAX_LENGTH } from '../../settings';
@@ -176,6 +178,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
   {
     return scriptParams.get()
       .filter(p => (p.group ?? 'main') === group)
+      .filter(p => paramVisible(p)) // dynamic visibleIf() behaviour can hide a param
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }
 
@@ -245,6 +248,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
     return html`
       <param-item
         .param=${p}
+        ?disabled=${!paramEnabled(p)}
         class=${isDragOver ? 'drag-over' : ''}
         data-name=${ifDefined(p.name)}
       >

@@ -20,7 +20,8 @@ import { uuid4 } from '../../devlibs/archiyou-core-next/src/utils';
 
 import { EDITOR_START_SCRIPT } from '../settings';
 import type { UserState, WorkspaceCoreState } from './types';
-import { scenegraph, reconcileScenegraph, setInteractiveShapes } from './editor';
+import { scenegraph, reconcileScenegraph, setInteractiveShapes, applyManagedParamsAndPresets } from './editor';
+import { applyManagedBehaviours, evaluateParamBehaviours } from './param-behaviours';
 
 //// LOCAL STORAGE ////
 
@@ -379,6 +380,19 @@ export function setExecutionResult(result: RunnerScriptExecutionResult): void
   const next = reconcileScenegraph(scenegraph.get(), result.state?.scenegraph ?? null);
   scenegraph.set(next);
   setInteractiveShapes(result.state?.interactiveShapes ?? []);
+  // Merge any params/presets the script declared at runtime ($PARAMS.define/preset)
+  // into the active script so the param menu reflects them. Diff-gated + deterministic
+  // so it cannot trigger a re-run loop. (Code is the source of truth.)
+  applyManagedParamsAndPresets(result.state?.managedParams, result.state?.managedPresets);
+  // Apply + evaluate dynamic param behaviours (enableIf/visibleIf/...) declared this run.
+  // Separate from managedParams: behaviours never change a param's definition. Behaviours
+  // are not persisted, so evaluation here only refreshes the UI (no save).
+  const activeScript = editorScript.get();
+  if (activeScript)
+  {
+    applyManagedBehaviours(activeScript, result.state?.managedBehaviours);
+    if (evaluateParamBehaviours(activeScript)) bumpScript();
+  }
   executionResult.set(result);
 }
 

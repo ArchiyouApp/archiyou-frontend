@@ -35,6 +35,16 @@ export const paramListItemType = (p: ScriptParamClass): 'string' | 'number' | 'b
   _s(p).items?.type ?? 'string';
 /** Effective current value: runtime `_value`, falling back to `default`. */
 export const paramValue        = (p: ScriptParamClass): any => p._value ?? p.default;
+/** Whether the param's control is interactive. Default true; a dynamic behaviour
+ *  (enableIf) can set `enabled = false`. */
+export const paramEnabled      = (p: ScriptParamClass): boolean => p.enabled !== false;
+/** Whether the param row is shown. Default true; a dynamic behaviour (visibleIf)
+ *  can set `visible = false`. */
+export const paramVisible      = (p: ScriptParamClass): boolean => p.visible !== false;
+/** True when this param's definition is owned by the script (declared via
+ *  $PARAMS.define()). Such params have an editable value but a locked
+ *  definition in the UI. */
+export const isProgrammatic    = (p: ScriptParamClass): boolean => !!p._definedProgrammatically;
 
 // ── Core ──────────────────────────────────────────────────────────────────────
 

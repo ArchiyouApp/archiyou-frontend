@@ -98,10 +98,15 @@ export class CodeBox extends SignalWatcher(LitElement)
         ${result?.status === 'error'
           ? html`
               <div class="subheader subheader-error ${typeof error?.lineStart === 'number' && error.lineStart > 0 ? 'subheader-error--clickable' : ''}"
-                title=${this._displayErrorMessage(error)}
+                title=${typeof error?.lineStart === 'number' && error.lineStart > 0
+                    ? `ERROR at line ${error.lineStart}: "${this._displayErrorMessage(error)}"`
+                    : `ERROR: "${this._displayErrorMessage(error)}"`}
                 @click=${() => this._goToErrorLine(error?.lineStart)}>
                 <wa-icon class="subheader-error-icon" library="lucide" name="triangle-alert" label="error"></wa-icon>
-                <span class="subheader-error-text">ERROR: ${this._displayErrorMessage(error)}</span>
+                <span class="subheader-error-text">${typeof error?.lineStart === 'number' && error.lineStart > 0
+                    ? `ERROR at line ${error.lineStart}: "${this._displayErrorMessage(error)}"`
+                    : `ERROR: "${this._displayErrorMessage(error)}"`
+                  }</span>
               </div>
             `
           : ''}

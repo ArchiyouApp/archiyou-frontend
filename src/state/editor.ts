@@ -12,10 +12,12 @@
 import { signal, computed } from '@lit-labs/signals';
 
 import { ScriptParam } from '../../devlibs/archiyou-core-next/src/execution/ScriptParam';
-import type { ScriptParamType, ScriptParamData } from '../../devlibs/archiyou-core-next/src/execution/types';
+import type { ScriptParamType, ScriptParamData, ParamOperation } from '../../devlibs/archiyou-core-next/src/execution/types';
 import type { SmartSceneNodeData } from '../../devlibs/archiyou-core-next/src/modeler/types';
+import { deepEqual } from '../../devlibs/archiyou-core-next/src/utils';
 
 import { editorScript, bumpScript, saveCore } from './core';
+import { evaluateParamBehaviours } from './param-behaviours';
 import type { ScriptMetadata, ScriptPreset } from './types';
 
 //// EDITOR UI SIGNALS ////
@@ -394,6 +396,9 @@ export function updateParam(name: string, updates: ParamSpec): void
   {
     s.params[originalKey] = param;
   }
+  // A value change can flip dependent params' enabled/visible/options/value via
+  // their behaviours — evaluate now so the menu reacts instantly without a re-run.
+  evaluateParamBehaviours(s);
   bumpScript();
   saveCore();
 }
@@ -456,6 +461,81 @@ export function deleteParam(name: string): void
   delete s.params[found.key];
   bumpScript();
   saveCore();
+}
+
+//// MANAGED PARAMS / PRESETS (from script $PARAMS.define() / $PARAMS.preset()) ////
+
+/** Merge params/presets a script declared at runtime into the active script.
+ *
+ *  Code is the source of truth: script-defined params overwrite same-named
+ *  params (preserving the user's current value where the new schema still
+ *  accepts it) and are flagged `_definedProgrammatically`. `deleted` entries
+ *  (params the script previously defined but dropped this run — full sync) are
+ *  removed, but only when they are programmatic; UI-authored params are never
+ *  auto-removed. Saves are diff-gated: an identical re-run applies nothing, so
+ *  the deterministic managed-params stream cannot cause a re-run loop.
+ */
+export function applyManagedParamsAndPresets(
+  managedParams?: Record<ParamOperation, Array<ScriptParamData>>,
+  managedPresets?: Record<string, Record<string, ScriptParamData>>,
+): void
+{
+  const s = editorScript.get();
+  if (!s) return;
+  let changed = false;
+
+  if (managedParams)
+  {
+    for (const data of [...(managedParams.new ?? []), ...(managedParams.updated ?? [])])
+    {
+      const upper = (data.name ?? '').toUpperCase();
+      if (!upper) continue;
+      const existing = s.params[upper];
+
+      const incoming = ScriptParam.fromData({ ...data, name: upper, _definedProgrammatically: true });
+      // preserve the user's current value if the new definition still accepts it
+      if (existing && existing._value !== undefined && incoming.validateValue(existing._value))
+      {
+        incoming._value = existing._value;
+      }
+      incoming.order = existing?.order ?? data.order ?? Object.keys(s.params).length;
+
+      if (!existing || !deepEqual(existing.toData(), incoming.toData()))
+      {
+        s.params[upper] = incoming;
+        changed = true;
+      }
+    }
+
+    for (const data of (managedParams.deleted ?? []))
+    {
+      const upper = (data.name ?? '').toUpperCase();
+      const existing = s.params[upper];
+      if (existing && existing._definedProgrammatically)
+      {
+        delete s.params[upper];
+        changed = true;
+      }
+    }
+  }
+
+  if (managedPresets)
+  {
+    for (const [name, rec] of Object.entries(managedPresets))
+    {
+      if (!deepEqual(s.presets[name], rec))
+      {
+        s.presets[name] = rec;
+        changed = true;
+      }
+    }
+  }
+
+  if (changed)
+  {
+    bumpScript();
+    saveCore();
+  }
 }
 
 /** Re-order params within a group according to the supplied ordered name list. */

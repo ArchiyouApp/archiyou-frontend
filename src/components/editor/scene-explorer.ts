@@ -7,6 +7,7 @@ import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import { buildScenegraphPath, scenegraph, toggleNodeVisibility, activeBottomPanel, setActiveBottomPanel, selectedPath, setSelectedPath } from '../../state/workspace.js';
 import type { SmartSceneNodeData } from '../../../devlibs/archiyou-core-next/src/modeler/types.js';
+import { SCENE_EXPLORER_MINIMIZED_TREE_LEVEL } from '../../settings.js';
 
 /** Pick a row icon by node kind. Layer/group nodes have no held shape;
  *  Mesh/Curve nodes show their geometry icon. */
@@ -25,8 +26,23 @@ export class SceneExplorer extends SignalWatcher(LitElement)
   /** Path keys (slash-joined) of expanded rows. */
   @state() private _expandedNodes = new Set<string>();
 
+  /** Tree display mode driven by the toggle button:
+   *  false = maximized (every node expanded — the default),
+   *  true  = minimized (expanded only up to SCENE_EXPLORER_MINIMIZED_TREE_LEVEL,
+   *          i.e. the Scene root + its direct children). */
+  @state() private _minimized = false;
+
+  /** Current search query (case-insensitive substring match on node names).
+   *  While non-empty it overrides the minimize/maximize expansion: the paths to
+   *  all matching nodes are expanded and the matches are highlighted. */
+  @state() private _search = '';
+
   /** Track which tree we've seeded expansion for; reset on new tree identity. */
   private _knownTree?: SmartSceneNodeData;
+
+  /** Last selectedPath we reacted to, so a selection made in the 3D viewer
+   *  expands the tree to reveal (and highlight) the matching node. */
+  private _knownSelected: string | null = null;
 
   override render()
   {
@@ -35,14 +51,23 @@ export class SceneExplorer extends SignalWatcher(LitElement)
 
     const tree = scenegraph.get();
 
-    // Auto-expand everything when a new tree arrives. Identity is the root
+    // Re-seed expansion when a new tree arrives. Identity is the root
     // reference — `reconcileScenegraph` returns a fresh clone on every run.
+    // Honours the current display mode (auto / minimized / collapsed) so a
+    // user's chosen mode sticks across re-runs.
     if (tree && tree !== this._knownTree)
     {
       this._knownTree = tree;
-      const expanded = new Set<string>();
-      this._collectPaths(tree, '', expanded);
-      this._expandedNodes = expanded;
+      this._reseedExpansion();
+    }
+
+    // When the selection changes (e.g. a click in the 3D viewer), expand the
+    // tree down to the selected node so its highlighted row is actually visible.
+    const sel = selectedPath.get();
+    if (sel !== this._knownSelected)
+    {
+      this._knownSelected = sel;
+      if (sel) this._expandToPath(sel);
     }
 
     return html`
@@ -56,6 +81,34 @@ export class SceneExplorer extends SignalWatcher(LitElement)
       ` : nothing}
 
       ${!collapsed ? html`
+        <div class="subheader">
+          <div class="search-wrap">
+            <wa-icon class="search-icon" library="lucide" name="search"></wa-icon>
+            <input
+              class="search-input"
+              type="text"
+              placeholder="Search nodes…"
+              .value=${this._search}
+              @input=${this._onSearchInput}
+            />
+            ${this._search ? html`
+              <button class="search-clear" title="Clear search" @click=${this._clearSearch}>
+                <wa-icon library="lucide" name="x"></wa-icon>
+              </button>
+            ` : nothing}
+          </div>
+          <button
+            class="mini-btn"
+            title=${this._minimized ? 'Expand all nodes' : 'Minimize scene tree'}
+            @click=${this._toggleMinimize}
+          >
+            <wa-icon
+              library="lucide"
+              name=${this._minimized ? 'list-tree' : 'list-collapse'}
+            ></wa-icon>
+          </button>
+        </div>
+
         <div class="tree">
           ${tree
             ? this._renderNode(tree, '', 0)
@@ -73,6 +126,7 @@ export class SceneExplorer extends SignalWatcher(LitElement)
     const hasKids    = node.children.length > 0;
     const isExpanded = this._expandedNodes.has(path);
     const isSelected = selectedPath.get() === path;
+    const isMatch    = this._nodeMatches(node);
     const color      = node.style.color;
     const opacity    = node.style.opacity;
 
@@ -91,7 +145,7 @@ export class SceneExplorer extends SignalWatcher(LitElement)
         <wa-icon class="node-icon" name=${nodeIcon(node)}></wa-icon>
 
         <span
-          class="node-name ${isHidden ? 'faded' : ''}"
+          class="node-name ${isHidden ? 'faded' : ''} ${isMatch ? 'match' : ''}"
           title=${node.name}
           @click=${() => this._select(path)}
         >${node.name}</span>
@@ -122,6 +176,115 @@ export class SceneExplorer extends SignalWatcher(LitElement)
 
   private _activate = () =>
     setActiveBottomPanel(activeBottomPanel.get() === 'scene' ? 'none' : 'scene');
+
+  /** Toggle between the "minimized" outline (level
+   *  SCENE_EXPLORER_MINIMIZED_TREE_LEVEL) and the fully-expanded tree. */
+  private _toggleMinimize = (e: Event) =>
+  {
+    e.stopPropagation(); // don't also toggle the whole panel via the header
+    this._minimized = !this._minimized;
+    this._reseedExpansion();
+  };
+
+  // ── Search ──
+
+  private _onSearchInput = (e: Event) =>
+  {
+    this._search = (e.target as HTMLInputElement).value.trim();
+    this._reseedExpansion();
+  };
+
+  private _clearSearch = () =>
+  {
+    this._search = '';
+    this._reseedExpansion();
+  };
+
+  /** Case-insensitive substring match of a node name against the active query. */
+  private _nodeMatches(node: SmartSceneNodeData): boolean
+  {
+    if (!this._search) return false;
+    return node.name.toLowerCase().includes(this._search.toLowerCase());
+  }
+
+  /** A search overrides the minimize/maximize expansion: expand the ancestor
+   *  paths of every match so the matches are revealed. */
+  private _reseedExpansion()
+  {
+    if (this._search) this._applySearch();
+    else this._applyTreeMode();
+  }
+
+  /** Expand the ancestor paths of all nodes matching the current query. */
+  private _applySearch()
+  {
+    const tree = scenegraph.get();
+    if (!tree) { this._expandedNodes = new Set(); return; }
+    const expanded = new Set<string>();
+    this._collectSearchExpansion(tree, '', [], expanded);
+    this._expandedNodes = expanded;
+  }
+
+  /** Walk the tree carrying the list of ancestor paths; when a node matches,
+   *  add all its ancestors to the expanded set so the node becomes visible. */
+  private _collectSearchExpansion(node: SmartSceneNodeData, parentPath: string, ancestors: string[], set: Set<string>)
+  {
+    const path = buildScenegraphPath(parentPath, node.name);
+    if (this._nodeMatches(node)) ancestors.forEach(a => set.add(a));
+    node.children.forEach(c => this._collectSearchExpansion(c, path, [...ancestors, path], set));
+  }
+
+  /** Expand the ancestor chain of `targetPath` (additively) so the selected node
+   *  is revealed in the tree. Names are encoded, so we locate the node by walking
+   *  the tree rather than splitting the path string. */
+  private _expandToPath(targetPath: string)
+  {
+    const tree = scenegraph.get();
+    if (!tree) return;
+
+    const next = new Set(this._expandedNodes);
+    let found = false;
+
+    const walk = (node: SmartSceneNodeData, parentPath: string, ancestors: string[]): void =>
+    {
+      if (found) return;
+      const path = buildScenegraphPath(parentPath, node.name);
+      if (path === targetPath) { ancestors.forEach(a => next.add(a)); found = true; return; }
+      node.children.forEach(c => walk(c, path, [...ancestors, path]));
+    };
+    walk(tree, '', []);
+
+    if (found) this._expandedNodes = next;
+  }
+
+  /** Rebuild `_expandedNodes` from the current display mode. */
+  private _applyTreeMode()
+  {
+    const tree = scenegraph.get();
+    if (!tree) { this._expandedNodes = new Set(); return; }
+
+    const expanded = new Set<string>();
+    if (this._minimized)
+    {
+      // minimized: keep only nodes shallower than the configured level expanded
+      this._collectPathsToDepth(tree, '', 0, expanded);
+    }
+    else
+    {
+      // maximized: expand everything (default)
+      this._collectPaths(tree, '', expanded);
+    }
+    this._expandedNodes = expanded;
+  }
+
+  /** Collect paths of nodes whose depth is below the minimized level (so their
+   *  children remain visible); deeper nodes stay collapsed. */
+  private _collectPathsToDepth(node: SmartSceneNodeData, parentPath: string, depth: number, set: Set<string>)
+  {
+    const path = buildScenegraphPath(parentPath, node.name);
+    if (depth < SCENE_EXPLORER_MINIMIZED_TREE_LEVEL) set.add(path);
+    node.children.forEach(c => this._collectPathsToDepth(c, path, depth + 1, set));
+  }
 
   /** Select this node (toggles off if already selected). Drives the viewer
    *  highlight and, for onClick shapes, the re-run. */
@@ -183,6 +346,87 @@ export class SceneExplorer extends SignalWatcher(LitElement)
     }
 
     .spacer { flex: 1; }
+
+    /* minimize / collapse tree toggle */
+    .mini-btn {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-gray-dark, #666);
+      font-size: 12px;
+    }
+
+    .mini-btn:hover { color: var(--color-text); }
+
+    /* ── Subheader (tree toolbar) ── */
+
+    .subheader {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm, 8px);
+      padding: 4px 6px 4px 10px;
+      flex-shrink: 0;
+      user-select: none;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    /* search box */
+    .search-wrap {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 1px 4px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm, 4px);
+      background: var(--color-bg, #fff);
+    }
+
+    .search-wrap:focus-within {
+      border-color: var(--color-primary, #3b82f6);
+    }
+
+    .search-icon {
+      flex-shrink: 0;
+      font-size: 11px;
+      color: var(--color-gray-dark, #666);
+    }
+
+    .search-input {
+      flex: 1;
+      min-width: 0;
+      border: none;
+      outline: none;
+      background: transparent;
+      font-family: var(--font-sans);
+      font-size: 0.72rem;
+      color: var(--color-text);
+    }
+
+    .search-clear {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-gray-dark, #666);
+      font-size: 9px;
+    }
+
+    .search-clear:hover { color: var(--color-text); }
 
     /* ── Tree ── */
 
@@ -257,6 +501,15 @@ export class SceneExplorer extends SignalWatcher(LitElement)
     }
 
     .node-name.faded { opacity: 0.35; }
+
+    /* search hit highlight — strong primary */
+    .node-name.match {
+      background: var(--color-primary, #3b82f6);
+      border-radius: 3px;
+      padding: 0 3px;
+      font-weight: 600;
+      color: #fff;
+    }
 
     /* material swatch */
     .mat-swatch {

@@ -46,6 +46,12 @@ doc.create('myDoc')
   },
 };
 
+// Scene explorer
+/** Tree depth shown in the scene-explorer "minimized" view: nodes shallower than
+ *  this level stay expanded, deeper nodes are collapsed. 1 = show the direct
+ *  children of the main Scene (root) node. */
+export const SCENE_EXPLORER_MINIMIZED_TREE_LEVEL = 1;
+
 // 3D viewer
 
 /** Coordinate system of models as exported by the kernel/meshup pipeline.

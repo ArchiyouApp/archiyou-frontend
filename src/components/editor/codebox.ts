@@ -23,7 +23,7 @@ import { keymap, Decoration, DecorationSet } from '@codemirror/view';
 import { EditorState, Compartment, StateEffect, StateField } from '@codemirror/state';
 import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { autocompletion } from '@codemirror/autocomplete';
+import { autocompletion, acceptCompletion, completionStatus } from '@codemirror/autocomplete';
 import { archiyouCompletions } from './completions.js';
 
 import { SignalWatcher } from '@lit-labs/signals';
@@ -136,6 +136,10 @@ export class CodeBox extends SignalWatcher(LitElement)
               key: 'Tab',
               run: (view) =>
               {
+                // If the autocomplete popup is open, Tab accepts the active suggestion
+                // instead of indenting.
+                if (completionStatus(view.state) === 'active' && acceptCompletion(view)) return true;
+
                 const { state } = view;
                 // If the selection spans multiple lines, indent each line
                 const sel = state.selection.main;

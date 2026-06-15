@@ -15,6 +15,8 @@ import {
   type Completion,
 } from '@codemirror/autocomplete';
 
+import { localCompletionSource } from '@codemirror/lang-javascript';
+
 import {
   type MethodInfo,
   modelerFunctions as autoModelerFunctions,
@@ -299,16 +301,64 @@ export function archiyouCompletions(
     };
   }
 
-  // Top-level word → Modeler global functions + keywords
+  // Top-level word → Modeler global functions + keywords, merged with
+  // identifiers the user defined in their own script (variables, function
+  // declarations, parameters, classes) from the JS syntax tree.
   const wordMatch = context.matchBefore(/\b\w+$/);
   if (wordMatch)
   {
     return {
       from: wordMatch.from,
-      options: topLevelCompletions,
+      options: mergeLocalIdentifiers(context),
       validFor: /^\w*$/,
     };
   }
 
   return null;
+}
+
+/**
+ * Combines the static Archiyou API completions with identifiers the user defined
+ * in their own script. Two sources, deduped by label (API entries win so their
+ * richer detail/info is preserved):
+ *  - CodeMirror's syntax-tree localCompletionSource — declarations (let/const/var,
+ *    functions, parameters, classes).
+ *  - A regex scan for bare assignments (`hallo = 'x'`) — implicit globals that the
+ *    Archiyou scope allows but the syntax tree does not treat as declarations.
+ */
+function mergeLocalIdentifiers(context: CompletionContext): Completion[]
+{
+  const seen = new Set(topLevelCompletions.map(c => c.label));
+  const extra: Completion[] = [];
+
+  const local = localCompletionSource(context);
+  if (local)
+  {
+    for (const o of local.options)
+    {
+      if (!seen.has(o.label)) { seen.add(o.label); extra.push(o); }
+    }
+  }
+
+  for (const name of collectAssignedGlobals(context.state.doc.toString()))
+  {
+    if (!seen.has(name)) { seen.add(name); extra.push({ label: name, type: 'variable' }); }
+  }
+
+  return extra.length > 0 ? [...topLevelCompletions, ...extra] : topLevelCompletions;
+}
+
+/**
+ * Scans the document for assignment targets at statement start — including bare
+ * assignments without let/const/var (implicit globals). The `=` lookahead excludes
+ * `==`/`=>`, and requiring the name directly before `=` excludes compound assigns
+ * (`+=`, etc.). Returns the assigned identifier names.
+ */
+function collectAssignedGlobals(docText: string): Set<string>
+{
+  const names = new Set<string>();
+  const re = /(?:^|[;{}\n])\s*(?:(?:let|const|var)\s+)?([a-zA-Z_$][\w$]*)\s*=(?![=>])/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(docText)) !== null) names.add(m[1]);
+  return names;
 }

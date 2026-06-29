@@ -1,0 +1,1382 @@
+/** 
+ * 
+ *  Edge.ts - a trimmed curve that represents a border of a Face
+ *  an Edge can be created as:
+ *      - Line
+ *      - Spline
+ *      - BSpline
+ *      - Arc
+ *      - Ellipse
+ *      - Circle 
+ */
+
+import { Color } from 'meshup/src/Color'
+// import { DxfBlock, point3d } from '@tarikjabiri/dxf'
+
+// types
+import type { ObjStyle, ThickenDirection, PointLike, Cursor,
+        AnyShape, AnyShapeOrCollection,
+        LinearShape, LinearShapeTail, PointLikeSequence,
+        DimensionOptions } from '.' // see types
+// constants
+import { EDGE_DEFAULT_START, EDGE_DEFAULT_END, EDGE_DEFAULT_CIRCLE_RADIUS, EDGE_DEFAULT_OFFSET, EDGE_DEFAULT_THICKEN,
+    EDGE_DEFAULT_POPULATE_NUM, EDGE_DEFAULT_EXTEND_AMOUNT, EDGE_DEFAULT_EXTEND_DIRECTION, EDGE_DEFAULT_ALIGNTO_FROM,
+    EDGE_DEFAULT_ALIGNTO_TO, EDGE_DEFAULT_SEGMENTS_ANGLE, EDGE_DEFAULT_SEGMENTS_ANGLE_SVG, EDGE_DEFAULT_SEGMENTS_SIZE,
+    WIRE_LOFTED_SOLID
+} from '.'
+
+import { Vector, Point, Shape, Vertex, Wire, Face, Shell, Solid,
+    ShapeCollection, VertexCollection } from '.'
+import type { DimensionLine } from '../../annotator/AnnotatorDimensionLine'
+
+import { isPointLike } from '.' // typeguards
+
+import { targetOcForGarbageCollection, removeOcTargetForGarbageCollection } from '.'
+
+// utils
+import { toRad, roundToTolerance, convertValueFromToUnit } from '.'
+// decorators
+
+
+// this can disable TS errors when subclasses are not initialized yet
+type IWire = Wire
+type IFace = Face
+type IShell = Shell
+type IDimensionLine = DimensionLine
+
+
+export class Edge extends Shape
+{
+    /* OC docs:
+         https://dev.opencascade.org/doc/occt-7.4.0/refman/html/class_topo_d_s___edge.html#ae1422a3d162365b40d12e941c216f0d0
+    
+        Inherited from Shape:
+        _oc
+        _brep
+        _obj
+        _parent
+        _ocShape
+        _ocId
+    */
+
+    //// SETTINGS ////
+    TO_SVG_DASH_SIZE_DEFAULT = 5
+    TO_SVG_LINE_WIDTH_DEFAULT = 0.25; 
+    TO_SVG_LINE_COLOR_DEFAULT = 'black'
+    TO_SVG_OPACTIY_DEFAULT = 1;
+
+    /** Creates a simple Line Edge, use new Edge().makeCicle etc for others */
+    constructor(start?:PointLike, end?:PointLike) // NOTE: decorators cannot be applied to constructors
+    {   
+        super(); // Shape constructor
+
+        if (start && end)
+        {
+            this.makeLine(start,end);
+        }
+
+        // NOTE: We can always create default Edges with new Edge() and then alter them with makeCircle, makeArc etc
+    }
+
+    //// CREATION METHODS ////
+
+    _fromOcEdge(ocEdge:any):this
+    {
+        if (ocEdge && (ocEdge instanceof this._oc.TopoDS_Edge || ocEdge instanceof this._oc.TopoDS_Shape) && !ocEdge.IsNull() )
+        {
+            // First clear existing if any
+            this._clearOcShape();
+
+            // For easy debug, always make sure the wrapped OC Shape is TopoDS_Edge
+            ocEdge = this._makeSpecificOcShape(ocEdge, 'Edge');
+            this._ocShape = ocEdge;
+            this._ocId = this._hashcode();
+            this.round(); // round to tolerance - !!!! look like not really working
+
+            targetOcForGarbageCollection(this, this._ocShape);
+
+            return this;
+        }
+        else {
+            throw new Error('Edge::_fromOcEdge: Could not make an Edge, no valid ocEdge given! Check for nulls, the right ocShape type or empty Edge!')
+        }
+    }
+
+    /**
+     * Create Edge from given OC Curve
+     * @param ocCurve Geom_Curve
+     * @param ocStartPnt gp_Pnt
+     * @param ocEndPnt gp_Pnt
+     */
+    _fromOcCurve(ocCurve:any): Edge
+    {
+        let ocStartPnt = ocCurve.Value(ocCurve.FirstParameter());
+        let ocEndPnt = ocCurve.Value(ocCurve.LastParameter());
+        
+        let ocCurveHandle = new this._oc.Handle_Geom_Curve_2(ocCurve);
+        let ocEdgeCreator = new this._oc.BRepBuilderAPI_MakeEdge_25(ocCurveHandle, ocStartPnt, ocEndPnt ); // see: https://dev.opencascade.org/doc/occt-7.4.0/refman/html/class_b_rep_builder_a_p_i___make_edge.html#a424f7c2f5b8c3588e88e83789a7a5446
+        let ocEdge = ocEdgeCreator.Edge();
+        
+        this._fromOcEdge(ocEdge);
+
+        return this;
+    }
+
+    _ocGeom():Edge 
+    {
+        return this._ocShape;
+    }
+
+    /** Convert Edge to one Vector */
+    toVector():Vector
+    {
+        return this.center().toVector();
+    }
+
+    _toWire():IWire
+    {
+        return new Wire().fromEdges([this]);
+    }
+
+    /** Convert to Wire and add to Scene */
+    toWire():IWire
+    {
+        return this._toWire()
+    }
+
+    _toOcCurve():any
+    {
+        /** OC docs 
+         * BRep_Tool: https://dev.opencascade.org/doc/occt-7.4.0/refman/html/class_b_rep___tool.html 
+         * Adaptor3d_Curve: https://dev.opencascade.org/doc/occt-7.4.0/refman/html/class_adaptor3d___curve.html
+         * */
+
+        return new this._oc.BRepAdaptor_Curve_2(this._ocShape);
+    }
+    
+    _toOcCurveHandle():any
+    {
+        return new this._oc.Handle_Geom_Curve_2(this._toOcCurve().Curve().Curve().get());
+    }
+
+    //// CURSOR ////
+
+    getCursor():Cursor
+    {
+        return { point: this.end().toPoint(), direction: this.directionAt(this.end()) }
+    }
+
+    //// CREATION METHODS ////
+    
+    makeLine(start:PointLike, end:PointLike):Edge
+    {
+        start = Point.fromPointLike(start).toVertex() as Vertex; // auto converted
+        end = Point.fromPointLike(end).toVertex() as Vertex; // auto converted
+
+        if (start.equals(end))
+        {
+            throw new Error(`Edge::makeLine: Start and End point are the same! Please provide different start and end points to create a valid Line Edge!`);
+        }
+
+        const creator =  new this._oc.BRepBuilderAPI_MakeEdge_3(start._toOcPoint(), end._toOcPoint() );
+        this._fromOcEdge(creator.Edge());
+        
+        return this;
+    }
+
+    
+    /** Create a Circle Edge with given radius (default:50) and center (default: [0,0,0]) */
+    makeCircle(radius?:number, center?:PointLike):Edge
+    {
+        /* OC docs:
+         *      - gp_Circ: https://dev.opencascade.org/doc/occt-7.4.0/refman/html/classgp___circ.html
+         *      - gp_Ax2: https://dev.opencascade.org/doc/occt-7.4.0/refman/html/classgp___ax2.html
+         *      - gp_Dir: https://dev.opencascade.org/doc/occt-7.4.0/refman/html/classgp___dir.html
+         */
+
+        center = center as Point; // auto converted
+        const ocCircle = new this._oc.gp_Circ_2(new this._oc.gp_Ax2_3(center._toOcPoint(),new this._oc.gp_Dir_4(0, 0, 1)), radius); 
+        const ocEdge = new this._oc.BRepBuilderAPI_MakeEdge_8(ocCircle).Edge();
+        this._fromOcEdge(ocEdge);
+        
+        return this;
+    }
+
+    /** Make Spline that goes through Vectors provided in list of points (PointLike) */
+    makeSpline(points:PointLikeSequence, ...args):Edge
+    {
+        /* OC docs: 
+            - tcolgp: https://dev.opencascade.org/doc/occt-6.9.0/refman/html/package_tcolgp.html
+            - Tcolgp_Array1OfPnt: https://dev.opencascade.org/doc/occt-6.9.0/refman/html/class_t_colgp___array1_of_pnt.html
+            - BRepBuilderAPI_MakeEdge: https://dev.opencascade.org/doc/occt-6.9.0/refman/html/class_b_rep_builder_a_p_i___make_edge.html#ae764242a5e522c151e72befe06fc4b0a
+            - GeomAPI_PointsToBSpline: https://dev.opencascade.org/doc/occt-6.9.0/refman/html/class_geom_a_p_i___points_to_b_spline.html
+            - BRepBuilderAPI_MakeEdge: https://dev.opencascade.org/doc/occt-6.9.0/refman/html/class_b_rep_builder_a_p_i___make_edge.html
+            - Handle<Curve>: https://dev.opencascade.org/doc/occt-6.9.0/refman/html/_standard___macro_8hxx.html#a36a133daea9be10d2f88008f94ebb445
+        
+        */
+
+        // TODO AFTER REFACTOR - decorators autoconvert
+        let vertices = points as VertexCollection; // auto converted
+
+        if (vertices.length < 3)
+        {
+            console.error('Edge::makeSpline: Please supply at least 3 points to create valid Spline!')
+            return null;
+        }
+
+        let ocPointList = new this._oc.TColgp_Array1OfPnt_2(1, vertices.length);
+        vertices.forEach( (v,i) => ocPointList.SetValue(i+1, (v as Vertex)._toOcPoint()) );
+        let geomSplineCurveHandle = new this._oc.GeomAPI_PointsToBSpline_2(ocPointList, 3, 8, this._oc.GeomAbs_Shape.GeomAbs_C2, 1.0e-3 ).Curve();
+        /* WORKAROUND: Expected null or instance of Handle_Geom_Curve, got an instance of Handle_Geom_BSplineCurve
+            We resolve the handle (basically an dynamic pointer in OCE) and make a new Curve Handle from the BezierCurve */
+        const geomCurveHandle = new this._oc.Handle_Geom_Curve_2(geomSplineCurveHandle.get());
+        const ocEdge = new this._oc.BRepBuilderAPI_MakeEdge_24( geomCurveHandle ).Edge(); 
+
+        this._fromOcEdge(ocEdge);
+
+        return this;
+        
+    }
+
+    /** Make Arc line
+     *  @param type threepoint or tangent
+     */
+    makeArc(start:PointLike, mid:PointLike, end:PointLike, type?:string):Edge
+    {   
+        start = new Point(start).toVertex() as Vertex; // auto converted from PointLike
+        mid = new Point(mid).toVertex() as Vertex;
+        end = new Point(end).toVertex() as Vertex;
+
+        // check if midVec is on the line (startVec,endVec) - meaning we don't have an arc but a straight line ( also avoids error in OC )
+        if ( new Edge(start, end).intersects(mid))
+        {
+            console.warn('Edge::makeArc: created a straight Edge instead!');
+            const lineEdge = new Edge(start, end);
+            removeOcTargetForGarbageCollection(lineEdge._ocShape);
+            this._fromOcEdge(lineEdge._ocShape);
+        }
+        else 
+        { 
+            type = (type != "threepoint" && type != "tangent" ) ? 'threepoint' : type; // check inputs
+
+            const geomTrimmedCurveHandle = (type == 'threepoint') ? 
+                                    new this._oc.GC_MakeArcOfCircle_4(start._toOcPoint(), mid._toOcPoint(), end._toOcPoint()).Value() : // mid point is a point
+                                    new this._oc.GC_MakeArcOfCircle_5(start._toOcPoint(), mid._toOcVector(), end._toOcPoint()).Value(); // mid point is a tangent
+
+            const geomCurveHandle = new this._oc.Handle_Geom_Curve_2(geomTrimmedCurveHandle.get());
+            const newOcEdge = new this._oc.BRepBuilderAPI_MakeEdge_24(geomCurveHandle).Edge();
+            this._fromOcEdge(newOcEdge);
+
+        }
+
+        return this;
+    }
+
+    /** Make Bezier curve from given points. One control point for Quadratic. Two for Cubic */
+    makeBezier(points:PointLikeSequence, ...args):Edge // NOTE: handles (start,controlpoint,end) too
+    {
+        /* OC docs:
+            - Geom_Bezier_Curve: https://dev.opencascade.org/doc/refman/html/class_geom___bezier_curve.html
+        */
+
+        const bezierPoints = points as VertexCollection;
+        
+        const ocPointList = new this._oc.TColgp_Array1OfPnt_2(1,bezierPoints.length);
+        bezierPoints.forEach( (v,i) => ocPointList.SetValue(i+1, (v as Vertex)._toOcPoint()));
+
+        const ocCurve = new this._oc.Geom_BezierCurve_1(ocPointList);
+        const ocEdge = new this._oc.BRepBuilderAPI_MakeEdge_24(new this._oc.Handle_Geom_Curve_2(ocCurve)).Edge();
+        const bezierEdge = this._fromOcEdge(ocEdge);
+        return bezierEdge;
+    }
+
+    /** Make weighted Bezier Curve by supplying (control)points and weights */
+    /* // NOT WORKING. crashes OC
+    makeWeightedBezier(points:PointLikeSequence, weights:Array<number>):Edge
+    {
+        // some sanity checks
+        let bezierPoints = points as VertexCollection; // auto converted
+        if (weights.length != bezierPoints.length/3 && weights.length != bezierPoints.length/2)
+        {
+            throw new Error(`makeWeightedBezier::Please supply a weight for each control point!`);
+        }
+
+        let ocPointList = new this._oc.TColgp_Array1OfPnt_2(1,bezierPoints.length);
+        bezierPoints.forEach( (v,i) => ocPointList.SetValue(i+1, v._toOcPoint()));
+        let ocWeightList = new this._oc.TColStd_Array1OfReal_2(1,weights.length);
+        weights.forEach( (w,i) => ocWeightList.SetValue(i+1, w));
+        let ocCurve = new this._oc.Geom_BezierCurve_2(ocPointList, ocWeightList);
+        let ocEdge = new this._oc.BRepBuilderAPI_MakeEdge_24(new this._oc.Handle_Geom_Curve_2(ocCurve)).Edge();
+        let bezierEdge = this._fromOcEdge(ocEdge);
+        return bezierEdge;
+    }
+    */
+    
+    //// COMPUTED PROPERTIES ////
+
+    /** Get first Vertex of Edge */
+    start():Vertex
+    {
+        // NOTE: _firstVertex already takes care of possible this._oc.TopAbs_Orientation.TopAbs_REVERSED
+        return this._firstVertex();
+    }
+
+    /** Get last Vertex of Edge */
+    end():Vertex
+    {
+        // NOTE: _lastVertex already takes care of possible this._oc.TopAbs_Orientation.TopAbs_REVERSED
+        return this._lastVertex();
+    } 
+
+    _firstVertex():Vertex
+    {
+        return new Vertex()._fromOcVertex((new this._oc.ShapeAnalysis_Edge()).FirstVertex(this._ocShape));
+    }
+
+    _lastVertex():Vertex
+    {
+        return new Vertex()._fromOcVertex((new this._oc.ShapeAnalysis_Edge()).LastVertex(this._ocShape));
+    }
+
+    /** Get Edge Type: Line, Circle, Ellipse, Hyperbola, Parabola, BezierCurve, BSplineCurve, OffsetCurve, OtherCurve 
+     *  IMPORTANT: Because it generates a lot of confusion we add here the distinction Circle/Arc that is not in OpenCascade
+    */
+    edgeType():string
+    {
+        const LOOKUP_INT_TO_TYPE = {
+            '0' : 'Line',
+            '1' : 'Circle',
+            '2' : 'Ellipse',
+            '3' : 'Hyperbola ',
+            '4' : 'Parabola',
+            '5' : 'BezierCurve',
+            '6' : 'BSplineCurve',
+            '7' : 'OffsetCurve',
+            '8' : 'OtherCurve'
+        }
+        
+        let edgeType = LOOKUP_INT_TO_TYPE[String(this._toOcCurve().GetType().value)];
+
+        if(edgeType === 'Circle')
+        {
+            if (!this.start().equals(this.end()))
+            {
+                edgeType = 'Arc'
+            }
+        }
+
+        return edgeType;
+    }
+
+    is2DXY(): boolean 
+    {
+        return this.start().z <= this._oc.SHAPE_TOLERANCE && this.end().z <= this._oc.SHAPE_TOLERANCE
+    }
+
+    /** TODO: Make this more robust? */
+    isCircular():boolean
+    {
+        return ['Circle', 'Ellipse'].includes(this.edgeType())
+    }
+
+    /** Get length of Edge */
+    length():number 
+    {
+        // Generic Shape method. See: https://dev.opencascade.org/content/how-find-arc-length-part-curve
+
+        if (this.isEmpty())
+        { 
+            console.error(`Edge::length: Could not get length of empty Edge. Check if the Edge is properly created!`);
+            return null 
+        };
+
+        const ocProps = new this._oc.GProp_GProps_1();
+        this._oc.BRepGProp.LinearProperties(this._ocShape, ocProps, false, false);
+        const l = roundToTolerance(ocProps.Mass());
+        ocProps?.delete(); // clear OC instance
+        return l;
+    }
+
+    /** Calculate the center of this Edge and return a Point */
+    center():Point
+    {
+        // OC docs: https://dev.opencascade.org/doc/occt-7.4.0/refman/html/class_b_rep_g_prop.html
+        const ocProps = new this._oc.GProp_GProps_1();
+        const BRepGProp = this._oc.BRepGProp.prototype.constructor;
+        BRepGProp.LinearProperties(this._ocShape, ocProps, false, false);
+
+        const center = new Point()._fromOcPoint(ocProps.CentreOfMass()).round(); // also round it to avoid very small numbers
+        ocProps?.delete(); // clear OC instance
+
+        return center;
+    }
+
+    /** Return middle of Edge */
+    middle():Point
+    {
+        return this.pointAt(0.5);
+    }
+
+    /** Calculate the normal of the straight line Edge 
+     *  Force that normal always faces flipTo (otherwise the side is determined by direction)
+    */
+    normal(orientTo?:PointLike, ...args):Vector
+    {
+        if(this.edgeType() != 'Line')
+        {
+            console.error(`Edge::normal: This method only works for Line Edges: You provided a ${this.edgeType()}!`);
+        }
+        // NOTE: in 3D the normal of a Edge is underdetermined - We use the one orientated on XY plane
+        const d = this.direction();
+        const workplaneNormal = (!d.normalized().equals([0,0,1])) ? new Vector(0,0,1) : new Vector(0,1,0);
+        let n = workplaneNormal.crossed(d).normalize();
+
+        if(!orientTo)
+        {
+            return n;
+        }
+        else {
+            // orientate towards given Point
+            const v1 = this.center().toVector().added(n).toVertex();
+            const v2 = this.center().toVector().subtracted(n).toVertex();
+            return v1.distance(orientTo) < v2.distance(orientTo) ? n : n.reverse();
+        }
+        
+    }
+
+    /** Calculate workplane normal if 2D (not a 1D Line) */
+    workPlaneNormal():Vector 
+    {
+        if(this.edgeType() == 'Line')
+        {
+            console.warn(`Edge::workPlaneNormal: 1D Edge has no clear workplane! Returned null!`);
+            return null;
+        }
+
+        let mid = new Vector(this.pointAt(0.5))
+        let v1 = mid.subtracted(this.start())
+        let v2 = new Vector(this.end()).subtracted(mid);
+
+        return v2.crossed(v1).normalize();
+    }
+
+    _reverseOcEdge(ocEdge:any):any // TODO: OC typing
+    {
+        // see: https://dev.opencascade.org/content/reverse-edge
+
+        const ocCurve = new this._oc.BRepAdaptor_Curve_2(ocEdge);
+        const uMin = ocCurve.FirstParameter();
+        const uMax = ocCurve.LastParameter();
+        
+        const ocGeomCurve = new this._oc.Handle_Geom_Curve_2(ocCurve.Curve().Curve().get()).get();
+        
+        const uMinRev = ocGeomCurve.ReversedParameter(uMin);
+        const uMaxRev = ocGeomCurve.ReversedParameter(uMax);
+
+        const ocEdgeCreator = new this._oc.BRepBuilderAPI_MakeEdge_25(ocGeomCurve.Reversed(), uMaxRev, uMinRev);
+        return ocEdgeCreator.Edge();
+    }
+
+    /** Reverse Edge in place */
+    reverse():Edge
+    {
+        /* see OC docs: 
+            - https://dev.opencascade.org/doc/refman/html/class_geom___curve.html
+            - https://dev.opencascade.org/doc/refman/html/class_b_rep_builder_a_p_i___make_edge.html
+
+            !!!! WARNING / TODO: this could lead to weird results !!!!
+        */
+
+        this._fromOcEdge(this._reverseOcEdge(this._ocShape));
+
+        return this;
+    }
+
+    /** Create a new Edge by reversing current one */
+    reversed():Edge
+    {
+        return (this.copy() as Edge).reverse();
+    }
+
+    /** Get direction Vector of Line Edge from start to end */
+    direction(normalize:boolean=false):Vector
+    {
+        if (this.edgeType() != 'Line')
+        {
+            console.warn(`Edge::direction: Edge is of type "${this.edgeType()}" which does not have one direction! Used directionAt in middle`);
+            return this.directionAt(this.middle())
+        }
+
+        let directionVec = this.end().toVector().subtracted(this.start().toVector());
+        if (normalize){
+            directionVec.normalize();
+        }
+
+        return directionVec;
+    }
+
+    /** Alias for direction. Always returns normalized Vector */
+    dir():Vector
+    {
+        return this.direction(true)
+    }
+
+    /** Get tangent (= direction ) at certain point on the Edge */
+    tangent()
+    {
+        return this.direction().normalize();
+    }
+
+    /** Get direction = tangent at certain point on the Edge */
+    directionAt(point:PointLike, ...args):Vector
+    {
+        let at = point as Point; // auto converted
+        
+        // straight line: direction is always the same
+        if(this.edgeType() == 'Line')
+        {
+            return this.direction();
+        }
+
+        const paramAtPoint = this.getParamAt(point);
+
+        let ocClProps = new this._oc.GeomLProp_CLProps_2(
+            this._toOcCurveHandle(), 
+            paramAtPoint,
+            1, // 2 is needed for normal
+            0.0001 // resolution
+        );
+        
+        let ocDir = new Point(1,0,0)._toOcDir(); // tmp ofDir
+        ocClProps.Tangent(ocDir); // filled with tangent
+        let direction = new Vector()._fromOcDir(ocDir).normalize().rounded();
+        
+        return direction;
+    }
+
+    /** Get direction Vector at start Vertex */
+    directionAtStart():Vector
+    {
+        return this.directionAt(this.start());
+    }
+
+    /** Get direction Vector at end Vertex */
+    directionAtEnd():Vector
+    {
+        return this.directionAt(this.end());
+    }
+
+    /** Get direction Vector at percentage of length */
+    directionAtPerc(perc):Vector
+    {
+        perc = (perc < 0) ? 0 : (perc > 1) ? 1.0 : perc;
+        let pointAtPerc = this.pointAt(perc);
+        return this.directionAt(pointAtPerc);
+    }
+
+    /** Get tangent Vector (=direction) at certain point on the Edge */
+    tangentAt(point:PointLike, ...args):Vector
+    {
+        return this.directionAt(point).normalize();
+    }
+
+    /** Close a non-Line Edge to create a Wire **/
+    close():IWire
+    {
+        if(this.edgeType() === 'Line' || this.length() == 0)
+        {
+            throw new Error(`Edge::close: Cannot close a single Line Edge!`);
+        }
+
+        return this._toWire().close();
+    }
+
+    /** Thicken Edge to create a Face (private: without adding result to Scene) */
+    _thickened(amount?:number, direction?:ThickenDirection,  onPlaneNormal?:PointLike):IFace
+    {
+        // the same for Edges and Wire: forward to the Wire one
+        return this._toWire()._thickened(amount, direction, onPlaneNormal);
+    }
+
+    /** Thicken Edge to create a Face */
+    thickened(amount?:number, direction?:string,  onPlaneNormal?:PointLike):IFace
+    {
+        return this._thickened(amount, direction, onPlaneNormal);
+    }
+
+    thicken(amount:number, direction?:ThickenDirection, onPlaneNormal?:PointLike):IFace
+    {
+        let newShape = this._thickened(amount, direction, onPlaneNormal);
+        this.replaceShape(newShape);
+        return newShape;
+    }
+
+    /** Thicken the Edge along the normal to create a Face */
+    thickenOffsetted(amount?:number, v?:PointLike, flip?:boolean):IFace 
+    {
+        let vector = v as Vector;
+        vector = vector || this.normal();
+        vector = (flip) ? vector.reverse() : vector;
+        let edgeOffset = (this.moved(vector.scale(amount)) as Edge);
+
+        return new Face().fromVertices([this.start(), this.end(), edgeOffset.end(), edgeOffset.start()]);
+    }
+
+    /** Offset Edge a given amount into normal direction or reversed with '-amount' and return new Edge (private without adding to Scene)
+     *  NOTE: param type does nothing but is for consistency     
+    */
+    _offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):Edge|Wire
+    {
+        /* OC docs: 
+            - MakeOffset: https://dev.opencascade.org/doc/occt-7.5.0/refman/html/class_b_rep_offset_a_p_i___make_offset.html
+            - Geom_OffsetCurve - https://dev.opencascade.org/doc/refman/html/class_geom___offset_curve.html
+            - https://dev.opencascade.org/doc/occt-7.5.0/refman/html/class_b_rep_builder_a_p_i___make_edge.html#a424f7c2f5b8c3588e88e83789a7a5446
+        */
+      
+        /* NOTE: We use MakeOffset on Wires/Faces
+            - This works without any problems on 2D Edges (Arcs,Splines) - offset will also be on the same Plane
+            - But not one Line Edges - avoid this by doing very simple offset
+        */
+
+        if (this.edgeType() != 'Line')
+        {
+            let wire = this._toWire();
+            let ocMakeOffset = new this._oc.BRepOffsetAPI_MakeOffset_3(wire._ocShape, this._oc.GeomAbs_JoinType.GeomAbs_Tangent, true); // isOpenResult (false actually thickens the Edge into a closed Wire)
+            ocMakeOffset.Perform(amount,0); // Alt altitude
+            let newOcShape = ocMakeOffset.Shape();
+            
+            let offsetShape = new Shape()._fromOcShape(newOcShape) as Edge|Wire;
+
+            if(!offsetShape){
+                throw new Error('Edge::_offsetted: Offsetting failed. Check if the offset amount does not lead to self-intersection!')
+            }
+
+            // Sometimes the offsetted Shape becomes a Wire (like in Spline), check if we can downcast to Edge
+            offsetShape = (offsetShape.type === 'Wire') ? offsetShape.checkDowngrade() as Edge|Wire : offsetShape;
+            // OC always offsets from origin - correct to offset from center of Edge
+            if(offsetShape.type === 'Edge')
+            {
+                ((offsetShape as Edge).edgeType() === 'Circle') ? offsetShape.move(this.center().toVector().reversed())
+                    : offsetShape.move(0,0,-this.start().z)
+            }            
+            
+            return offsetShape as Edge
+        }
+        else {
+            // Line offset
+            let offsetVec = (onPlaneNormal) ? (onPlaneNormal as Vector).crossed(this.directionAtStart()).normalize() : this.normalAt(this.start());
+            let newEdge = this.copy().move(offsetVec.scaled(amount));
+
+            return newEdge as Edge;
+        }
+        
+    }
+
+    /** Offset Edge a given amount into normal direction or reversed with '-amount' and return new Edge */
+    offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):Edge|Wire
+    {
+        let offsetShape = this._offsetted(amount,type,onPlaneNormal);
+        // Open Shapes sometimes become bigger (after -amount): Check and corrent
+        const growth = offsetShape.bbox().area() - this.bbox().area();
+        if( (amount > 0 && growth < 0) || (amount < 0 && growth > 0) ){ offsetShape = this._offsetted(-amount, type, onPlaneNormal);}
+        return offsetShape;
+    }
+
+    /** Offset Edge a given amount into normal direction or reversed with '-amount' */
+    offset(amount?:number, type?:string, onPlaneNormal?:PointLike):Edge|Wire
+    {
+        let offsetShape = this._offsetted(amount, type, onPlaneNormal); 
+        // Open Shapes sometimes become bigger (after -amount): Check and corrent
+        const growth = offsetShape.bbox().area() - this.bbox().area();
+        if( (amount > 0 && growth < 0) || (amount < 0 && growth > 0) ){ offsetShape = this._offsetted(-amount, type, onPlaneNormal);}
+
+        if (offsetShape.type === 'Edge')
+        {
+            this._fromOcEdge(offsetShape._ocShape); // replace old OC Edge with new
+            return this;
+        }
+        else {
+            // IMPORTANT: Splines can turn into Wires after offsetted - so we can't update 
+            console.warn('Edge::offset: A Spline Edge turned into a Wire after offset!')
+            this.replaceShape(offsetShape)
+            return offsetShape;
+        }
+        
+    }
+
+    /** Get start value of Edge parameter range */
+    paramStart():number
+    {
+        return this._toOcCurve().FirstParameter();
+    }
+
+    /** Get end value of Edge parameter range */
+    paramEnd():number
+    {
+        return this._toOcCurve().LastParameter();
+    }
+
+    /** 
+     * Generate a Point at specific percentage of this Edge
+     *  @param perc: number between 0 and 1
+     */
+    pointAt(perc:number):Point
+    {
+        if(perc < 0 || perc > 1)
+        {
+            console.warn(`Edge:pointAt: Please supply a number in range [0.0-1.0]. Reverted to closest value!`);
+            perc = (perc < 0) ? 0.0 : 1.0;
+        }
+        
+        const uMin = this.paramStart();
+        const uMax = this.paramEnd();
+        const atU =  uMin + perc * (uMax - uMin);
+        return this.pointAtParam(atU);
+    }
+    
+    /** Get Point at specific param value */
+    pointAtParam(param:number):Point
+    {
+        let p = new Point()._fromOcPoint(this._toOcCurve().Value(param)); 
+        return p.rounded();
+    }
+
+    /** Check if Edge has a Vertex that equals the given Vertex */
+    isVertex(vertex:PointLike, ...args):Vertex
+    {
+        return ((vertex as Vertex).equals(this.start())) ? this.start() : (((vertex as Vertex).equals(this.end()) ? this.end() : null) );
+    }
+
+    /** Calculate the normal for a point on the Edge */
+    normalAt(point:PointLike, ...args):Vector
+    {   
+        let at = point as Point; // auto converted
+        
+        // straight line: normal is always the same
+        if(this.edgeType() == 'Line')
+        {
+            return this.normal();
+        }
+
+        /* New method with GeomLProp_CLProps 
+            see docs: https://dev.opencascade.org/doc/refman/html/class_geom_l_prop___c_l_props.html    
+        */
+        let ocClProps = new this._oc.GeomLProp_CLProps_2(this._toOcCurveHandle(), 
+            this.getParamAt(point),
+            2, // 2 is needed for normal
+            0.0001 // resolution
+        );
+        
+        let ocDir = new Point(1,0,0)._toOcDir(); // tmp ofDir
+        ocClProps.Normal(ocDir); // filled with normal
+        let normal = new Vector()._fromOcDir(ocDir).rounded();
+        
+        return normal;
+    }
+
+    /** Get normal of Edge at percentage of length */
+    normalAtPerc(perc:number):Vector
+    {
+        perc = (perc < 0) ? 0 : (perc > 1) ? 1.0 : perc;
+        let pointAtPerc = this.pointAt(perc);
+        return this.normalAt(pointAtPerc);
+    }
+
+    /** Calculate the angle between two touching Edges at either ends */
+    angleTo(other:Edge):number
+    {
+        let intersections = this._intersections(other);
+
+        if (intersections.length == 0)
+        {
+            console.error(`Edge::angleTo: Supplied Edges don't connect!`)
+            return null;
+        }
+
+        if (intersections.hasType('Edge'))
+        {
+            // overlapping Edges: angle is zero
+            console.warn(`Edge::angleTo: Both Edges overlap!`)
+            return 0.0;
+        }
+
+        let intersectionVert = intersections.vertices()[0] as Vertex;
+        let firstEdgeNormal:Vector = (this.start().equals(intersectionVert)) ? this.normalAt(this.start()) : this.normalAt(this.end());
+        let secondEdgeNormal:Vector = (other.start().equals(intersectionVert)) ? other.normalAt(other.start()) : other.normalAt(other.end());
+        
+        // return the smallest angle
+        let a1 = firstEdgeNormal.angle(secondEdgeNormal);
+        let a2 = firstEdgeNormal.angle(secondEdgeNormal.reversed());
+
+        return (a1 < a2) ? a1 : a2;
+
+    }
+
+    //// OPERATIONS ON EDGE ////
+
+    /** Needed to fix some Edges, for example after projecting */
+    _buildCurves()
+    {
+        // OC docs: https://dev.opencascade.org/doc/refman/html/class_b_rep_lib.html#a4f676a67ca12ad407faa3e88a7e72aaa
+        this._oc.BRepLib.BuildCurves3d_1(this._ocShape, this._oc.SHAPE_TOLERANCE, this._oc.GeomAbs_Shape.GeomAbs_C1, 14, 0);
+    }
+
+    /** Extend Edge into a given direction (start or end) 
+     *  NOTE: Check quality of Edge - there are signs of resulting Edges not being consistent  
+    */
+    extend(amount?:number, direction?:LinearShapeTail):Edge
+    {
+        if(!['Line','Arc'].includes(this.edgeType())){ throw new Error(`Edge::extend(): Extend with edge type "${this.edgeType()}" not yet implemented!`)}
+
+        // NOTE: we need to normalize U with the length because Arcs have U based on angle, not distance
+        let uMin:number, uMax:number;
+        [uMin,uMax] = this.getParamMinMax();
+        const edgeLength = this.length(); 
+        
+        const amountToU = (uMax - uMin) / edgeLength;
+        const normalizedAmount = amountToU * amount;
+        const extendFrom = (direction === 'start') ? 'end' : 'start';
+        const extendFromVertex = this[extendFrom](); // original stable Vertex
+
+        const ocEdgeCreator = (direction == 'end') ? 
+                new this._oc.BRepBuilderAPI_MakeEdge_25(this._toOcCurveHandle(), uMin, uMax+normalizedAmount)
+                : new this._oc.BRepBuilderAPI_MakeEdge_25(this._toOcCurveHandle(), uMin-normalizedAmount, uMax);
+        const ocEdge = ocEdgeCreator.Edge();
+        this._fromOcEdge(ocEdge);
+        ocEdgeCreator.delete();
+
+        // Moving before extending with Params can result in wrong results: correct using the stable (non-extended) Vertex
+        const extendFromVertexAfter = this[extendFrom]();
+        if(!extendFromVertex.equals(extendFromVertexAfter))
+        {
+            this.move(extendFromVertex.toVector().subtracted(extendFromVertexAfter));
+        }
+
+        return this;
+    }
+
+    /** Extend Edge into a certain direction (start or end) and return a copy */
+    _extended(amount?:number, direction?:LinearShapeTail):Edge 
+    {
+        return (this._copy() as Edge).extend(amount, direction);
+    }
+
+    /** Extend Edge into a certain direction (start or end) and return a copy */
+    extended(amount?:number, direction?:LinearShapeTail):Edge 
+    {
+        return this._extended(amount, direction);
+    }
+
+    /** Extend Edge to nearest point that is shared by other Shape (if any!)
+     *  @param other
+     *  @param direction Extend at start or end. If not given pick closest
+     */
+    extendTo(other:AnyShape, direction?:LinearShapeTail):this
+    {
+        const TEST_EXTEND_NON_CIRCULAR_PERC_DISTANCE = 2;
+
+        direction = direction || (
+                        (this.end().distance(other) < this.start().distance(other)) 
+                            ? 'end' : 'start');
+        
+        const extendAtVertex = this[direction](); // .start() or end()
+        const extendFrom = (direction === 'start') ? 'end' : 'start';
+        const extendFromVertex = this[extendFrom]();
+        const distance = other.distance(extendAtVertex)
+
+        if(distance === 0)
+        {
+            console.warn(`Edge::extendTo: Don't need to extend. Already touching!`)
+            return null; 
+        }
+
+        const extendedTestShape =  (!this.isCircular()) 
+                                ? this._extended(distance*TEST_EXTEND_NON_CIRCULAR_PERC_DISTANCE, direction)
+                                : this._maxCircularShape();
+    
+        const testIntersection = extendedTestShape._intersection(other);
+
+        if(!testIntersection)
+        { 
+            console.warn(`Edge::extendTo: Can't extend to Shape because they never intersect!`)
+            return this; 
+        }
+        
+        const testIntVertex = (testIntersection.type === 'Vertex') 
+                                ? (testIntersection as Vertex)
+                                : testIntersection.vertices()
+                                    .sort((v1,v2) => v1.distance(extendAtVertex) - v2.distance(extendAtVertex)).first() as Vertex // pick Vertex closest (if multiple)
+
+        // NOTE: using BRepBuilderAPI_MakeEdge_26 with Points is not robust, use with params instead
+        const paramStart = this.getParamAt(extendFromVertex);
+        const paramEnd = this.getParamAt(testIntVertex)
+
+        if(paramStart === paramEnd)
+        {
+            console.error(`Edge::extendTo(): Extended Vertex is same as starting Vertex. This should not happen! Check any complex Edge! Returned original`);
+            return this;
+        }
+
+        const ocEdgeCreator = new this._oc.BRepBuilderAPI_MakeEdge_25(
+                this._toOcCurveHandle(), paramStart, paramEnd);
+
+        this._fromOcEdge(ocEdgeCreator.Edge())
+        ocEdgeCreator.delete(); // OC destructor
+
+        // And again like in extend check if Edge still has the position  
+        const extendFromVertexAfter = this[extendFrom]();
+        if(!extendFromVertex.equals(extendFromVertexAfter))
+        {
+            this.move(extendFromVertex.toVector().subtracted(extendFromVertexAfter));
+        }
+        return this;
+    }
+
+    extendedTo(other:AnyShape, direction?:LinearShapeTail):Edge
+    {
+        return this._copy().extendTo(other,direction);
+    }
+
+    _maxCircularShape():Edge|null
+    {
+        const paramMinMax = this.getParamMinMax()
+        return (this.isCircular())
+            ? new this._oc.BRepBuilderAPI_MakeEdge_25(this._toOcCurveHandle(), paramMinMax[0], paramMinMax[1])
+            : null;
+    }
+
+
+    /** Loft (forwarded to Wire) */
+    loft(sections:AnyShapeOrCollection, solid?:boolean):IShell|Solid
+    {
+        let newShape = this._toWire()._lofted(sections,solid)
+        this.replaceShape(newShape);
+        return newShape;
+    }
+
+    lofted(sections:AnyShapeOrCollection, solid?:boolean):IShell|Solid
+    {
+        return this._toWire()._lofted(sections,solid);
+    }
+
+    /* Move current Edge so it connects to another Edge or Wire with given from,to = start | end  */
+    alignTo(other:LinearShape, from?:LinearShapeTail, to?:LinearShapeTail):this
+    {
+        // Main method is in Wire, convert single Edge to Wire and use that method
+        let w = this._toWire().alignTo(other,from,to);
+        return w._toEdge();
+    }
+
+    /** Get parameter (U) on Edge for given Point. If not on Edge will pick closest */ 
+    getParamAt(point:PointLike):number|null
+    {
+        // OC docs: https://dev.opencascade.org/doc/refman/html/class_geom_a_p_i___project_point_on_curve.html
+        // OC docs: https://dev.opencascade.org/doc/refman/html/class_shape_analysis___curve.html
+        try {
+            const ocProjectPoint = new this._oc.GeomAPI_ProjectPointOnCurve_2( (point as Point)._toOcPoint(), this._toOcCurveHandle());
+            return ocProjectPoint.LowerDistanceParameter();
+        }
+        catch (e)
+        {
+            console.error(`Edge::getParamAt(): Could not find param for Edge of type "${this.edgeType()}". This is probably a OpenCascade bug. Returned start parameter`);
+            return this.paramStart();
+        }
+    }
+
+    /** Generate a Collection of a given number of Vertices equally spaced over this Edge including the start and end of the Edge */
+    populated(num?:number):VertexCollection
+    {
+        // NOTE: 4 points means 3 Edges ~ increments - except for circular Edges
+        if(this.isCircular()){ num += 1 };
+        const lengthIncrement = 1.0/(num-1); // pointAt uses a percentage [0-1.0]
+        const vertices = new VertexCollection();
+        for (let p = 0; p <= num; p++) // we start and end with start and end Vertex
+        {
+            let newVertex = this.pointAt(p*lengthIncrement).toVertex(); // directly add to Scene
+            if (newVertex)
+            {
+                vertices.add(newVertex);
+            }
+        }
+        
+        return vertices;
+    }
+
+    /** Break a curved Edge up into a Wire consisting of Line Edges with given angle between segments */
+    segmentize(angle?:number, size?:number):LinearShape // Wire
+    {
+        const MINIMUM_POINTS = 2;
+        const MIN_LENGTH = 1;
+
+        if (this.edgeType() == 'Line')
+        {
+            console.warn('Edge::segments: We can only segmentize a Curve Edge (Arcs, Spline, Circle etc). Not straight Lines! Try populate(num) to!');
+            return this;
+        }
+
+        let ocLocation = new this._oc.TopLoc_Location_1(); // see OC docs: https://dev.opencascade.org/doc/occt-7.4.0/refman/html/class_top_loc___location.html
+        let adaptorCurve = this._toOcCurve();
+        let angularDeflection = toRad(angle);
+        let tangDef = new this._oc.GCPnts_TangentialDeflection_2(adaptorCurve, angularDeflection, size, MINIMUM_POINTS,  this._oc.SHAPE_TOLERANCE, MIN_LENGTH ); // see OC docs: https://dev.opencascade.org/doc/occt-7.4.0/refman/html/class_g_c_pnts___tangential_deflection.html
+
+        let vertices = [];
+
+        for(let j = 0; j < tangDef.NbPoints(); j++) 
+        {
+            let ocPoint = tangDef.Value(j+1).Transformed(ocLocation.Transformation()); // world coords
+            vertices.push( new Vertex()._fromOcPoint(ocPoint));
+        }
+
+        if (vertices.length == 0)
+        {
+            console.error(`Edge:segments: No segments found! Check the size of angle!`);
+            return null;
+        }
+        else {
+            return new Wire().fromVertices(vertices);
+        }
+    }
+
+    /** Get distributed points on Edge according to QuasiUniformDeflection method  
+     *  See: https://dev.opencascade.org/doc/refman/html/class_g_c_pnts___quasi_uniform_deflection.html#details
+     *  Used in toSVG()
+    */
+    _segmentizeToPoints(angularDeflection:number=10, force2D:boolean=true):Array<Point>
+    {
+        const deflection = toRad(angularDeflection);
+
+        const curve = this._toOcCurve();
+        const [start,end] = this.getParamMinMax();
+
+        const ocPointGenerator = new this._oc.GCPnts_QuasiUniformDeflection_4(curve, deflection, start,end, this._oc.GeomAbs_Shape.GeomAbs_C1);
+        const points = [] as Array<Point>
+
+        if(ocPointGenerator.IsDone())
+        {
+            for(let p = 0; p < ocPointGenerator.NbPoints(); p++)
+            {
+                const ocPoint = ocPointGenerator.Value(p+1); // NOTE: index start = 1
+                const newPoint = new Point()._fromOcPoint(ocPoint);
+                if(force2D){ newPoint.setZ(0) }
+                points.push(newPoint);
+            }
+        }
+        
+        return points;
+    }
+
+    //// CONTEXT PREDICATES ////
+
+    /* Get the Shapes where given current Edge and another intersect */
+    _intersectionsWithEdge(other:Edge):Vertex|Edge|ShapeCollection
+    {
+        // if edges are the same instance return itself (OC returns null)
+        if(this.same(other))
+        {
+            return this;
+        }
+
+        // see OC docs: https://dev.opencascade.org/doc/occt-7.5.0/refman/html/class_int_tools___edge_edge.html#a60cf5b162b732d577b38c2890387a4ba
+        const ocIntTool = new this._oc.IntTools_EdgeEdge_2(this._ocShape, other._ocShape);
+        ocIntTool.Perform();
+        if(!ocIntTool.IsDone())
+        {
+            console.warn(`Edge::_intersectionWithEdge: No intersection between the two Edges!`);
+            return null;
+        }
+        else 
+        {
+            let ocShapeSequence = ocIntTool.CommonParts();
+            let intersectingShapes = new ShapeCollection();
+
+            for ( let i = 1; i <= ocShapeSequence.Size(); i++)
+            {
+                let curOcCommonPrt = ocShapeSequence.Value(i); // CommonPrt: https://dev.opencascade.org/doc/occt-7.4.0/refman/html/class_int_tools___common_prt.html#a93c689d62c52c4f09288c68de13e1ce0
+                
+                if (curOcCommonPrt)
+                {
+                    let intersectionType = this._shapeTypeEnumLookup(curOcCommonPrt.Type());
+
+                    // parameters of intersection on Edge 1
+                    let paramStart = curOcCommonPrt.Range1_1().First();
+                    let paramEnd = curOcCommonPrt.Range1_1().Last();
+
+                    let p1 = this.pointAtParam(paramStart); // get intersection point from parameter
+                    let p2 = this.pointAtParam(paramEnd);
+
+                    let intersection = (intersectionType == 'Vertex') ? p1._toVertex() : new Edge(p1,p2);
+                    intersectingShapes.push(intersection);
+                }
+            }
+
+            ocIntTool?.delete(); // clear OC instance
+            return intersectingShapes.collapse() as any; // avoid TS errors here: collapse can return all kind of Shapes but here only Edge,Vertex or ShapeCollection
+        }
+    }   
+
+    /** Test if an Edge shares a Vertex with another */
+    connected(other:Edge)
+    {
+        // NOTE: this uses tolerance via Vector.equals() - and gp_Vec3.Equals()
+        return ( 
+                this.start().equals(other.start())
+                || this.end().equals(other.start()) 
+                || this.start().equals(other.end()) 
+                || this.end().equals(other.end())
+        )
+        
+    }
+    
+    /** Check if this Edge is parallel to other given entity */
+    parallel(other:PointLike|Edge = null, ...args):boolean
+    {
+        if ( !(other instanceof Edge) && !isPointLike(other) )
+        {
+            console.warn(`Edge::parallel: Cannot determine being parallel to for given input "{other}". Please supply another Edge or PointLike`);
+            return false;
+        }
+
+        let edgeDirection = this.direction().normalized();
+
+        if(isPointLike(other))
+        {
+            let v = new Vector().fromPointLike(other as PointLike).normalized();
+            return edgeDirection.equals(v) || edgeDirection.reversed().equals(v);
+        }
+        else // Edge
+        {
+            if(this.edgeType() != (other as Edge).edgeType())
+            {
+                // Edges of different kinds cannot have equal direction
+                return false;
+            }
+            else if ( this.edgeType() == 'Line' && (other as Edge).edgeType() == 'Line')
+            {
+                return edgeDirection.equals(other.direction()) || edgeDirection.reversed().equals(other.direction()); 
+            }
+            else {
+                // Advanced Edges like arcs can be parallel to: TODO
+                console.warn(`Edge::parallel: Parallel advanced Edges **** NOT IMPLEMENTED ****`)
+                return false;
+            }
+        }
+        return false;
+    }
+
+    //// SHAPE ANNOTATIONS API ////
+
+    dimension(options?:DimensionOptions):IDimensionLine
+    {
+        // For Edges it is always unclear where to offset dimension to
+        // For now we set offset away from origin. See Annotator
+        if(!options){ options = { units: null }}
+        options.units = options?.units || this._brep.units(); // make sure we have units
+
+        // centralized creation in the Annotator (see DimensionLine.fromShape)
+        const dimLine = this._brep._annotator.dimensionLine().fromShape(this, options) as IDimensionLine;
+        (dimLine as any).link(this._parent); // set parent
+
+        return dimLine
+    }
+
+    /** Alias for dimension() */
+    dim(options?:DimensionOptions):IDimensionLine
+    {
+        return this.dimension(options);
+    }
+
+
+    //// OUTPUT ////
+
+    /** Minimal raw data of this Edge */
+    toData():Array<Array<number>>
+    {
+        return (this.vertices().toArray() as Array<Vertex>).map(v => (v as Vertex).toData()); // [[x1,y1,z1],[x2,y2,z2],[xN,yN,zN]]
+    }
+
+    /** Export entity and minimal data as string (used for outputting on console and hashing ) */
+    toString():string
+    {
+        if (!this.isEmpty())
+        {
+            return `<Edge:${this.edgeType()} start="[${this.start().toArray()}]" end="[${this.end().toArray()}]">`;
+        }
+        else {
+            return `Edge:EMPTY<>`;
+        }
+    }
+
+    /** Export (segmentized) Edge (only X,Y coords) to SVG string 
+     *  <path d="M 10 10 L 100 200">
+     *  IMPORTANT: official SVG path (without comma!)
+     *  code inspired from CadQuery: https://github.com/CadQuery/cadquery/blob/917d918e34690c101a50a233a11026974b87574b/cadquery/occ_impl/exporters/svg.py#L84
+    */
+    toSVG():string
+    {
+        /* OC docs: 
+            - GCPnts_QuasiUniformDeflection: https://dev.opencascade.org/doc/refman/html/class_g_c_pnts___quasi_uniform_deflection.html
+        */
+        
+        let svgPathD = '' // d attribute of SVG Path
+        const segmPoints = this._segmentizeToPoints(EDGE_DEFAULT_SEGMENTS_ANGLE_SVG);
+
+        segmPoints.forEach((point,i) =>
+        {
+            // NOTE: We just omit the z coordinate. TODO: Warn about exporting a non-flat Edge
+            if(i == 0) // first point of Edge, move command
+            {
+                svgPathD += `M ${point.x} ${point.y}`;
+            }
+            else {
+                // all others: lineTo command
+                svgPathD += ` L ${point.x} ${point.y}`;
+            }
+        })
+        
+        // Based on attributes we assign some classes for later styling
+        const svgNodeStr = `<path d="${svgPathD}" ${this._getSvgPathAttributes()} fill="none" class="${this._getSvgClasses()}"/>`; 
+
+        // NOTE: any dimension lines tied to this Edge will be added in the ShapeCollection.toSVG() method
+        return svgNodeStr; // return as string for now
+    }
+
+    /** get SVG attributes from style properties of Shape */
+    _getSvgPathAttributes():string
+    {
+        /* 
+            NOTES ON SVG EXPORT
+            - Because of 'vector-effect="non-scaling-stroke"',  units of SVG are the same as model units in Geom._units  (set by Geom.units() and by default mm )
+            - so when exporting SVG attributes with units we need to convert mm (default lineWidth unit) to the model units
+            - we set all attributes here, either set by user or default. So the renderers have consistent styling to work with
+        */
+
+        const modelUnits = this._brep._units;
+
+        const STYLE_TO_ATTR = [
+            { geom: 'line', prop: 'color', attr: 'stroke', transform : (val) => (val) ? new Color(val).toHex() : this.TO_SVG_LINE_COLOR_DEFAULT },
+            { geom: 'line', prop: 'dashed', attr: 'stroke-dasharray', transform : (val) => (val) ? convertValueFromToUnit(val ?? this.TO_SVG_DASH_SIZE_DEFAULT , 'mm', modelUnits) : null },
+            { geom: 'line', prop: 'width', attr: 'stroke-width' , transform : (val) => convertValueFromToUnit(val ?? this.TO_SVG_LINE_WIDTH_DEFAULT, 'mm', modelUnits) },
+            { geom: 'line', prop: 'opacity', attr: 'stroke-opacity' , transform : (val) => val ?? this.TO_SVG_OPACTIY_DEFAULT },
+        ]
+
+        let svgAttrs = {};
+
+        // Get style from Edge obj container itself, or of its parent Shape or the parent of the object (most likely a layer)
+        const style = (this?._obj?._style 
+                            || this?._parent?._obj?._style 
+                            || this?._obj?._parent?._style
+                            || this?._parent?._obj?._parent?._style 
+                            || { point: {}, line: {}, fill: {} }) as ObjStyle; // empty style if none can be found
+
+        if(!style)
+        {
+            console.warn(`Edge::_getSvgPathAttributes(): There is no style available! This Edge (or it's _parent main Shape) is not in the Scene. `);
+        }
+        else {
+            STYLE_TO_ATTR.forEach( t => 
+            {
+                // NOTE: always execute (even if val is nullish) so we can set defaults
+                const geomStyle = style[t.geom];
+                const val = (geomStyle) ? geomStyle[t.prop] || null : null;
+                const svgValue = t.transform(val);
+                if(svgValue)
+                {
+                    svgAttrs[t.attr] = svgValue
+                } 
+                else {
+                    // console.warn(`Edge::_getSvgPathAttributes(): Skipped attribute ${t.geom}->${t.prop} because svg value was null!`);
+                    // Disabled because it happens often
+                    // TODO: fix common line->dashed === null
+                }
+            })
+        }
+        let svgAttrArr = [];
+        for(const [a,v] of Object.entries(svgAttrs))
+        {
+            svgAttrArr.push(`${a}="${v}"`)
+        }
+
+        const svgAttrStr = svgAttrArr.join(' ');
+
+        return svgAttrStr;
+    }
+
+    /** Based on attributes or tests add classes to Svg that help us select and style these SVG elements later */
+    _getSvgClasses():string
+    {
+        const ATTRIBUTE_TRUE_TO_CLASS = {
+            hidden : 'hidden',
+            outline : 'outline',
+        }
+        
+        const CLASSES_AFTER_TESTS = {
+            'line' : (edge) => true, // add for basic geom type styling
+            'dashed' : (edge) => edge._getObjStyle()?.line?.dashed === true,
+        }
+
+        let classes:Array<string> = [];
+
+        // Add style classes based on attributes
+        for (const [attr,value] of Object.entries(this.attributes))
+        {
+            const toClass = ATTRIBUTE_TRUE_TO_CLASS[attr];
+            if(toClass && value)
+            {
+                classes.push(toClass)
+            }
+        }
+        // Add style classes based on tests
+        Object.keys(CLASSES_AFTER_TESTS).forEach( className => {
+           if ( CLASSES_AFTER_TESTS[className](this))
+           {
+                classes.push(className);
+            }
+        })
+        return classes.join(' ');
+    }
+
+    /** Export Edge to DXF writer instance 
+     *  Now only lines are supported
+     *  TODO: Introduce arcs and splines
+    */
+    toDXF(dxf:any/*DxfBlock*/):this
+    {
+        // TODO AFTER REFACTOR
+        console.warn(`Edge::toDXF: Currently only straight Line Edges are supported for DXF export! Check if Edge is straight and if not convert to Wire with segmentize() first!`);
+        return this;
+        /*
+        const segmPoints = this._segmentizeToPoints(EDGE_DEFAULT_SEGMENTS_ANGLE_SVG);
+
+        segmPoints.forEach((point,i,arr) =>
+        {
+            if(i < arr.length -1 ) // skip last point
+            {
+                dxf.addLine(
+                    point3d(point.x, point.y, 0), 
+                    point3d(arr[i+1].x, arr[i+1].y, 0));
+            }
+        });
+
+        return this; 
+        */
+    }
+
+    
+    //// UTILS ////
+
+    /** Getting U min and max of Curve 
+     *  IMPORTANT: For Line Curves the parameters are the same as the length
+     *  For Arc Curves and Circles the U is the angle ( in radians ) - Half a circle: U = [0, PI] - Circle [0,PI*2]
+     */
+    getParamMinMax():Array<number>
+    {
+        let umin = this._toOcCurve().FirstParameter();
+        let umax = this._toOcCurve().LastParameter();
+
+        return [umin,umax];
+    }
+
+    
+
+
+}

@@ -5,18 +5,16 @@
   "type": "module",
   "packageManager": "pnpm@10.32.1",
   "scripts": {
-    "dev": "vite",
-    "dev:workspace": "APP=workspace vite",
-    "dev:viewer": "APP=viewer vite --port 5174",
-    "build": "tsc && vite build",
-    "build:workspace": "tsc && APP=workspace vite build",
-    "build:viewer": "tsc && APP=viewer vite build",
-    "preview": "vite preview",
+    "build": "turbo build",
+    "dev": "turbo dev --filter=@archiyou/editor",
+    "test": "turbo test",
+    "build:wasm": "turbo build:wasm",
+    "build:meshup": "pnpm --filter meshup build",
+    "watch:meshup": "pnpm --filter meshup build -- --watch",
+    "test:core": "pnpm --filter @archiyou/core test",
+    "test:meshup": "pnpm --filter meshup test",
     "localize:extract": "lit-localize extract",
-    "localize:build": "lit-localize build",
-    "build:meshup": "cd devlibs/meshup && pnpm install && pnpm build",
-    "watch:meshup": "cd devlibs/meshup && pnpm build -- --watch",
-    "dev:full": "concurrently \"pnpm watch:meshup\" \"pnpm dev\""
+    "localize:build": "lit-localize build"
   },
   "dependencies": {
     "@awesome.me/webawesome": "^3.4.0",
@@ -34,11 +32,10 @@
     "@vaadin/router": "^1.7.5",
     "codemirror": "^6.0.1",
     "comlink": "^4.4.2",
+    "json5": "^2.2.3",
     "lit": "^3.2.0",
     "lucide-static": "^1.16.0",
     "meshup": "workspace:*",
-    "n8ao": "^1.10.1",
-    "json5": "^2.2.3",
     "oidc-client-ts": "^3.1.0",
     "three": "^0.171.0"
   },
@@ -47,6 +44,7 @@
     "@types/node": "^25.5.0",
     "@types/three": "^0.171.0",
     "concurrently": "^9.2.1",
+    "turbo": "latest",
     "typescript": "^5.7.3",
     "vite": "^6.1.0"
   }

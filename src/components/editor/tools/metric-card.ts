@@ -92,7 +92,7 @@ export class EditorMetricCard extends LitElement
     {
       font-size: var(--text-md, 1rem);
       font-weight: 400;
-      color: var(--color-gray, #f3f3f3);
+      color: var(--color-gray-dark, #666);
       margin-left: 0.15em;
     }
   `;

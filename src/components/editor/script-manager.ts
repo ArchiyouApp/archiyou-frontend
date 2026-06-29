@@ -18,6 +18,7 @@ export class ScriptManager extends SignalWatcher(LitElement)
 
   @state() private _selectedFileId: string | null = null;
   @state() private _sortBy: 'name' | 'date-updated' | 'date-created' = 'date-updated';
+  @state() private _filter = '';
 
   // ── Render ──
 
@@ -28,11 +29,15 @@ export class ScriptManager extends SignalWatcher(LitElement)
     // Exclude the currently-active script — opening it would be a no-op.
     const activeFileId = editorScript.get()?.fileId ?? null;
     const unsorted = scripts.get().filter(s => s.fileId !== activeFileId);
+    const filterLc = this._filter.toLowerCase();
+    const filtered = filterLc
+      ? unsorted.filter(s => (s.name ?? '').toLowerCase().includes(filterLc))
+      : unsorted;
     const list = this._sortBy === 'name'
-      ? [...unsorted].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+      ? [...filtered].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
       : this._sortBy === 'date-created'
-        ? [...unsorted].sort((a, b) => (b.created?.getTime() ?? 0) - (a.created?.getTime() ?? 0))
-        : [...unsorted].sort((a, b) => (b.updated?.getTime() ?? 0) - (a.updated?.getTime() ?? 0));
+        ? [...filtered].sort((a, b) => (b.created?.getTime() ?? 0) - (a.created?.getTime() ?? 0))
+        : [...filtered].sort((a, b) => (b.updated?.getTime() ?? 0) - (a.updated?.getTime() ?? 0));
 
     return html`
       <div class="backdrop" @click=${this._cancel}></div>
@@ -42,6 +47,16 @@ export class ScriptManager extends SignalWatcher(LitElement)
         <div class="dialog-header">
           <wa-icon library="lucide" name="folder-open"></wa-icon>
           <span class="header-title">Open Script</span>
+          <div class="search-wrap">
+            <wa-icon library="lucide" name="search" class="search-icon"></wa-icon>
+            <input
+              class="search-input"
+              type="text"
+              placeholder="Filter…"
+              .value=${this._filter}
+              @input=${(e: InputEvent) => { this._onFilterInput((e.target as HTMLInputElement).value); }}
+            />
+          </div>
           <wa-dropdown
             class="sort-dropdown"
             placement="bottom-end"
@@ -96,10 +111,28 @@ export class ScriptManager extends SignalWatcher(LitElement)
       // No default selection — the active script is filtered out of the list,
       // and we shouldn't preselect something the user didn't ask for.
       this._selectedFileId = null;
+      this._filter = '';
     }
   }
 
   // ── Behaviour ──
+
+  private _onFilterInput(value: string)
+  {
+    this._filter = value;
+    if (this._selectedFileId)
+    {
+      const filterLc = value.toLowerCase();
+      const activeFileId = editorScript.get()?.fileId ?? null;
+      const visible = scripts.get()
+        .filter(s => s.fileId !== activeFileId)
+        .filter(s => !filterLc || (s.name ?? '').toLowerCase().includes(filterLc));
+      if (!visible.some(s => s.fileId === this._selectedFileId))
+      {
+        this._selectedFileId = null;
+      }
+    }
+  }
 
   private _onSelect(e: CustomEvent<string>)
   {
@@ -221,7 +254,48 @@ export class ScriptManager extends SignalWatcher(LitElement)
     }
 
     .header-title {
+      white-space: nowrap;
+    }
+
+    .search-wrap {
       flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm, 4px);
+      background: var(--color-bg);
+      color: var(--color-text-muted);
+      font-size: var(--text-xs);
+    }
+
+    .search-wrap:focus-within {
+      border-color: var(--color-primary);
+      color: var(--color-text);
+    }
+
+    .search-icon {
+      flex-shrink: 0;
+      font-size: 13px;
+      opacity: 0.55;
+    }
+
+    .search-input {
+      flex: 1;
+      min-width: 0;
+      border: none;
+      outline: none;
+      background: transparent;
+      font-family: var(--font-sans);
+      font-size: var(--text-xs);
+      color: var(--color-text);
+    }
+
+    .search-input::placeholder {
+      color: var(--color-text-muted);
+      opacity: 0.7;
     }
 
     /* ── Body ── */

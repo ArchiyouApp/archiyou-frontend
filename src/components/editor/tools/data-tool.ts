@@ -7,9 +7,11 @@ import '@awesome.me/webawesome/dist/components/option/option.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import { executionResult } from '../../../state/workspace.js';
+import type { ComputedFooterRow } from '../../../../devlibs/archiyou-core-next/src/calc/types.js';
 
 type DataRow = Record<string, any>;
-type TableMap = Record<string, DataRow[]>;
+type TableData = { rows: DataRow[]; footer: ComputedFooterRow[] };
+type TableMap = Record<string, TableData>;
 
 @customElement('editor-data-tool')
 export class EditorDataTool extends SignalWatcher(LitElement)
@@ -36,7 +38,7 @@ export class EditorDataTool extends SignalWatcher(LitElement)
       ? this._selectedTable
       : tableNames[0];
 
-    const rows = tableMap[selected] ?? [];
+    const { rows, footer } = tableMap[selected] ?? { rows: [], footer: [] };
     const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
 
     return html`
@@ -70,6 +72,21 @@ export class EditorDataTool extends SignalWatcher(LitElement)
                   </tr>
                 `)}
               </tbody>
+              ${footer.length === 0
+                ? ''
+                : html`
+                  <tfoot>
+                    ${footer.map(fRow => html`
+                      <tr class=${fRow.line ? 'footer-row footer-line' : 'footer-row'}>
+                        ${columns.map(col =>
+                        {
+                          const val = fRow.values?.[col] ?? '';
+                          return html`<td class=${fRow.bold !== false ? 'footer-bold' : ''} title=${String(val)}>${val}</td>`;
+                        })}
+                      </tr>
+                    `)}
+                  </tfoot>
+                `}
             </table>
           `}
       </div>
@@ -78,6 +95,16 @@ export class EditorDataTool extends SignalWatcher(LitElement)
 
   // ── 2. State ──
   @state() private _selectedTable: string | null = null;
+
+  // ── 3. Lifecycle ──
+  override updated()
+  {
+    const tableNames = Object.keys(this._buildTableMap());
+    if (tableNames.length > 0 && (!this._selectedTable || !tableNames.includes(this._selectedTable)))
+    {
+      this._selectedTable = tableNames[0];
+    }
+  }
 
   // ── 4. Behaviour & Methods ──
   private _buildTableMap(): TableMap
@@ -88,7 +115,10 @@ export class EditorDataTool extends SignalWatcher(LitElement)
       .reduce<TableMap>((map, o) =>
       {
         const name = o.path.entityName ?? 'table';
-        map[name] = o.output as DataRow[];
+        map[name] = {
+          rows: o.output as DataRow[],
+          footer: (o.footer ?? []) as ComputedFooterRow[],
+        };
         return map;
       }, {});
   }
@@ -153,7 +183,7 @@ export class EditorDataTool extends SignalWatcher(LitElement)
       flex-shrink: 0;
     }
 
-    .table-select { flex: 1; min-width: 0; }
+    .table-select { flex: 1; min-width: 0; font-size: var(--text-xs); --wa-font-size-medium: var(--text-xs); }
 
     .row-count
     {
@@ -207,12 +237,34 @@ export class EditorDataTool extends SignalWatcher(LitElement)
       text-overflow: ellipsis;
     }
 
-    tr:nth-child(even) td { background: var(--color-neutral-50, #f8fafc); }
+    tbody tr:nth-child(even) td { background: var(--color-neutral-50, #f8fafc); }
 
     tbody tr:hover td
     {
       background: color-mix(in srgb, var(--color-primary) 6%, transparent);
     }
+
+    /* ─── Footer (aggregations) ─── */
+    tfoot
+    {
+      position: sticky;
+      bottom: 0;
+      z-index: 1;
+    }
+
+    tfoot td
+    {
+      background: var(--color-neutral-100, #f1f5f9);
+      color: var(--color-text);
+      white-space: nowrap;
+    }
+
+    tfoot tr.footer-line td
+    {
+      border-top: 2px solid var(--color-border);
+    }
+
+    tfoot td.footer-bold { font-weight: 600; }
   `;
 }
 

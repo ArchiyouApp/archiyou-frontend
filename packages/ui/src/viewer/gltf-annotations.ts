@@ -4,7 +4,7 @@ import {
   DIMENSION_LINE_COLOR,
   DIMENSION_ARROW_LENGTH,
   DIMENSION_ARROW_RADIUS,
-} from '../../settings.js';
+} from '@archiyou/editor/src/settings';
 
 /**
  * Render archiyou annotations carried in the GLB root `extras`.

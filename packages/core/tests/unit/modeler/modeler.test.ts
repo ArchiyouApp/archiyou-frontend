@@ -3,10 +3,10 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { Modeler } from '../../../src/modeler/Modeler'
 import { SmartMeshCurve, SmartMesh, SmartBrepEdge, SmartBrepSolid } from '../../../src/modeler/SmartShapes';
 import { SmartShapeCollection } from '../../../src/modeler/SmartShapeCollection';
-import { ShapeCollection } from '../../../devlibs/meshup/src/ShapeCollection';
-import { Mesh } from '../../../devlibs/meshup/src/Mesh';
+import { ShapeCollection } from 'meshup/src/ShapeCollection';
+import { Mesh } from 'meshup/src/Mesh';
 
-import { save } from '../../../devlibs/meshup/src/utils';
+import { save } from 'meshup/src/utils';
 
 
 describe('Modeler', async () =>

@@ -3,8 +3,8 @@ import { customElement, property } from 'lit/decorators.js';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import type { Metric } from '../../../../devlibs/archiyou-core-next/src/calc/types.js';
-import { METRIC_DEFAULT_ICON } from '../../../../devlibs/archiyou-core-next/src/constants.js';
+import type { Metric } from '../@archiyou/core/src/calc/types.js';
+import { METRIC_DEFAULT_ICON } from '@archiyou/core/src/constants';
 
 @customElement('editor-metric-card')
 export class EditorMetricCard extends LitElement

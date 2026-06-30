@@ -8,8 +8,8 @@ import '@awesome.me/webawesome/dist/components/spinner/spinner.js';
 
 import './configurator-metric-card.js';
 
-import { executing as scriptExecuting, executionResult } from '../../state/workspace.js';
-import type { Metric } from '../../../devlibs/archiyou-core-next/src/calc/types.js';
+import { executing as scriptExecuting, executionResult } from '@archiyou/editor/src/state/workspace';
+import type { Metric } from '@archiyou/core/src/calc/types.js';
 
 @customElement('configurator-metric-bar')
 export class ConfiguratorMetricBar extends SignalWatcher(LitElement)

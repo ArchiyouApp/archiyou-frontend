@@ -1,4 +1,4 @@
-import { Doc } from './Doc'
+import { Docs } from './Docs'
 import { Document } from './Document'
 import { View } from './View'
 import type { PageSide, WidthHeightInput, PageData, DocUnits, PageSize, PageOrientation, AnyPageContainer, ValueWithUnitsString, PageSVGContext } from './types'
@@ -28,7 +28,7 @@ export class Page
     //// END SETTINGS ////
 
     name:string;
-    _doc:Doc; // main Doc module
+    _doc:Docs; // main Docs module
     _DocDocument:Document; // doc instance to which this page belongs
     _units:DocUnits; // taken from _doc module and _DocDocument
     _size:PageSize; // ISO page size (A0-A7)
@@ -39,7 +39,7 @@ export class Page
     _containers:Array<AnyPageContainer> = [];
     _variables: {[key:string]:any} = {}; // template variables
 
-    constructor(doc:Doc, DocDocumentName:Document, name:string)
+    constructor(doc:Docs, DocDocumentName:Document, name:string)
     {
         this.name = name;
         this._doc = doc;
@@ -52,9 +52,9 @@ export class Page
     setDefaultsFromDoc()
     {
         /** Set defaults from Document */
-        this._units = this._DocDocument.units || this._doc.DOC_UNITS_DEFAULT;
-        this._orientation = this._DocDocument.pageOrientation || this._doc.PAGE_ORIENTATION_DEFAULT;
-        this.size(this._DocDocument.pageSize || this._doc.PAGE_SIZE_DEFAULT);
+        this._units = this._DocDocument._units || this._doc.DOC_UNITS_DEFAULT;
+        this._orientation = this._DocDocument._pageOrientation || this._doc.PAGE_ORIENTATION_DEFAULT;
+        this.size(this._DocDocument._pageSize || this._doc.PAGE_SIZE_DEFAULT);
     }
 
     setDefaults()
@@ -121,8 +121,8 @@ export class Page
     padding(w:WidthHeightInput, h?:WidthHeightInput):Page
     {
         // only resolved size needed, padding is always relative to page
-        const paddingX = this._doc._resolveWidthHeightInput(w, this, 'width')[0]; 
-        const paddingY = this._doc._resolveWidthHeightInput((h || w), this, 'height')[0];
+        const paddingX = this._DocDocument._resolveWidthHeightInput(w, this, 'width')[0];
+        const paddingY = this._DocDocument._resolveWidthHeightInput((h || w), this, 'height')[0];
 
         if( (paddingX > 0.5 || paddingX < 0) || (paddingY > 0.5 || paddingY < 0))
         {
@@ -148,17 +148,17 @@ export class Page
 
     //// UTILS ////
 
-    // Alias forwarding to doc._resolveValueWithUnitsStringToRel
+    // Alias forwarding to Document._resolveValueWithUnitsStringToRel
     /** Transform numeric value with units to relative position to page width or height */
     _resolveValueWithUnitsStringToRel(s:ValueWithUnitsString, side:PageSide):number
     {
-        return this?._doc._resolveValueWithUnitsStringToRel(s,this,side);
+        return this?._DocDocument._resolveValueWithUnitsStringToRel(s,this,side);
     }
 
 
     //// OUTPUTS ////
 
-    async toSVG(yOffset: number, nextClipId: () => string, cache?: Record<string, any>): Promise<{layer: string, defs: string}>
+    async toSVG(yOffset: number, nextClipId: () => string, cache?: Record<string, any>, shadow?: boolean): Promise<{layer: string, defs: string}>
     {
         const fmt        = (n: number) => +n.toFixed(4);
         const pageWidthMm  = convertValueFromToUnit(this._width,  this._units, 'mm');
@@ -191,7 +191,7 @@ export class Page
             `  <g id="layer${pageIndex + 1}"`,
             `     inkscape:label="${escapeXml(this.name)}"`,
             `     inkscape:groupmode="layer"${transform}>`,
-            `    <rect x="0" y="0" width="${wMm}" height="${hMm}" fill="white" stroke="none"/>`,
+            `    <rect x="0" y="0" width="${wMm}" height="${hMm}" fill="white" stroke="none"${shadow ? ' filter="url(#page-shadow)"' : ''}/>`,
             defsBlock,
             ...contents,
             `  </g>`,

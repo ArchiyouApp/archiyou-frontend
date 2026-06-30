@@ -75,7 +75,7 @@ export class Container
         this._page = page;
         this._setDefaults(); 
 
-        this.name = this._page._doc._generateContainerName(this._type); // For now, just use type to name the container
+        this.name = this._page._DocDocument._generateContainerName(this._type); // For now, just use type to name the container
         this._onPlaced(); // specific methods on child 
 
         page.add(this); // Add to Page
@@ -102,7 +102,7 @@ export class Container
     {
         this.checkOnPage();
         if(!isWidthHeightInput(n)){ throw new Error(`Container::height: Invalid input "${n}": Use a number, number with units ("30mm") or string like "40%"!`)};
-        [this._width, this._widthRelativeTo] = this._page._doc._resolveWidthHeightInput(n, this._page, 'width');
+        [this._width, this._widthRelativeTo] = this._page._DocDocument._resolveWidthHeightInput(n, this._page, 'width');
         //console.info(`Container::width(): Set container width to ${this._width}`);
     }
 
@@ -111,7 +111,7 @@ export class Container
     {
         this.checkOnPage();
         if(!isWidthHeightInput(n)){ throw new Error(`Container::height: Invalid input "${n}": Use a number, number with units ("30mm") or string like "40%"!`)};
-        [this._height, this._heightRelativeTo] = this._page._doc._resolveWidthHeightInput(n, this._page, 'height');
+        [this._height, this._heightRelativeTo] = this._page._DocDocument._resolveWidthHeightInput(n, this._page, 'height');
     }
 
     /** Set position with a ContainerAlignment or percentage of width and height [x,y] or absolute position with units */

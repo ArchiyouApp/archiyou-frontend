@@ -24,7 +24,9 @@
  *          .scale('auto')
  *          .width('100%')
  *          .height('100%')
- *          .position('topleft')         
+ *          .position('topleft')
+ *          .text('My design')
+ *          .var('title'); // set content of container as variable         
  * 
  */
 
@@ -103,6 +105,8 @@ export class Doc
     _activeContainer:AnyPageContainer
 
     _assetsCache:Record<string,any> = {}; // keep assets like images in cache to avoid reloading on every toData() call
+
+    _variables:Record<string, any> = {}; // references to containers, to set content later 
     
 
     constructor(settings?:DocSettings, ay?:ArchiyouModules) // null is allowed
@@ -393,6 +397,8 @@ export class Doc
         return this;
     }
 
+    //// BASIC CONTAINERS ////
+
     /** Add View Container to active Page */
     // TODO: auto name based on shapes
     view(name?:string, shapes?:SmartShapeCollection):Doc
@@ -633,7 +639,35 @@ export class Doc
         return this._oline('v', input, thickness, color);
     }
 
-    // TODO: more graphics: ellipse, triangle, poly etc
+    //// VARIABLES ////
+
+    /** Set content of active container as variable with given name */
+    var(name:string):Doc
+    {
+        if(typeof name !== 'string' || name.length === 0){ throw new Error(`Doc::var(name): Please supply a variable name as string!`); }
+        if(!this._activeContainer){ throw new Error(`Doc::var(name): No active container to set variable for!`); }
+
+        if(name in Object.keys(this._variables))
+        {
+            console.warn(`Doc::var(name): Overwriting existing variable "${name}" that refers to container "${this._variables[name].name}"!`);
+        }
+        this._variables[name] = this._activeContainer;
+    
+        return this;
+    }
+
+    /** Set variable that sets content of a container */
+    set(name:string, value:string):Doc
+    {
+        if(typeof name !== 'string' || name.length === 0){ throw new Error(`Doc::set(name, value): Please supply a variable name as string!`); }
+        if(!value){ throw new Error(`Doc::set(name, value): Please supply a variable value!`); }
+        if(!(name in Object.keys(this._variables))){ throw new Error(`Doc::set(name, value): Variable "${name}" does not exist!`); }
+
+        this._variables[name].setContent(value);
+
+        return this;
+    }
+
     
     //// BLOCKS OF CONTAINERS ////
 

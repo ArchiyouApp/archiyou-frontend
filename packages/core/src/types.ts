@@ -10,7 +10,7 @@
 
 import type { Modeler } from "./modeler/Modeler";
 import type { Calc } from "./calc/Calc";
-import type { Doc } from "./docs/Doc";
+import type { Docs } from "./docs/Docs";
 import type { Annotator } from "./annotator/Annotator";
 import type { Interactor } from "./interaction/Interactor";
 import type { ManagedHandlesData } from "./interaction/types";
@@ -25,7 +25,7 @@ export interface ArchiyouModules
     console: Console,
     modeler: Modeler,
     calc: Calc,
-    docs: Doc, // TODO: rename Doc to Docs
+    docs: Docs,
     annotator: Annotator,
     interactor: Interactor,
     runner: Runner

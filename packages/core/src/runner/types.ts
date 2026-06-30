@@ -1,7 +1,7 @@
 import type { ArchiyouModules } from "../types";
 import type { Modeler } from "../modeler/Modeler";
 import type { ScriptOutputData } from '../execution/types';
-import type { Doc } from "../docs/Doc";
+import type { Docs } from "../docs/Docs";
 import type { Calc } from "../calc/Calc";
 
 
@@ -54,7 +54,7 @@ export interface RunnerScriptScope extends ProxyConstructor
     [key:string]: any // dynamic scope properties (modeler, doc, calc, console, etc.)
     // for scope globals like docs, calc etc
     modeler:Modeler
-    docs:Doc // TODO: rename
+    docs:Docs
     calc:Calc
 }
 

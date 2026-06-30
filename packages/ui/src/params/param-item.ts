@@ -3,8 +3,8 @@ import { customElement, property, state } from 'lit/decorators.js';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import type { ScriptParam } from '../../state/workspace.js';
-import { toVariableName, isProgrammatic } from '../../state/workspace.js';
+import type { ScriptParam } from '@archiyou/editor/src/state/workspace';
+import { toVariableName, isProgrammatic } from '@archiyou/editor/src/state/workspace';
 
 @customElement('param-item')
 export class ParamItem extends LitElement

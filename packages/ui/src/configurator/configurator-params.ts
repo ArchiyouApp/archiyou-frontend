@@ -17,10 +17,10 @@ import '../params/param-item-list.js';
 import {
   paramMenuCollapsed,
   setParamMenuCollapsed,
-} from '../../state/workspace.js';
-import { configuratorParams, setConfiguratorValue } from '../../state/configurator.js';
+} from '@archiyou/editor/src/state/workspace';
+import { configuratorParams, setConfiguratorValue } from '@archiyou/editor/src/state/configurator';
 
-import type { ScriptParam, ParamValueChangeDetail } from '../../state/workspace.js';
+import type { ScriptParam, ParamValueChangeDetail } from '@archiyou/editor/src/state/workspace';
 
 @customElement('configurator-params')
 export class ConfiguratorParams extends SignalWatcher(LitElement)

@@ -1,5 +1,5 @@
 import type { ScriptParam } from "./ScriptParam";
-import type { ScriptOutputPathData, ScriptParamData, ScriptParamType, ScriptOutputFormat, ScriptOutputCategory } from "./types";
+import type { ScriptOutputPathData, ScriptParamData, ScriptParamType, ScriptOutputFormat, ScriptOutputCategory, ScriptOutputDataWrapper } from "./types";
 
 import { SCRIPT_OUTPUT_MODEL_FORMATS, SCRIPT_OUTPUT_METRIC_FORMATS, SCRIPT_OUTPUT_TABLE_FORMATS, SCRIPT_OUTPUT_DOC_FORMATS } from "../constants";
 
@@ -49,4 +49,11 @@ export function isScriptOutputFormat(o:any):o is ScriptOutputFormat
 export function isScriptOutputCategory(o:any):o is ScriptOutputCategory
 {
     return typeof o === "string" && ['model','metrics','tables','docs'].includes(o);
+}
+
+export function isScriptOutputDataWrapper(o:any): o is ScriptOutputDataWrapper
+{
+    return o && typeof o === 'object'
+        && o.data // can be string, object, Buffer
+        && typeof o.type === 'string';
 }

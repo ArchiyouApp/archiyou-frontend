@@ -2,6 +2,10 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
+overrides:
+  # dedupe ioredis so bullmq and @archiyou/publish share one copy (avoids type clashes)
+  ioredis: ^5.11.1
+
 allowBuilds:
   '@vaadin/vaadin-usage-statistics': false
   esbuild: false

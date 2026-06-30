@@ -28,11 +28,11 @@ import {
   saveAsPreset,
   paramVisible,
   paramEnabled,
-} from '../../state/workspace';
+} from '@archiyou/editor/src/state/workspace';
 
-import { PARAM_TAB_NAME_MAX_LENGTH } from '../../settings';
+import { PARAM_TAB_NAME_MAX_LENGTH } from '@archiyou/editor/src/settings';
 
-import type { ScriptParam, ScriptParamData, ParamValueChangeDetail, ParamSpec } from '../../state/workspace';
+import type { ScriptParam, ScriptParamData, ParamValueChangeDetail, ParamSpec } from '@archiyou/editor/src/state/workspace';
 
 @customElement('param-menu')
 export class ParamMenu extends SignalWatcher(LitElement)

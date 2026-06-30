@@ -6,10 +6,10 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { buildScenegraphPath, executionResult, scenegraph, scriptParams, updateParam, selectedPath, setSelectedPath, interactiveShapes } from '../../state/workspace.js';
-import { scheduleExecution, resetCameraCounter } from '../../state/viewer.js';
-import type { ScriptOutputData } from '../../../devlibs/archiyou-core-next/src/execution/types.js';
-import type { SmartSceneNodeData } from '../../../devlibs/archiyou-core-next/src/modeler/types.js';
+import { buildScenegraphPath, executionResult, scenegraph, scriptParams, updateParam, selectedPath, setSelectedPath, interactiveShapes } from '@archiyou/editor/src/state/workspace';
+import { scheduleExecution, resetCameraCounter } from '@archiyou/editor/src/state/viewer';
+import type { ScriptOutputData } from '@archiyou/core/src/execution/types.js';
+import type { SmartSceneNodeData } from '@archiyou/core/src/modeler/types.js';
 import { applyEdgeExtensions } from './gltf-edge-extensions.js';
 import { applyAnnotations } from './gltf-annotations.js';
 import type { HtmlLabelDef } from './gltf-annotations.js';
@@ -17,7 +17,7 @@ import './viewer-labels-overlay.js';
 import type { ViewerLabelsOverlay, OverlayLabel, OverlayLabelPos, DimensionParamChangeDetail } from './viewer-labels-overlay.js';
 import { handleDefFromData } from './gltf-handles.js';
 import type { HandleDef } from './gltf-handles.js';
-import type { ManagedHandlesData } from '../../../devlibs/archiyou-core-next/src/interaction/types.js';
+import type { ManagedHandlesData } from '@archiyou/core/src/interaction/types.js';
 import './viewer-handles-overlay.js';
 import type { ViewerHandlesOverlay, HandleOverlay, HandleOverlayPos, HandleDragEventDetail } from './viewer-handles-overlay.js';
 import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR,
@@ -25,7 +25,7 @@ import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR,
   VIEWER_GIZMO_AXIS_LENGTH, VIEWER_GIZMO_COLOR_X, VIEWER_GIZMO_COLOR_Y,
   VIEWER_GIZMO_COLOR_Z, VIEWER_GIZMO_COLOR_ORIGIN, VIEWER_GIZMO_LABEL_SIZE,
   VIEWER_MODEL_COORDSYSTEM, VIEWER_HANDLE_RANGE_LINE_COLOR, VIEWER_HANDLE_RANGE_LINE_WIDTH,
-  VIEWER_LIGHT_POSITION } from '../../settings.js';
+  VIEWER_LIGHT_POSITION } from '@archiyou/editor/src/settings';
 import { VIEW_STYLES } from './view-styles.js';
 import type { ViewStyle, ViewStyleMaterialConfig } from './view-styles.js';
 import { FadingGrid } from './fading-grid.js';
@@ -2080,7 +2080,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
       range: [handle.rangeMin, handle.rangeMax],
     };
 
-    const { paramValue, paramMin, paramMax } = await import('../../state/types.js')
+    const { paramValue, paramMin, paramMax } = await import('@archiyou/editor/src/state/types')
       .catch(() => ({ paramValue: (p: any) => p._value ?? p.default, paramMin: () => 0, paramMax: () => 100 }));
 
     // ── Multi-param path (.params(fn)) ────────────────────────────────────────

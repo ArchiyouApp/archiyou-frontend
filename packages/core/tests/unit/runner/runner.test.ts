@@ -4,7 +4,7 @@ import type { RunnerScriptExecutionRequest, RunnerScriptExecutionResult }
         from '../../../src/runner/types'
 import { Runner } from '../../../src/runner/Runner'
 
-import { save } from '../../../devlibs/meshup/src/utils'
+import { save } from 'meshup/src/utils'
 
 //// TEST REQUEST ////
 

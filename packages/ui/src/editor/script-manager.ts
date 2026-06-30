@@ -6,8 +6,8 @@ import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@awesome.me/webawesome/dist/components/dropdown/dropdown.js';
 import '@awesome.me/webawesome/dist/components/dropdown-item/dropdown-item.js';
 
-import { scripts, editorScript } from '../../state/workspace.js';
-import { OVERLAY_MENU_WIDTH, OVERLAY_MENU_HEIGHT } from '../../settings.js';
+import { scripts, editorScript } from '@archiyou/editor/src/state/workspace';
+import { OVERLAY_MENU_WIDTH, OVERLAY_MENU_HEIGHT } from '@archiyou/editor/src/settings';
 
 import './script-manager-item.js';
 

@@ -2,8 +2,8 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 
-import type { ScriptParam } from '../../state/workspace.js';
-import { paramValue, paramMinLength, paramMaxLength } from '../../state/workspace.js';
+import type { ScriptParam } from '@archiyou/editor/src/state/workspace';
+import { paramValue, paramMinLength, paramMaxLength } from '@archiyou/editor/src/state/workspace';
 
 @customElement('param-item-text')
 export class ParamItemText extends LitElement

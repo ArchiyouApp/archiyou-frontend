@@ -4,10 +4,10 @@ import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/split-panel/split-panel.js';
 
-import { createExecutionFailureResult, runScript, warmupWorker } from '../../services/execution-service.js';
-import { editorScript, setExecutionResult, setExecuting } from '../../state/workspace.js';
-import { configuratorParams, configuratorValueFor } from '../../state/configurator.js';
-import type { RunnerScriptExecutionRequest } from '../../../devlibs/archiyou-core-next/src/runner/types.js';
+import { createExecutionFailureResult, runScript, warmupWorker } from '@archiyou/editor/src/services/execution-service';
+import { editorScript, setExecutionResult, setExecuting } from '@archiyou/editor/src/state/workspace';
+import { configuratorParams, configuratorValueFor } from '@archiyou/editor/src/state/configurator';
+import type { RunnerScriptExecutionRequest } from '@archiyou/core/src/runner/types';
 
 import '../viewer/model-viewer.js';
 import './configurator-header.js';

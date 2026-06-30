@@ -13,7 +13,7 @@ import { customElement } from 'lit/decorators.js';
 import { initRouter } from './router.js';
 import { applySystemTheme } from '../../styles/dark-theme.js';
 import { setLocale, detectLocale } from '../../i18n/locale-config.js';
-import { warmupWorker } from '../../services/execution-service.js';
+import { warmupWorker } from '../../services/execution-service';
 
 @customElement('app-shell')
 export class AppShell extends LitElement

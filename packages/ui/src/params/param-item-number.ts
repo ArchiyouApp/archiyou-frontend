@@ -4,8 +4,8 @@ import { live } from 'lit/directives/live.js';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import type { ScriptParam } from '../../state/workspace.js';
-import { paramMin, paramMax, paramStep, paramValue } from '../../state/workspace.js';
+import type { ScriptParam } from '@archiyou/editor/src/state/workspace';
+import { paramMin, paramMax, paramStep, paramValue } from '@archiyou/editor/src/state/workspace';
 
 const MODEL_UNITS = ['mm', 'cm', 'dm', 'm', 'km', 'inch', 'feet', 'yd', 'mi'] as const;
 

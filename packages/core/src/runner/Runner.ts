@@ -51,7 +51,7 @@ import { Modeler } from '../modeler/Modeler';
 import { Annotator } from '../annotator/Annotator';
 import { Interactor } from '../interaction/Interactor';
 import { Calc } from '../calc/Calc';
-import { Doc } from '../docs/Doc';
+import { Docs } from '../docs/Docs';
 
 // Settings
 import { MODELER_METHODS_INTO_GLOBAL, SCRIPT_OUTPUT_GLTF_OPTIONS_DEFAULT } from '../constants'; 
@@ -211,7 +211,7 @@ export class Runner
             annotator: new Annotator(),
             interactor: this._interactor, // reuse persistent instance so HandleRegistry survives runs
             calc: new Calc(),
-            docs: new Doc(), // TODO: settings with proxy
+            docs: new Docs(), // TODO: settings with proxy
             runner: this,
         } as ArchiyouModules
 
@@ -1858,7 +1858,7 @@ ${e.message === '***** CODE ****\nUnexpected end of input' ? code : ''}
             switch (outputPathDoc.format)
             {
                 case 'json':
-                    const docOutputsByName = await (scope.doc as Doc).toData(outputPathDoc.entityName) as Record<string, DocData> // by name. TODO: remove name key?
+                    const docOutputsByName = await (scope.doc as Docs).toData(outputPathDoc.entityName) as Record<string, DocData> // by name. TODO: remove name key?
                     const docOutput = Object.values(docOutputsByName)[0]; // single doc name return single result object
 
                     outputs.push({
@@ -1867,7 +1867,7 @@ ${e.message === '***** CODE ****\nUnexpected end of input' ? code : ''}
                     });
                     break;
                 case 'pdf':
-                    const pdfBuffer = await (scope.doc as Doc).toPDF(outputPathDoc.entityName) as ArrayBuffer // single doc name return single result buffer
+                    const pdfBuffer = await (scope.doc as Docs).toPDF(outputPathDoc.entityName) as ArrayBuffer // single doc name return single result buffer
 
                     outputs.push({
                         path: outputPathDoc.toData(),
@@ -1875,11 +1875,11 @@ ${e.message === '***** CODE ****\nUnexpected end of input' ? code : ''}
                     });
                     break;
                 case 'svg':
-                    const svgResult = await (scope.doc as Doc).toSVG(outputPathDoc.entityName);
+                    const svgResult = await (scope.doc as Docs).toSVG(outputPathDoc.entityName);
                     if (typeof svgResult === 'string')
                     {
                         // Single doc returned as a plain string; retrieve the real name from scope
-                        const docName = (scope.doc as Doc).docs()[0] ?? 'document';
+                        const docName = (scope.doc as Docs).docs()[0] ?? 'document';
                         outputs.push({
                             path: { ...outputPathDoc.toData(), entityName: docName },
                             output: svgResult,
@@ -2051,7 +2051,7 @@ ${e.message === '***** CODE ****\nUnexpected end of input' ? code : ''}
                         This applies to shapes mostly, which are turned into SVG's
                         NOTE: doc.toData() is not possible because it's async
                     */
-                    output: (scope.docs as Doc).toInternalData(), 
+                    output: (scope.docs as Docs).toInternalData(), 
                 });     
             });
 

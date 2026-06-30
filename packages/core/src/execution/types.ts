@@ -20,6 +20,8 @@ export type ScriptOutputFormat = ScriptOutputFormatInternal|ScriptOutputFormatMo
                                 |ScriptOutputFormatMetric|ScriptOutputFormatTable|
                                 ScriptOutputFormatDoc
 
+export type ModelFormat = 'buffer'|'glb'|'svg'
+
 
 /** The Script seperated into statements */
 export interface ScriptStatement

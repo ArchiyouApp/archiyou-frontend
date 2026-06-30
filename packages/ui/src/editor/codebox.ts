@@ -27,7 +27,7 @@ import { autocompletion, acceptCompletion, completionStatus } from '@codemirror/
 import { archiyouCompletions } from './completions.js';
 
 import { SignalWatcher } from '@lit-labs/signals';
-import { executing, executionResult } from '../../state/workspace.js';
+import { executing, executionResult } from '@archiyou/editor/src/state/workspace';
 
 const lightTheme = EditorView.theme({}, { dark: false });
 const themeCompartment = new Compartment();

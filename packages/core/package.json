@@ -15,7 +15,7 @@
     "test:modeler" : "vitest run tests/unit/modeler/*test.ts",
     "test:make" : "vitest run tests/unit/make/make.test.ts",
     "test:layouter" : "vitest run tests/unit/modeler/layouter.test.ts",
-    "test:docs" : "vitest run tests/unit/docs/Doc.test.ts",
+    "test:docs" : "vitest run tests/unit/docs/Docs.test.ts",
     "test:dimensions" : "vitest run tests/unit/annotator/dimensions.test.ts",
     "test:labels" : "vitest run tests/unit/annotator/labels.test.ts",
     "test:runner" : "vitest run tests/unit/runner/",

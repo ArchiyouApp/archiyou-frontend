@@ -7,7 +7,6 @@
 
 import { LitElement, html, css } from 'lit';
 import { customElement } from 'lit/decorators.js';
-import '../components/nav-bar.js';
 
 @customElement('layout-main')
 export class LayoutMain extends LitElement

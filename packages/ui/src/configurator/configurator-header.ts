@@ -2,7 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 
-import { editorScript } from '../../state/workspace.js';
+import { editorScript } from '@archiyou/editor/src/state/workspace';
 
 @customElement('configurator-header')
 export class ConfiguratorHeader extends SignalWatcher(LitElement)

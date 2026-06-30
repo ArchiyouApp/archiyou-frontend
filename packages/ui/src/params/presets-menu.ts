@@ -12,9 +12,9 @@ import {
   deletePreset,
   renamePreset,
   activatePreset,
-} from '../../state/workspace';
+} from '@archiyou/editor/src/state/workspace';
 
-import type { ScriptPreset } from '../../state/workspace';
+import type { ScriptPreset } from '@archiyou/editor/src/state/workspace';
 
 @customElement('presets-menu')
 export class PresetsMenu extends SignalWatcher(LitElement)

@@ -5,9 +5,9 @@ import JSON5 from 'json5';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import { Script } from '../../../devlibs/archiyou-core-next/src/execution/Script';
-import type { ScriptData } from '../../../devlibs/archiyou-core-next/src/execution/types';
-import { OVERLAY_MENU_WIDTH, OVERLAY_MENU_HEIGHT } from '../../settings.js';
+import { Script } from '@archiyou/core/src/execution/Script';
+import type { ScriptData } from '@archiyou/core/src/execution/types';
+import { OVERLAY_MENU_WIDTH, OVERLAY_MENU_HEIGHT } from '@archiyou/editor/src/settings';
 
 type ValidationState = 'idle' | 'valid' | 'invalid';
 

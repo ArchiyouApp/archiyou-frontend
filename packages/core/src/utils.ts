@@ -1,6 +1,8 @@
 import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex } from '@noble/hashes/utils.js'
 
+import type { ScriptOutputDataWrapper } from './execution/types'
+
 
 //// EQUALITY ////
 
@@ -149,6 +151,212 @@ export function recordToUrlParams(params: Record<string, any>): string {
     return Object.entries(params)
         .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
         .join('&');
+}
+
+/**
+ * Converts a URL parameter string to a record object.
+ * Example: 'foo=bar&baz=1' => { foo: 'bar', baz: '1' }
+ * @param paramString URL parameter string
+ * @returns Record<string, string>
+ */
+export function urlParamsToRecord(paramString: string): Record<string, string> {
+    const params: Record<string, string> = {};
+    if (!paramString) return params;
+    paramString.split('&').forEach(pair => {
+        const [key, value] = pair.split('=');
+        if (key) params[decodeURIComponent(key)] = value ? decodeURIComponent(value) : '';
+    });
+    return params;
+}
+
+//// ENCODING BINARY DATA ////
+
+export const arrayBufferToBase64 = (arraybuffer: ArrayBuffer): string =>
+{
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+    let bytes = new Uint8Array(arraybuffer),
+        i,
+        len = bytes.length,
+        base64 = '';
+
+    for (i = 0; i < len; i += 3)
+    {
+        base64 += chars[bytes[i] >> 2];
+        base64 += chars[((bytes[i] & 3) << 4) | (bytes[i + 1] >> 4)];
+        base64 += chars[((bytes[i + 1] & 15) << 2) | (bytes[i + 2] >> 6)];
+        base64 += chars[bytes[i + 2] & 63];
+    }
+
+    if (len % 3 === 2) {
+        base64 = base64.substring(0, base64.length - 1) + '=';
+    } else if (len % 3 === 1) {
+        base64 = base64.substring(0, base64.length - 2) + '==';
+    }
+
+    return base64;
+};
+
+/**
+ * Recursively transforms binary data in an object to base64 strings for JSON serialization
+ *  We use an instance of ScriptOutputDataWrapper to keep track of original type and length for easy decoding
+ *
+ * @param obj - The object to transform
+ * @param maxDepth - Maximum recursion depth to prevent infinite loops (default: 10)
+ * @param currentDepth - Current recursion depth (internal use)
+ * @returns Transformed object with binary data as base64 strings
+ */
+export function convertBinaryToBase64<T>(obj: T, maxDepth: number = 10, currentDepth: number = 0): number|string|Array<any>|Object|ScriptOutputDataWrapper
+{
+    // Prevent infinite recursion
+    if (currentDepth >= maxDepth) {
+        console.warn('convertBinaryToBase64: Maximum recursion depth reached');
+        return obj;
+    }
+
+    // Handle null or undefined
+    if (obj === null || obj === undefined) {
+        return obj;
+    }
+
+    // Handle ArrayBuffer
+    if (obj instanceof ArrayBuffer)
+    {
+        return {
+            type: 'ArrayBuffer',
+            encoding: 'base64',
+            data: arrayBufferToBase64(obj),
+            length: obj.byteLength
+        } as ScriptOutputDataWrapper;
+    }
+
+    // Handle Uint8Array and other TypedArrays
+    if (obj instanceof Uint8Array || obj instanceof Int8Array ||
+        obj instanceof Uint16Array || obj instanceof Int16Array ||
+        obj instanceof Uint32Array || obj instanceof Int32Array ||
+        obj instanceof Float32Array || obj instanceof Float64Array) {
+        return {
+            type: obj.constructor.name,
+            encoding: 'base64',
+            data: arrayBufferToBase64(obj.buffer.slice(obj.byteOffset, obj.byteOffset + obj.byteLength) as ArrayBuffer),
+            length: obj.length
+        } as ScriptOutputDataWrapper;
+    }
+
+    // Handle Buffer (Node.js)
+    if (typeof Buffer !== 'undefined' && obj instanceof Buffer) {
+        return {
+            type: 'Buffer',
+            encoding: 'base64',
+            data: obj.toString('base64'),
+            length: obj.length
+        } as ScriptOutputDataWrapper;
+    }
+
+    // Don't do functions
+    if (typeof obj === 'function')
+    {
+        console.warn('convertBinaryToBase64: Function serialization is not supported!');
+    }
+
+    // Handle original primitives
+    if (typeof obj !== 'object')
+    {
+        return obj;
+    }
+
+    // Arrays - resurse
+    if (Array.isArray(obj))
+    {
+        return obj.map(item => convertBinaryToBase64(item, maxDepth, currentDepth + 1));
+    }
+
+    // Object
+    if(typeof obj === 'object')
+    {
+        // Avoid any instances of classes
+        if (Object.getPrototypeOf(obj) !== Object.prototype)
+        {
+            console.warn('convertBinaryToBase64: Class instances are not supported! Returned null');
+            return null;
+        }
+
+        const result: any = {};
+        for (const [key, value] of Object.entries(obj)) {
+            // Skip non-enumerable properties and functions (unless explicitly handling them above)
+            if (typeof value === 'function') {
+                continue; // Skip functions in objects unless we want to serialize them
+            }
+            result[key] = convertBinaryToBase64(value, maxDepth, currentDepth + 1);
+        }
+        return result;
+    }
+}
+
+/**
+ * Restores binary data from base64 strings after JSON parsing
+ * @param obj - The object to restore
+ * @returns Object with restored binary data
+ */
+export function restoreBinaryFromBase64(obj: ScriptOutputDataWrapper, forceBuffer: boolean=false): Buffer|ArrayBuffer|Uint8Array|null
+{
+    if (obj === null || obj === undefined)
+    {
+        console.error('utils::restoreBinaryFromBase64(): Invalid input');
+        return null;
+    }
+    console.info(`utils::restoreBinaryFromBase64(): Restoring to binary "${obj?.type}" with length ${obj?.length}`);
+
+    // Handle primitives
+    if (typeof obj !== 'object')
+    {
+        return obj;
+    }
+    // Check if this is a serialized binary object
+    if (obj.type && obj.data !== undefined)
+    {
+        switch (obj.type)
+        {
+            case 'ArrayBuffer':
+                const binaryString = atob(obj.data);
+                const buffer = new ArrayBuffer(binaryString.length);
+                const view = new Uint8Array(buffer);
+                for (let i = 0; i < binaryString.length; i++) {
+                    view[i] = binaryString.charCodeAt(i);
+                }
+                return (forceBuffer)
+                        ? Buffer.from(buffer)
+                        : buffer as any;
+            case 'Uint8Array':
+                const b = restoreBinaryFromBase64({ type: 'ArrayBuffer', data: obj.data, length: obj.length } as ScriptOutputDataWrapper) as ArrayBuffer;
+                const u8 = new Uint8Array(b, 0, obj.length)
+                return (forceBuffer)
+                        ? Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength)
+                        : u8;
+            case 'Buffer':
+                if (typeof Buffer !== 'undefined' && Buffer.from)
+                {
+                    return Buffer.from(obj.data, 'base64') as any;
+                }
+                break;
+
+            default:
+                console.warn(`restoreBinaryFromBase64: Unknown type ${obj.type}`);
+                return null;
+        }
+    }
+    // Handle Arrays
+    if (Array.isArray(obj)) {
+        return obj.map(item => restoreBinaryFromBase64(item)) as any;
+    }
+    // Handle plain objects
+    const result: any = {};
+    for (const [key, value] of Object.entries(obj))
+    {
+        result[key] = restoreBinaryFromBase64(value as ScriptOutputDataWrapper);
+    }
+
+    return result;
 }
 
 //// FUNCTIONS ////

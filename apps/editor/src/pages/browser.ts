@@ -13,10 +13,10 @@ import { LitElement, html, css } from 'lit';
 import { customElement } from 'lit/decorators.js';
 import { msg } from '@lit/localize';
 
-import '../components/browser/browser-menu-section.js';
-import '../components/browser/browser-header.js';
-import '../components/browser/browser-asset-grid.js';
-import type { BrowserMenuItem } from '../components/browser/browser-menu-section.js';
+import '@archiyou/ui/browser/browser-menu-section.js';
+import '@archiyou/ui/browser/browser-header.js';
+import '@archiyou/ui/browser/browser-asset-grid.js';
+import type { BrowserMenuItem } from '@archiyou/ui/browser/browser-menu-section.js';
 
 @customElement('page-browser')
 export class PageBrowser extends LitElement

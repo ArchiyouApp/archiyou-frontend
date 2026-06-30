@@ -3,7 +3,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import type { Script } from '../../../devlibs/archiyou-core-next/src/execution/Script';
+import type { Script } from '@archiyou/core/src/execution/Script';
 
 @customElement('script-manager-item')
 export class ScriptManagerItem extends LitElement

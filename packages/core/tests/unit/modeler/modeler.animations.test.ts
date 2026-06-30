@@ -1,10 +1,10 @@
 import { beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { Modeler } from '../../../src/modeler/Modeler'
-import { createNodeIO } from '../../../devlibs/meshup/src/GLTFBuilder'
-import { ShapeCollection } from '../../../devlibs/meshup/src/index'
+import { createNodeIO } from 'meshup/src/GLTFBuilder'
+import { ShapeCollection } from 'meshup/src/index'
 import { Layouter } from '../../../src/modeler/Layouter'
-import { save } from '../../../devlibs/meshup/src/utils'
+import { save } from 'meshup/src/utils'
 
 describe('Modeler animations', () =>
 {

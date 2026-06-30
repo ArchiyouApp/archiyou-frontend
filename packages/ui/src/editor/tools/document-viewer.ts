@@ -10,7 +10,7 @@ import '@awesome.me/webawesome/dist/components/option/option.js';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import { executionResult } from '../../../state/workspace.js';
+import { executionResult } from '@archiyou/editor/src/state/workspace';
 
 type SvgMap = Record<string, string>;
 
@@ -331,7 +331,7 @@ export class EditorDocumentTool extends SignalWatcher(LitElement)
       width: 100%;
       box-sizing: border-box;
       padding: var(--space2xl);
-      background: transparent;
+      background: var(--color-bg-dark);
     }
 
     .svg-wrapper svg
@@ -339,8 +339,14 @@ export class EditorDocumentTool extends SignalWatcher(LitElement)
       display: block;
       width: 100%;
       height: auto;
-      background: var(--color-white, #fff);
+      background: transparent;
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+    }
+
+    /* Multi-page docs: individual page shadows are in the SVG; suppress the outer shadow */
+    .svg-wrapper svg[data-multipage]
+    {
+      box-shadow: none;
     }
   `;
 }

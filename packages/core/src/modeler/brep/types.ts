@@ -3,7 +3,7 @@ import { Point, Vector, Shape, Vertex, Edge, Wire, Face, Shell,
         Obj, Script, ScriptParam  } from '.'
 
 import type { Brep, Beams, Exporter, Make } from '.'
-import type { Doc } from '../../docs/Doc'
+import type { Docs } from '../../docs/Docs'
 import type { Container } from '../../docs/Container'
 import type { View } from '../../docs/View'
 import type { DimensionLine } from '../../annotator/AnnotatorDimensionLine'
@@ -132,7 +132,7 @@ export interface ArchiyouApp
     runner?:Runner, // The instance of the Runner where the script is run
     scope?:any // Scope where the script is run in
     brep?: Brep,
-    doc?: Doc,
+    doc?: Docs,
     console?: Console,
     executor?: CodeParser,
     exporter?: Exporter,
@@ -282,15 +282,15 @@ export interface RunnerScriptExecutionResult
  *   - models -> Obj (which contains Shapes)
  *   - metrics -> Record<string,Metric>
  *   - tables -> CalcTable (or CalcDb?)
- *   - docs -> Doc
- *   
+ *   - docs -> Docs
+ *
 */
-export type ImportComponentOutput = Obj|Record<string,Metric>|Calc|Doc|null
+export type ImportComponentOutput = Obj|Record<string,Metric>|Calc|Docs|null
 export interface ImportComponentResultPipeline {
     model?: Obj|null,
     metrics?: Record<string,Metric>|null,
     tables?:CalcDb|null,
-    docs?: Doc|null
+    docs?: Docs|null
 }
 /** Result with multiple pipelines */
 export type ImportComponentResultPipelines = Record<string, ImportComponentResultPipeline>

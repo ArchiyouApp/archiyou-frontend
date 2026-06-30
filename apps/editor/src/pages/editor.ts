@@ -5,22 +5,22 @@ import type { RouterLocation } from '@vaadin/router';
 
 import { createExecutionFailureResult, runScript, warmupWorker } from '../services/execution-service';
 
-import '../components/editor/main-menu.js';
-import '../components/editor/codebox.js';
-import '../components/viewer/model-viewer.js';
-import '../components/params/param-menu.js';
-import '../components/params/presets-menu.js';
-import '../components/editor/toolbar.js';
-import '../components/editor/tool-panels.js';
-import '../components/editor/tools/scene-tool.js';
-import '../components/editor/tools/data-tool.js';
-import '../components/editor/tools/metrics-tool.js';
-import '../components/editor/tools/document-viewer.js';
-import '../components/editor/tools/console-tool.js';
-import '../components/editor/file-manager.js';
-import '../components/editor/script-manager.js';
-import '../components/editor/script-importer.js';
-import type { ToolDef } from '../components/editor/toolbar.js';
+import '@archiyou/ui/editor/main-menu.js';
+import '@archiyou/ui/editor/codebox.js';
+import '@archiyou/ui/viewer/model-viewer.js';
+import '@archiyou/ui/params/param-menu.js';
+import '@archiyou/ui/params/presets-menu.js';
+import '@archiyou/ui/editor/toolbar.js';
+import '@archiyou/ui/editor/tool-panels.js';
+import '@archiyou/ui/editor/tools/scene-tool.js';
+import '@archiyou/ui/editor/tools/data-tool.js';
+import '@archiyou/ui/editor/tools/metrics-tool.js';
+import '@archiyou/ui/editor/tools/document-viewer.js';
+import '@archiyou/ui/editor/tools/console-tool.js';
+import '@archiyou/ui/editor/file-manager.js';
+import '@archiyou/ui/editor/script-manager.js';
+import '@archiyou/ui/editor/script-importer.js';
+import type { ToolDef } from '@archiyou/ui/editor/toolbar.js';
 
 import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, deleteScriptById, importScriptFromData, selectedPath } from '../state/workspace';
 import { registerScheduleExecution, triggerResetCamera } from '../state/viewer';

@@ -8,8 +8,8 @@ import '@awesome.me/webawesome/dist/components/button/button.js';
 import {
   presetMenuCollapsed,
   setPresetMenuCollapsed,
-} from '../../state/workspace.js';
-import { configuratorPresets, applyConfiguratorPreset } from '../../state/configurator.js';
+} from '@archiyou/editor/src/state/workspace';
+import { configuratorPresets, applyConfiguratorPreset } from '@archiyou/editor/src/state/configurator';
 
 @customElement('configurator-presets')
 export class ConfiguratorPresets extends SignalWatcher(LitElement)

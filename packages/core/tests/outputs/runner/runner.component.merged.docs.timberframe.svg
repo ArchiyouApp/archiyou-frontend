@@ -7,15 +7,21 @@
   width="297mm"
   height="430mm"
   viewBox="0 0 297 430"
+  data-multipage="true"
   version="1.1">
   <sodipodi:namedview id="namedview">
     <inkscape:page id="page1" x="0" y="0" width="297" height="210" inkscape:label="main"/>
     <inkscape:page id="page2" x="0" y="220" width="297" height="210" inkscape:label="-main"/>
   </sodipodi:namedview>
+  <defs>
+    <filter id="page-shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="0.5" stdDeviation="1.5" flood-color="rgba(0,0,0,0.28)"/>
+    </filter>
+  </defs>
   <g id="layer1"
      inkscape:label="main"
      inkscape:groupmode="layer">
-    <rect x="0" y="0" width="297" height="210" fill="white" stroke="none"/>
+    <rect x="0" y="0" width="297" height="210" fill="white" stroke="none" filter="url(#page-shadow)"/>
     <g transform="translate(10,10)">
       <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="6.3" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">Main page timber project</text>
     </g>
@@ -23,7 +29,7 @@
   <g id="layer1"
      inkscape:label="-main"
      inkscape:groupmode="layer" transform="translate(0,220)">
-    <rect x="0" y="0" width="297" height="210" fill="white" stroke="none"/>
+    <rect x="0" y="0" width="297" height="210" fill="white" stroke="none" filter="url(#page-shadow)"/>
   <defs>
     <clipPath id="clip1"><rect x="0" y="0" width="27.9798" height="7.2381"/></clipPath>
     <clipPath id="clip2"><rect x="0" y="0" width="27.9798" height="2.7143"/></clipPath>
@@ -54,7 +60,7 @@
     </g>
     <g transform="translate(231.0404,191.8571)">
       <g clip-path="url(#clip2)">
-        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="1.8" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">v0 at 15-6-2026, 20:26:40</text>
+        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="1.8" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">v0 at 30-6-2026, 15:25:56</text>
       </g>
     </g>
     <g transform="translate(231.0404,190.0476)">

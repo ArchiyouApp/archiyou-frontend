@@ -6,7 +6,7 @@
     "lib": ["ES2022", "dom"],
     "outDir": "dist",
     "rootDir": ".",
-    "strict": false, // TODO: Enable strict mode and fix all resulting type errors
+    "strict": false,
     "skipLibCheck": true,
     "declaration": true,
     "declarationMap": true,
@@ -15,11 +15,12 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "experimentalDecorators": true,
+    "useDefineForClassFields": false,
     "types": ["node"],
     "paths": {
-      "meshup": ["./devlibs/meshup/src/index.ts"]
+      "meshup": ["../meshup/src/index.ts"]
     }
   },
-  "include": ["src", "tests", "devlibs"],
+  "include": ["src", "tests"],
   "exclude": ["node_modules", "dist"]
 }

@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from 'vitest'
 
-import { createNodeIO } from '../../../devlibs/meshup/src/GLTFBuilder'
+import { createNodeIO } from 'meshup/src/GLTFBuilder'
 
 import { Layouter } from '../../../src/modeler/Layouter'
 import { Modeler } from '../../../src/modeler/Modeler'
@@ -9,7 +9,7 @@ import { SmartSceneNode } from '../../../src/modeler/SmartSceneNode'
 import type { SmartMesh } from '../../../src/modeler/SmartShapes'
 import { SmartShapeCollection } from '../../../src/modeler/SmartShapeCollection'
 
-import { save } from '../../../devlibs/meshup/src/utils'
+import { save } from 'meshup/src/utils'
 
 const TEST_OUTPUTS_PATH = './tests/outputs/layouter/'
 

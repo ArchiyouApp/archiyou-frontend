@@ -5,8 +5,8 @@ import { SignalWatcher } from '@lit-labs/signals';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '../menu-badge.js';
 
-import { executionResult, activeBottomPanel, setActiveBottomPanel } from '../../state/workspace.js';
-import type { ConsoleMessageType } from '../../../devlibs/archiyou-core-next/src/console/types';
+import { executionResult, activeBottomPanel, setActiveBottomPanel } from '@archiyou/editor/src/state/workspace';
+import type { ConsoleMessageType } from '@archiyou/core/src/console/types';
 
 const MESSAGE_TYPES: ConsoleMessageType[] = ['error', 'exec', 'geom', 'user', 'warn', 'info'];
 

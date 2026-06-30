@@ -1,0 +1,683 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">
+  <asset>
+    <contributor>
+      <author>Assimp</author>
+      <authoring_tool>Open CASCADE Technology 7.6 [dev.opencascade.org]</authoring_tool>
+    </contributor>
+    <created>2025-12-12T11:47:57</created>
+    <modified>2025-12-12T11:47:57</modified>
+    <unit name="meter" meter="1" />
+    <up_axis>Y_UP</up_axis>
+  </asset>
+  <library_images>
+  </library_images>
+  <library_effects>
+    <effect id="material_0-fx" name="">
+      <profile_COMMON>
+        <technique sid="standard">
+          <phong>
+            <emission>
+              <color sid="emission">0   0   0   1</color>
+            </emission>
+            <diffuse>
+              <color sid="diffuse">1   1   1   1</color>
+            </diffuse>
+            <shininess>
+              <float sid="shininess">0</float>
+            </shininess>
+            <transparency>
+              <float sid="transparency">1</float>
+            </transparency>
+          </phong>
+        </technique>
+      </profile_COMMON>
+    </effect>
+  </library_effects>
+  <library_materials>
+    <material id="material_0" name="">
+      <instance_effect url="#material_0-fx"/>
+    </material>
+  </library_materials>
+  <library_geometries>
+    <geometry id="SOLID-0" name="SOLID-0" >
+      <mesh>
+        <source id="SOLID-0-positions" name="SOLID-0-positions">
+          <float_array id="SOLID-0-positions-array" count="12"> 0 100 0 0 0 -100 0 0 0 0 100 -100 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-0-positions-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-0-normals" name="SOLID-0-normals">
+          <float_array id="SOLID-0-normals-array" count="12"> -1 0 0 -1 0 0 -1 0 0 -1 0 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-0-normals-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-0-tex0" name="SOLID-0-tex0">
+          <float_array id="SOLID-0-tex0-array" count="8"> 100 0 0 -100 0 0 100 -100 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-0-tex0-array" stride="2">
+              <param name="S" type="float" />
+              <param name="T" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="SOLID-0-vertices">
+          <input semantic="POSITION" source="#SOLID-0-positions" />
+        </vertices>
+        <polylist count="2" material="defaultMaterial">
+          <input offset="0" semantic="VERTEX" source="#SOLID-0-vertices" />
+          <input offset="0" semantic="NORMAL" source="#SOLID-0-normals" />
+          <input offset="0" semantic="TEXCOORD" source="#SOLID-0-tex0" set="0" />
+          <vcount>3 3 </vcount>
+          <p>0 1 2 0 3 1 </p>
+        </polylist>
+      </mesh>
+    </geometry>
+    <geometry id="SOLID-1" name="SOLID-1" >
+      <mesh>
+        <source id="SOLID-1-positions" name="SOLID-1-positions">
+          <float_array id="SOLID-1-positions-array" count="12"> 174 100 0 174 0 0 174 0 -100 174 100 -100 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-1-positions-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-1-normals" name="SOLID-1-normals">
+          <float_array id="SOLID-1-normals-array" count="12"> 1 0 0 1 0 0 1 0 0 1 0 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-1-normals-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-1-tex0" name="SOLID-1-tex0">
+          <float_array id="SOLID-1-tex0-array" count="8"> 100 0 0 0 0 -100 100 -100 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-1-tex0-array" stride="2">
+              <param name="S" type="float" />
+              <param name="T" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="SOLID-1-vertices">
+          <input semantic="POSITION" source="#SOLID-1-positions" />
+        </vertices>
+        <polylist count="2" material="defaultMaterial">
+          <input offset="0" semantic="VERTEX" source="#SOLID-1-vertices" />
+          <input offset="0" semantic="NORMAL" source="#SOLID-1-normals" />
+          <input offset="0" semantic="TEXCOORD" source="#SOLID-1-tex0" set="0" />
+          <vcount>3 3 </vcount>
+          <p>0 1 2 0 2 3 </p>
+        </polylist>
+      </mesh>
+    </geometry>
+    <geometry id="SOLID-2" name="SOLID-2" >
+      <mesh>
+        <source id="SOLID-2-positions" name="SOLID-2-positions">
+          <float_array id="SOLID-2-positions-array" count="12"> 174 0 0 0 100 0 0 0 0 174 100 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-2-positions-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-2-normals" name="SOLID-2-normals">
+          <float_array id="SOLID-2-normals-array" count="12"> 0 0 1 0 0 1 0 0 1 0 0 1 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-2-normals-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-2-tex0" name="SOLID-2-tex0">
+          <float_array id="SOLID-2-tex0-array" count="8"> 0 174 100 0 0 0 100 174 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-2-tex0-array" stride="2">
+              <param name="S" type="float" />
+              <param name="T" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="SOLID-2-vertices">
+          <input semantic="POSITION" source="#SOLID-2-positions" />
+        </vertices>
+        <polylist count="2" material="defaultMaterial">
+          <input offset="0" semantic="VERTEX" source="#SOLID-2-vertices" />
+          <input offset="0" semantic="NORMAL" source="#SOLID-2-normals" />
+          <input offset="0" semantic="TEXCOORD" source="#SOLID-2-tex0" set="0" />
+          <vcount>3 3 </vcount>
+          <p>0 1 2 3 1 0 </p>
+        </polylist>
+      </mesh>
+    </geometry>
+    <geometry id="SOLID-3" name="SOLID-3" >
+      <mesh>
+        <source id="SOLID-3-positions" name="SOLID-3-positions">
+          <float_array id="SOLID-3-positions-array" count="12"> 174 0 -100 0 0 -100 0 100 -100 174 100 -100 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-3-positions-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-3-normals" name="SOLID-3-normals">
+          <float_array id="SOLID-3-normals-array" count="12"> 0 0 -1 0 0 -1 0 0 -1 0 0 -1 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-3-normals-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-3-tex0" name="SOLID-3-tex0">
+          <float_array id="SOLID-3-tex0-array" count="8"> 0 174 0 0 100 0 100 174 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-3-tex0-array" stride="2">
+              <param name="S" type="float" />
+              <param name="T" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="SOLID-3-vertices">
+          <input semantic="POSITION" source="#SOLID-3-positions" />
+        </vertices>
+        <polylist count="2" material="defaultMaterial">
+          <input offset="0" semantic="VERTEX" source="#SOLID-3-vertices" />
+          <input offset="0" semantic="NORMAL" source="#SOLID-3-normals" />
+          <input offset="0" semantic="TEXCOORD" source="#SOLID-3-tex0" set="0" />
+          <vcount>3 3 </vcount>
+          <p>0 1 2 3 0 2 </p>
+        </polylist>
+      </mesh>
+    </geometry>
+    <geometry id="SOLID-4" name="SOLID-4" >
+      <mesh>
+        <source id="SOLID-4-positions" name="SOLID-4-positions">
+          <float_array id="SOLID-4-positions-array" count="12"> 174 0 0 0 0 0 0 0 -100 174 0 -100 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-4-positions-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-4-normals" name="SOLID-4-normals">
+          <float_array id="SOLID-4-normals-array" count="12"> 0 -1 0 0 -1 0 0 -1 0 0 -1 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-4-normals-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-4-tex0" name="SOLID-4-tex0">
+          <float_array id="SOLID-4-tex0-array" count="8"> 174 0 0 0 0 100 174 100 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-4-tex0-array" stride="2">
+              <param name="S" type="float" />
+              <param name="T" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="SOLID-4-vertices">
+          <input semantic="POSITION" source="#SOLID-4-positions" />
+        </vertices>
+        <polylist count="2" material="defaultMaterial">
+          <input offset="0" semantic="VERTEX" source="#SOLID-4-vertices" />
+          <input offset="0" semantic="NORMAL" source="#SOLID-4-normals" />
+          <input offset="0" semantic="TEXCOORD" source="#SOLID-4-tex0" set="0" />
+          <vcount>3 3 </vcount>
+          <p>0 1 2 3 0 2 </p>
+        </polylist>
+      </mesh>
+    </geometry>
+    <geometry id="SOLID-5" name="SOLID-5" >
+      <mesh>
+        <source id="SOLID-5-positions" name="SOLID-5-positions">
+          <float_array id="SOLID-5-positions-array" count="12"> 174 100 0 0 100 -100 0 100 0 174 100 -100 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-5-positions-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-5-normals" name="SOLID-5-normals">
+          <float_array id="SOLID-5-normals-array" count="12"> 0 1 0 0 1 0 0 1 0 0 1 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-5-normals-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-5-tex0" name="SOLID-5-tex0">
+          <float_array id="SOLID-5-tex0-array" count="8"> 174 0 0 100 0 0 174 100 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-5-tex0-array" stride="2">
+              <param name="S" type="float" />
+              <param name="T" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="SOLID-5-vertices">
+          <input semantic="POSITION" source="#SOLID-5-positions" />
+        </vertices>
+        <polylist count="2" material="defaultMaterial">
+          <input offset="0" semantic="VERTEX" source="#SOLID-5-vertices" />
+          <input offset="0" semantic="NORMAL" source="#SOLID-5-normals" />
+          <input offset="0" semantic="TEXCOORD" source="#SOLID-5-tex0" set="0" />
+          <vcount>3 3 </vcount>
+          <p>0 1 2 3 1 0 </p>
+        </polylist>
+      </mesh>
+    </geometry>
+    <geometry id="SOLID-0_1" name="SOLID-0" >
+      <mesh>
+        <source id="SOLID-0_1-positions" name="SOLID-0_1-positions">
+          <float_array id="SOLID-0_1-positions-array" count="12"> 0 50 0 0 0 -50 0 0 0 0 50 -50 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-0_1-positions-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-0_1-normals" name="SOLID-0_1-normals">
+          <float_array id="SOLID-0_1-normals-array" count="12"> -1 0 0 -1 0 0 -1 0 0 -1 0 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-0_1-normals-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-0_1-tex0" name="SOLID-0_1-tex0">
+          <float_array id="SOLID-0_1-tex0-array" count="8"> 50 0 0 -50 0 0 50 -50 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-0_1-tex0-array" stride="2">
+              <param name="S" type="float" />
+              <param name="T" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="SOLID-0_1-vertices">
+          <input semantic="POSITION" source="#SOLID-0_1-positions" />
+        </vertices>
+        <polylist count="2" material="defaultMaterial">
+          <input offset="0" semantic="VERTEX" source="#SOLID-0_1-vertices" />
+          <input offset="0" semantic="NORMAL" source="#SOLID-0_1-normals" />
+          <input offset="0" semantic="TEXCOORD" source="#SOLID-0_1-tex0" set="0" />
+          <vcount>3 3 </vcount>
+          <p>0 1 2 0 3 1 </p>
+        </polylist>
+      </mesh>
+    </geometry>
+    <geometry id="SOLID-1_1" name="SOLID-1" >
+      <mesh>
+        <source id="SOLID-1_1-positions" name="SOLID-1_1-positions">
+          <float_array id="SOLID-1_1-positions-array" count="12"> 50 50 0 50 0 0 50 0 -50 50 50 -50 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-1_1-positions-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-1_1-normals" name="SOLID-1_1-normals">
+          <float_array id="SOLID-1_1-normals-array" count="12"> 1 0 0 1 0 0 1 0 0 1 0 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-1_1-normals-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-1_1-tex0" name="SOLID-1_1-tex0">
+          <float_array id="SOLID-1_1-tex0-array" count="8"> 50 0 0 0 0 -50 50 -50 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-1_1-tex0-array" stride="2">
+              <param name="S" type="float" />
+              <param name="T" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="SOLID-1_1-vertices">
+          <input semantic="POSITION" source="#SOLID-1_1-positions" />
+        </vertices>
+        <polylist count="2" material="defaultMaterial">
+          <input offset="0" semantic="VERTEX" source="#SOLID-1_1-vertices" />
+          <input offset="0" semantic="NORMAL" source="#SOLID-1_1-normals" />
+          <input offset="0" semantic="TEXCOORD" source="#SOLID-1_1-tex0" set="0" />
+          <vcount>3 3 </vcount>
+          <p>0 1 2 0 2 3 </p>
+        </polylist>
+      </mesh>
+    </geometry>
+    <geometry id="SOLID-2_1" name="SOLID-2" >
+      <mesh>
+        <source id="SOLID-2_1-positions" name="SOLID-2_1-positions">
+          <float_array id="SOLID-2_1-positions-array" count="12"> 50 50 0 0 0 0 50 0 0 0 50 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-2_1-positions-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-2_1-normals" name="SOLID-2_1-normals">
+          <float_array id="SOLID-2_1-normals-array" count="12"> 0 0 1 0 0 1 0 0 1 0 0 1 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-2_1-normals-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-2_1-tex0" name="SOLID-2_1-tex0">
+          <float_array id="SOLID-2_1-tex0-array" count="8"> 50 50 0 0 0 50 50 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-2_1-tex0-array" stride="2">
+              <param name="S" type="float" />
+              <param name="T" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="SOLID-2_1-vertices">
+          <input semantic="POSITION" source="#SOLID-2_1-positions" />
+        </vertices>
+        <polylist count="2" material="defaultMaterial">
+          <input offset="0" semantic="VERTEX" source="#SOLID-2_1-vertices" />
+          <input offset="0" semantic="NORMAL" source="#SOLID-2_1-normals" />
+          <input offset="0" semantic="TEXCOORD" source="#SOLID-2_1-tex0" set="0" />
+          <vcount>3 3 </vcount>
+          <p>0 1 2 0 3 1 </p>
+        </polylist>
+      </mesh>
+    </geometry>
+    <geometry id="SOLID-3_1" name="SOLID-3" >
+      <mesh>
+        <source id="SOLID-3_1-positions" name="SOLID-3_1-positions">
+          <float_array id="SOLID-3_1-positions-array" count="12"> 50 50 -50 50 0 -50 0 0 -50 0 50 -50 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-3_1-positions-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-3_1-normals" name="SOLID-3_1-normals">
+          <float_array id="SOLID-3_1-normals-array" count="12"> 0 0 -1 0 0 -1 0 0 -1 0 0 -1 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-3_1-normals-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-3_1-tex0" name="SOLID-3_1-tex0">
+          <float_array id="SOLID-3_1-tex0-array" count="8"> 50 50 0 50 0 0 50 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-3_1-tex0-array" stride="2">
+              <param name="S" type="float" />
+              <param name="T" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="SOLID-3_1-vertices">
+          <input semantic="POSITION" source="#SOLID-3_1-positions" />
+        </vertices>
+        <polylist count="2" material="defaultMaterial">
+          <input offset="0" semantic="VERTEX" source="#SOLID-3_1-vertices" />
+          <input offset="0" semantic="NORMAL" source="#SOLID-3_1-normals" />
+          <input offset="0" semantic="TEXCOORD" source="#SOLID-3_1-tex0" set="0" />
+          <vcount>3 3 </vcount>
+          <p>0 1 2 0 2 3 </p>
+        </polylist>
+      </mesh>
+    </geometry>
+    <geometry id="SOLID-4_1" name="SOLID-4" >
+      <mesh>
+        <source id="SOLID-4_1-positions" name="SOLID-4_1-positions">
+          <float_array id="SOLID-4_1-positions-array" count="12"> 50 0 -50 0 0 0 0 0 -50 50 0 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-4_1-positions-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-4_1-normals" name="SOLID-4_1-normals">
+          <float_array id="SOLID-4_1-normals-array" count="12"> 0 -1 0 0 -1 0 0 -1 0 0 -1 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-4_1-normals-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-4_1-tex0" name="SOLID-4_1-tex0">
+          <float_array id="SOLID-4_1-tex0-array" count="8"> 50 50 0 0 0 50 50 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-4_1-tex0-array" stride="2">
+              <param name="S" type="float" />
+              <param name="T" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="SOLID-4_1-vertices">
+          <input semantic="POSITION" source="#SOLID-4_1-positions" />
+        </vertices>
+        <polylist count="2" material="defaultMaterial">
+          <input offset="0" semantic="VERTEX" source="#SOLID-4_1-vertices" />
+          <input offset="0" semantic="NORMAL" source="#SOLID-4_1-normals" />
+          <input offset="0" semantic="TEXCOORD" source="#SOLID-4_1-tex0" set="0" />
+          <vcount>3 3 </vcount>
+          <p>0 1 2 0 3 1 </p>
+        </polylist>
+      </mesh>
+    </geometry>
+    <geometry id="SOLID-5_1" name="SOLID-5" >
+      <mesh>
+        <source id="SOLID-5_1-positions" name="SOLID-5_1-positions">
+          <float_array id="SOLID-5_1-positions-array" count="12"> 50 50 -50 0 50 -50 0 50 0 50 50 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-5_1-positions-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-5_1-normals" name="SOLID-5_1-normals">
+          <float_array id="SOLID-5_1-normals-array" count="12"> 0 1 0 0 1 0 0 1 0 0 1 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-5_1-normals-array" stride="3">
+              <param name="X" type="float" />
+              <param name="Y" type="float" />
+              <param name="Z" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <source id="SOLID-5_1-tex0" name="SOLID-5_1-tex0">
+          <float_array id="SOLID-5_1-tex0-array" count="8"> 50 50 0 50 0 0 50 0 </float_array>
+          <technique_common>
+            <accessor count="4" offset="0" source="#SOLID-5_1-tex0-array" stride="2">
+              <param name="S" type="float" />
+              <param name="T" type="float" />
+            </accessor>
+          </technique_common>
+        </source>
+        <vertices id="SOLID-5_1-vertices">
+          <input semantic="POSITION" source="#SOLID-5_1-positions" />
+        </vertices>
+        <polylist count="2" material="defaultMaterial">
+          <input offset="0" semantic="VERTEX" source="#SOLID-5_1-vertices" />
+          <input offset="0" semantic="NORMAL" source="#SOLID-5_1-normals" />
+          <input offset="0" semantic="TEXCOORD" source="#SOLID-5_1-tex0" set="0" />
+          <vcount>3 3 </vcount>
+          <p>0 1 2 0 2 3 </p>
+        </polylist>
+      </mesh>
+    </geometry>
+  </library_geometries>
+  <library_controllers>
+  </library_controllers>
+  <library_visual_scenes>
+    <visual_scene id="ROOT" name="ROOT">
+      <node id="_2818a0ea-a04f-40a3-838c-4e390e32145a__Box" name="2818a0ea-a04f-40a3-838c-4e390e32145a__Box" type="NODE">
+        <matrix sid="matrix">1 0 0 -87 0 1 0 0 0 0 1 50 0 0 0 1</matrix>
+        <instance_geometry url="#SOLID-0">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="defaultMaterial" target="#material_0">
+                <bind_vertex_input semantic="CHANNEL0" input_semantic="TEXCOORD" input_set="0"/>
+              </instance_material>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+        <instance_geometry url="#SOLID-1">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="defaultMaterial" target="#material_0">
+                <bind_vertex_input semantic="CHANNEL0" input_semantic="TEXCOORD" input_set="0"/>
+              </instance_material>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+        <instance_geometry url="#SOLID-2">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="defaultMaterial" target="#material_0">
+                <bind_vertex_input semantic="CHANNEL0" input_semantic="TEXCOORD" input_set="0"/>
+              </instance_material>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+        <instance_geometry url="#SOLID-3">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="defaultMaterial" target="#material_0">
+                <bind_vertex_input semantic="CHANNEL0" input_semantic="TEXCOORD" input_set="0"/>
+              </instance_material>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+        <instance_geometry url="#SOLID-4">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="defaultMaterial" target="#material_0">
+                <bind_vertex_input semantic="CHANNEL0" input_semantic="TEXCOORD" input_set="0"/>
+              </instance_material>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+        <instance_geometry url="#SOLID-5">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="defaultMaterial" target="#material_0">
+                <bind_vertex_input semantic="CHANNEL0" input_semantic="TEXCOORD" input_set="0"/>
+              </instance_material>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+      </node>
+      <node id="_31bf23e8-b7e6-4253-8910-9880216703ae__Box_1" name="31bf23e8-b7e6-4253-8910-9880216703ae__Box_1" type="NODE">
+        <matrix sid="matrix">1 0 0 -25 0 1 0 125 0 0 1 25 0 0 0 1</matrix>
+        <instance_geometry url="#SOLID-0_1">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="defaultMaterial" target="#material_0">
+                <bind_vertex_input semantic="CHANNEL0" input_semantic="TEXCOORD" input_set="0"/>
+              </instance_material>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+        <instance_geometry url="#SOLID-1_1">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="defaultMaterial" target="#material_0">
+                <bind_vertex_input semantic="CHANNEL0" input_semantic="TEXCOORD" input_set="0"/>
+              </instance_material>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+        <instance_geometry url="#SOLID-2_1">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="defaultMaterial" target="#material_0">
+                <bind_vertex_input semantic="CHANNEL0" input_semantic="TEXCOORD" input_set="0"/>
+              </instance_material>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+        <instance_geometry url="#SOLID-3_1">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="defaultMaterial" target="#material_0">
+                <bind_vertex_input semantic="CHANNEL0" input_semantic="TEXCOORD" input_set="0"/>
+              </instance_material>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+        <instance_geometry url="#SOLID-4_1">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="defaultMaterial" target="#material_0">
+                <bind_vertex_input semantic="CHANNEL0" input_semantic="TEXCOORD" input_set="0"/>
+              </instance_material>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+        <instance_geometry url="#SOLID-5_1">
+          <bind_material>
+            <technique_common>
+              <instance_material symbol="defaultMaterial" target="#material_0">
+                <bind_vertex_input semantic="CHANNEL0" input_semantic="TEXCOORD" input_set="0"/>
+              </instance_material>
+            </technique_common>
+          </bind_material>
+        </instance_geometry>
+      </node>
+    </visual_scene>
+  </library_visual_scenes>
+  <scene>
+    <instance_visual_scene url="#ROOT" />
+  </scene>
+</COLLADA>

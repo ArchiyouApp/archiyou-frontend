@@ -18,13 +18,14 @@ import {
   updateScriptMetadata,
   updateScriptMeta,
   isScriptNameTaken,
-} from '../../state/workspace.js';
-import type { ScriptMetadata } from '../../state/workspace.js';
+} from '@archiyou/editor/src/state/workspace';
+
+import type { ScriptMetadata } from '@archiyou/editor/src/state/workspace';
 
 import {
   FILE_MANAGER_DISABLED_TOOLBAR_ITEMS,
   SCRIPT_PREDEFINED_TAGS,
-} from '../../settings.js';
+} from '@archiyou/editor/src/settings';
 
 // ── Field help explanations — edit here to update all tooltips ────────────────
 

@@ -5,10 +5,10 @@ import { ifDefined } from 'lit/directives/if-defined.js';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import { ScriptParam, scriptParams } from '../../state/workspace.js';
-import { paramMin, paramMax, paramStep, paramMinLength, paramMaxLength, paramOptions, paramListItemType } from '../../state/workspace.js';
-import type { ScriptParamData, ScriptParamType } from '../../state/workspace.js';
-import { OVERLAY_MENU_WIDTH, OVERLAY_MENU_HEIGHT, PARAM_DESCRIPTION_MAX_LENGTH } from '../../settings.js';
+import { ScriptParam, scriptParams } from '@archiyou/editor/src/state/workspace';
+import { paramMin, paramMax, paramStep, paramMinLength, paramMaxLength, paramOptions, paramListItemType } from '@archiyou/editor/src/state/workspace';
+import type { ScriptParamData, ScriptParamType } from '@archiyou/editor/src/state/workspace';
+import { OVERLAY_MENU_WIDTH, OVERLAY_MENU_HEIGHT, PARAM_DESCRIPTION_MAX_LENGTH } from '@archiyou/editor/src/settings';
 
 type ParamType = 'number' | 'boolean' | 'text' | 'options' | 'list';
 

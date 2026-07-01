@@ -36,7 +36,7 @@ import type { PageOrientation, ScaleInput, ImageOptions, TextOptions,
         ContainerTableInput, TableContainerOptions as TableOptions,
         DocGraphicInputRect, DocGraphicInputCircle, DocGraphicInputOrthoLine,
         ContainerBlock, TitleBlockInput, LabelBlockOptions,
-        DocSettings, DocUnits, DocData } from './types'
+        DocSettings, DocUnits, DocData, DocSVGPage } from './types'
 
 import { Document } from './Document'
 import { PDFExporter } from './PDFExporter'
@@ -366,12 +366,44 @@ export class Docs
         console.info(`Docs::toPDF(): Exporting docs to PDF: ${only ? ((Array.isArray(only) && only.length > 1) ? only.join(', ') : only) : 'all'}`);
 
         const onlyDocs = (Array.isArray(only)) ? only : (typeof only === 'string') ? [only] : [];
-        const data = await this.toData(onlyDocs); // by doc name
-        const pdfBuffersByDocName = await this._pdfExporter.export(data);
+        const docs = this.getDocs(onlyDocs);
+
+        // PDF is a thin wrapper over SVG: render each page to a standalone SVG,
+        // then let the exporter paint each into its own PDF page (see PDFExporter).
+        const pagesByDocName: Record<string, Array<DocSVGPage>> = {};
+        for (const doc of docs)
+        {
+            pagesByDocName[doc._name] = await doc.toSVGPages(this._assetsCache);
+        }
+
+        const pdfBuffersByDocName = await this._pdfExporter.export(pagesByDocName);
 
         return (Object.keys(pdfBuffersByDocName).length === 1)
                 ? Object.values(pdfBuffersByDocName)[0] // single buffer
                 : pdfBuffersByDocName; // multiple buffers by doc name
+    }
+
+    /** Export selected or all Documents as per-page standalone SVG strings.
+     *  This is the intermediate step used for PDF export, but is also surfaced
+     *  to the app (e.g. the document-viewer "Save as PDF" button) so PDF
+     *  rendering can happen on the main thread where a DOM is available.
+     *  @param only string/Array of doc names to export. Default is all.
+     *  @returns Either a single Array<DocSVGPage> or Record<docName, Array<DocSVGPage>> for multiple docs.
+     */
+    async toSVGPages(only:string|Array<string>=[]):Promise<Array<DocSVGPage> | Record<string, Array<DocSVGPage>>>
+    {
+        const onlyDocs = (Array.isArray(only)) ? only : (typeof only === 'string') ? [only] : [];
+        const docs = this.getDocs(onlyDocs);
+
+        const pagesByDocName: Record<string, Array<DocSVGPage>> = {};
+        for (const doc of docs)
+        {
+            pagesByDocName[doc._name] = await doc.toSVGPages(this._assetsCache);
+        }
+
+        return (Object.keys(pagesByDocName).length === 1)
+                ? Object.values(pagesByDocName)[0]   // single doc
+                : pagesByDocName;                      // multiple by doc name
     }
 
     /** Export selected or all Documents as InkScape-compatible multi-page SVG strings.

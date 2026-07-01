@@ -1896,6 +1896,30 @@ ${e.message === '***** CODE ****\nUnexpected end of input' ? code : ''}
                         });
                     }
                     break;
+                case 'svg-pages':
+                    // Per-page standalone SVGs, used by the app (document-viewer) to
+                    // build PDFs on the main thread where a DOM is available.
+                    const svgPagesResult = await (scope.doc as Docs).toSVGPages(outputPathDoc.entityName);
+                    if (Array.isArray(svgPagesResult))
+                    {
+                        // Single doc returned as a plain array; retrieve the real name from scope
+                        const docName = (scope.doc as Docs).docs()[0] ?? 'document';
+                        outputs.push({
+                            path: { ...outputPathDoc.toData(), entityName: docName },
+                            output: svgPagesResult,
+                        });
+                    }
+                    else
+                    {
+                        Object.entries(svgPagesResult).forEach(([docName, pages]) =>
+                        {
+                            outputs.push({
+                                path: { ...outputPathDoc.toData(), entityName: docName },
+                                output: pages,
+                            });
+                        });
+                    }
+                    break;
                 default:
                         throw new Error(`Runner::_getScopeRunnerScriptExecutionResult(): Unknown doc export format '${outputPathDoc.format}'`);
             }

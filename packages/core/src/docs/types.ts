@@ -43,6 +43,17 @@ export interface PageSVGContext
     cache?:       Record<string, any>
 }
 
+/** A single page rendered as a standalone SVG string, used as the intermediate
+ *  step for PDF export (one PDF page per DocSVGPage). */
+export interface DocSVGPage
+{
+    name:string
+    widthMm:number
+    heightMm:number
+    orientation:PageOrientation
+    svg:string // standalone <svg> for just this page
+}
+
 //// DOC:PAGE ////
 
 export type PageSize = 'A0'|'A1'|'A2'|'A3'|'A4'|'A5'|'A6'|'A7';

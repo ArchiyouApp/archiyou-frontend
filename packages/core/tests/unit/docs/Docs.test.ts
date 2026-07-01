@@ -212,6 +212,44 @@ describe('Doc', () =>
 		expect(betaSvg).not.toContain('width="0"')
 	})
 
+	it('exports per-page standalone SVGs via toSVGPages()', async () =>
+	{
+		const { doc } = createDoc()
+
+		doc.create('paged')
+			.page('page-one')
+			.text('Page one content')
+			.page('page-two')
+			.text('Page two content')
+
+		// Single doc -> returns an Array<DocSVGPage>
+		const pages = await doc.toSVGPages() as Array<any>
+
+		expect(Array.isArray(pages)).toBe(true)
+		expect(pages.length).toBe(2)
+
+		expect(pages[0].name).toBe('page-one')
+		expect(pages[1].name).toBe('page-two')
+
+		// A4 landscape default -> 297 x 210 mm
+		expect(Math.round(pages[0].widthMm)).toBe(297)
+		expect(Math.round(pages[0].heightMm)).toBe(210)
+		expect(pages[0].orientation).toBe('landscape')
+
+		// Each entry is a self-contained, single-page <svg> sized to that page
+		expect(pages[0].svg).toContain('<svg')
+		expect(pages[0].svg).toContain('width="297mm"')
+		expect(pages[0].svg).toContain('viewBox="0 0 297 210"')
+		expect(pages[0].svg).toContain('inkscape:label="page-one"')
+		expect(pages[0].svg).toContain('Page one content')
+		// No multi-page combined-document artifacts in a single page export
+		expect(pages[0].svg).not.toContain('data-multipage')
+		expect(pages[0].svg).not.toContain('inkscape:label="page-two"')
+
+		expect(pages[1].svg).toContain('inkscape:label="page-two"')
+		expect(pages[1].svg).toContain('Page two content')
+	})
+
 	it('should output the right text size', async () =>
 	{
 		const { doc } = createDoc()

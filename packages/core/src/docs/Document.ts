@@ -48,7 +48,7 @@ import type { DocUnits, PageSize, PageOrientation, DocPipeline, DocData,
     ContainerPositionLike, ContainerPositionAbs, DocUnitsWithPerc, PercentageString,
     ValueWithUnitsString, WidthHeightInput, ContainerTableInput,
     DocGraphicInputRect, DocGraphicInputCircle, DocGraphicInputOrthoLine,
-    ContainerBlock, TitleBlockInput, LabelBlockOptions } from './types'
+    ContainerBlock, TitleBlockInput, LabelBlockOptions, DocSVGPage } from './types'
 
 import { isDocUnits, isPercentageString, isValueWithUnitsString, isAnyPageContainer,
     isContainerPositionCoordRel, isWidthHeightInput, isContainerTableInput, isPageOrientation,
@@ -78,7 +78,7 @@ export class Document
     _pageOrientation:PageOrientation;
     _units:DocUnits;
 
-    _doc:Docs; // reference to Docs module
+    _docs:Docs; // reference to Docs module
     _pages:Array<Page> = []; // pages in this document
     _pipelines:Array<DocPipeline> = []; // pipelines for this document, see DocPipeline
     _activePage?:Page; // active page in this document
@@ -89,7 +89,7 @@ export class Document
 
     constructor(doc:Docs, name:string)
     {
-        this._doc = doc; // reference to Docs module
+        this._docs = doc; // reference to Docs module
         this._name = name;
 
         this._pageSize = this.DOC_PAGE_SIZE_DEFAULT; // default page size
@@ -101,7 +101,7 @@ export class Document
     createPage(name:string):Page
     {
         if(this.pageExists(name)){ throw new Error(`Document::page: Page name "${name}" is already taken. Please use unique names!`)}
-        const newPage = new Page(this._doc, this, name);
+        const newPage = new Page(this._docs, this, name);
         this._pages.push(newPage);
         this._activePage = newPage; // set active page if not set
         console.info(`Document::createPage(): Created new page "${name}" in document "${this._name}" [#${this._pages.length}] with default settings [${this._units} - ${this._pageSize} - ${this._pageOrientation}]`);
@@ -288,8 +288,8 @@ export class Document
     table(nameOrData:ContainerTableInput, options?:TableOptions):this
     {
         if(!isContainerTableInput){ throw new Error(`Document::table: Please enter a name of existing Calc Table or data rows in format [{ rows: [[x1,y1,z1],[x2,y2,z2]] columns: ['field1', 'field2', 'field3']}`); }
-        if(typeof nameOrData === 'string' && !this._doc._archiyou.calc){ throw new Error(`Document::table: Cannot get table data from Calc module. Calc is not initialized. Use calc.init()`); }
-        if(typeof nameOrData === 'string' && !this._doc._archiyou.calc.tables().includes(nameOrData as string)){ { throw new Error(`Document::table: Cannot get table data from Calc module. No such table: '${nameOrData}'. Available tables: ${this._doc._archiyou.calc.tables().join(',')}`); } }
+        if(typeof nameOrData === 'string' && !this._docs._archiyou.calc){ throw new Error(`Document::table: Cannot get table data from Calc module. Calc is not initialized. Use calc.init()`); }
+        if(typeof nameOrData === 'string' && !this._docs._archiyou.calc.tables().includes(nameOrData as string)){ { throw new Error(`Document::table: Cannot get table data from Calc module. No such table: '${nameOrData}'. Available tables: ${this._docs._archiyou.calc.tables().join(',')}`); } }
 
         // either get data from Calc or use raw data input
         // in form: [{ col1: v1, col2: v2 }, ...]
@@ -297,7 +297,7 @@ export class Document
         let footer = options?.footer; // raw-data callers may pass footer explicitly
         if(typeof nameOrData === 'string')
         {
-            const calcTable = this._doc._archiyou.calc.db.table(nameOrData as string);
+            const calcTable = this._docs._archiyou.calc.db.table(nameOrData as string);
             dataRows = calcTable.toDataRows();
             footer = calcTable.computeFooterRows(); // pull declared footers from the Calc table
         }
@@ -491,7 +491,8 @@ export class Document
     {
         if(typeof name !== 'string' || name.length === 0){ throw new Error(`Document::set(name, value): Please supply a variable name as string!`); }
         if(!value){ throw new Error(`Document::set(name, value): Please supply a variable value!`); }
-        if(!(name in Object.keys(this._variables))){ throw new Error(`Document::set(name, value): Variable "${name}" does not exist!`); }
+        if(!(name in this._variables)){ 
+            throw new Error(`Document::set(name, value): Variable "${name}" does not exist. Available are: ${Object.keys(this._variables).join(', ')}`); }
 
         this._variables[name].setContent(value);
 
@@ -574,11 +575,11 @@ export class Document
 
         // New consistent way to get params from request
         // Combine params with request.params for values
-        const params = (this._doc._archiyou as any)?.worker?._activeExecRequest?.script?.params as Record<string,ScriptParamData>;
+        const params = (this._docs._archiyou as any)?.worker?._activeExecRequest?.script?.params as Record<string,ScriptParamData>;
 
         if (!params || Object.keys(params).length === 0){ return 'no parameters' }
 
-        const paramValues = (this._doc._archiyou as any)?.worker?._activeExecRequest?.params;
+        const paramValues = (this._docs._archiyou as any)?.worker?._activeExecRequest?.params;
 
         const paramsWithValues = (Object.values(params) as Array<ScriptParam>)
                                 .map((p) => { return { ...p, value: paramValues[p.name] }})
@@ -607,7 +608,7 @@ export class Document
         const METRIC_IS_VALUE_CHAR = ':'
         const METRIC_SEPERATOR_CHAR = ' '
 
-        const metrics = Object.values((this._doc._archiyou as any)?.calc?.metrics()); // TODO: publishScript too?
+        const metrics = Object.values((this._docs._archiyou as any)?.calc?.metrics()); // TODO: publishScript too?
         if (!metrics)
         {
             return 'no metrics'
@@ -655,8 +656,8 @@ export class Document
      */
     _getVersion():string
     {
-        const version = (this._doc._archiyou as any)?.worker?.lastExecutionRequest?.script?.published_as?.version // editor app
-            || (this._doc._archiyou as any)?.worker?.lastExecutionRequest?.version // compute worker context:  OcciCadScriptRequest
+        const version = (this._docs._archiyou as any)?.worker?.lastExecutionRequest?.script?.published_as?.version // editor app
+            || (this._docs._archiyou as any)?.worker?.lastExecutionRequest?.version // compute worker context:  OcciCadScriptRequest
             || '0'
 
         return `v${version}`
@@ -665,7 +666,7 @@ export class Document
     /** Get version string like 'v1.0 at 10-20-2025 */
     _getVersionSummary():string
     {
-        return `${this._getVersion()} at ${(this._doc._archiyou as any)?.worker?.lastExecutionRequest?.createdAtString || new Date().toLocaleString('nl-NL') }`;
+        return `${this._getVersion()} at ${(this._docs._archiyou as any)?.worker?.lastExecutionRequest?.createdAtString || new Date().toLocaleString('nl-NL') }`;
     }
 
     _splitStringRecurse(strings:Array<string>, splitChars:Array<string>):Array<string>
@@ -1282,6 +1283,55 @@ export class Document
         ].filter(l => l !== '').join('\n');
     }
 
+    /** Export each page of this Document as its own standalone SVG string.
+     *  This is the intermediate step for PDF export: one PDF page per DocSVGPage.
+     *  Unlike toSVG() (which stacks all pages into one combined SVG for on-screen
+     *  display), each entry here is a self-contained <svg> sized to that page. */
+    async toSVGPages(cache?: Record<string, any>): Promise<Array<DocSVGPage>>
+    {
+        const fmt = (n: number) => +n.toFixed(4);
+
+        // Clip-path IDs only need to be unique within each standalone page SVG,
+        // but we keep a single counter to avoid any cross-page collisions.
+        let clipCounter = 0;
+        const nextClipId = () => `clip${++clipCounter}`;
+
+        const pages: Array<DocSVGPage> = [];
+
+        for (const page of this._pages)
+        {
+            const widthMm  = convertValueFromToUnit(page._width,  page._units, 'mm');
+            const heightMm = convertValueFromToUnit(page._height, page._units, 'mm');
+
+            // Render the page layer standalone: no vertical offset, no page shadow.
+            // The returned layer already embeds its own <defs> (clip-paths).
+            const { layer } = await page.toSVG(0, nextClipId, cache, false);
+
+            const svg = [
+                `<?xml version="1.0" encoding="UTF-8"?>`,
+                `<svg`,
+                `  xmlns="http://www.w3.org/2000/svg"`,
+                `  xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"`,
+                `  width="${fmt(widthMm)}mm"`,
+                `  height="${fmt(heightMm)}mm"`,
+                `  viewBox="0 0 ${fmt(widthMm)} ${fmt(heightMm)}"`,
+                `  version="1.1">`,
+                layer,
+                `</svg>`,
+            ].join('\n');
+
+            pages.push({
+                name: page.name,
+                widthMm,
+                heightMm,
+                orientation: page._orientation,
+                svg,
+            });
+        }
+
+        return pages;
+    }
+
     //// EXPORT DATA ////
 
     async toData(cache:Record<string, any>|undefined):Promise<DocData>
@@ -1305,9 +1355,13 @@ export class Document
             units: this._units,
             pages: docPagesData,
             // set model units to calculate scale later
-            modelUnits: this._doc._archiyou?.modeler?.units()
+            modelUnits: this._docs._archiyou?.modeler?.units()
         }
+    }
 
+    toString():string
+    {
+        return `<Document "${this._name}" with ${this._pages.length} page(s)>`;
     }
 
     //// COMPONENTS ////
@@ -1315,7 +1369,7 @@ export class Document
     /** Remove all references that tie this Document instance to the execution scope */
     resolveScopeReferences():this
     {
-        this._doc.executePipelines(); // make sure pipelines are executed before moving around
+        this._docs.executePipelines(); // make sure pipelines are executed before moving around
         this._pages.forEach( p =>
         {
             p?.resolveScopeReferences();

@@ -22,7 +22,7 @@
  *  - tables
  *      - formats: json, xlsx (...)
  *  - docs
- *      - formats: pdf (...)
+ *      - formats: json, pdf, svg, svg-pages (per-page standalone SVGs for client-side PDF) (...)
  * 
  *  For requesting a specific output we use output paths (a bit like urls): 
  * 

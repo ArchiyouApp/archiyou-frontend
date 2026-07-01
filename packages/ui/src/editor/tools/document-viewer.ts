@@ -12,7 +12,11 @@ import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import { executionResult } from '@archiyou/editor/src/state/workspace';
 
+import { PDFExporter } from '@archiyou/core/src/docs/PDFExporter';
+import type { DocSVGPage } from '@archiyou/core/src/docs/types';
+
 type SvgMap = Record<string, string>;
+type SvgPagesMap = Record<string, Array<DocSVGPage>>;
 
 @customElement('editor-document-tool')
 export class EditorDocumentTool extends SignalWatcher(LitElement)
@@ -55,6 +59,17 @@ export class EditorDocumentTool extends SignalWatcher(LitElement)
           ? html`<span class="doc-size">${this._docSize}</span>`
           : ''}
         <span class="spacer"></span>
+        <wa-button
+          class="pdf-btn"
+          size="small"
+          appearance="plain"
+          ?loading=${this._exportingPdf}
+          ?disabled=${this._exportingPdf}
+          @click=${() => this._handleSavePDF(selected)}
+          title="Save as PDF"
+        >
+          <wa-icon library="lucide" name="file-down" label="Save as PDF"></wa-icon>
+        </wa-button>
         <wa-button class="reset-btn" size="small" appearance="plain" @click=${this._resetView} title="Reset view">
           <wa-icon library="lucide" name="crosshair" label="Reset view"></wa-icon>
         </wa-button>
@@ -68,6 +83,7 @@ export class EditorDocumentTool extends SignalWatcher(LitElement)
   // ── 2. State ──
   @state() private _selectedDoc: string | null = null;
   @state() private _docSize: string | null = null;
+  @state() private _exportingPdf = false;
   @query('.svg-wrapper') private _svgWrapper!: HTMLElement;
   @query('.doc-select') private _select!: HTMLElement & { value: string };
 
@@ -143,6 +159,63 @@ export class EditorDocumentTool extends SignalWatcher(LitElement)
         map[name] = o.output as string;
         return map;
       }, {});
+  }
+
+  /** Per-page standalone SVGs by doc name (the 'svg-pages' doc output), used to
+   *  build a paginated PDF on the main thread where a DOM is available. */
+  private _buildSvgPagesMap(): SvgPagesMap
+  {
+    const outputs = executionResult.get()?.outputs ?? [];
+    return outputs
+      .filter(o => o.path.category === 'docs' && o.path.format === 'svg-pages' && Array.isArray(o.output))
+      .reduce<SvgPagesMap>((map, o) =>
+      {
+        const name = o.path.entityName ?? 'document';
+        map[name] = o.output as Array<DocSVGPage>;
+        return map;
+      }, {});
+  }
+
+  /** Render the selected document's pages to a PDF and download it. PDF rendering
+   *  (svg2pdf) needs a DOM, so it runs here on the main thread — never in the worker. */
+  private async _handleSavePDF(docName: string)
+  {
+    if (this._exportingPdf) return;
+
+    const pages = this._buildSvgPagesMap()[docName];
+    if (!pages || pages.length === 0)
+    {
+      console.warn(`document-viewer: No per-page SVGs available for "${docName}"; cannot export PDF.`);
+      return;
+    }
+
+    this._exportingPdf = true;
+    try
+    {
+      const buffers = await new PDFExporter().export({ [docName]: pages });
+      const buffer = buffers?.[docName];
+      if (!buffer)
+      {
+        console.error(`document-viewer: PDF export produced no buffer for "${docName}".`);
+        return;
+      }
+
+      const blob = new Blob([buffer], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${docName}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    }
+    catch (err)
+    {
+      console.error('document-viewer: PDF export failed', err);
+    }
+    finally
+    {
+      this._exportingPdf = false;
+    }
   }
 
   /** Read the document size (mm) from the SVG viewBox or width/height attributes */
@@ -312,6 +385,7 @@ export class EditorDocumentTool extends SignalWatcher(LitElement)
 
     .spacer { flex: 1; }
     .reset-btn { flex-shrink: 0; }
+    .pdf-btn { flex-shrink: 0; }
 
     /* ─── SVG stage (gray viewport) ─── */
     .svg-stage

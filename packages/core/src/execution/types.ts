@@ -15,7 +15,7 @@ export type ScriptOutputFormatInternal = 'internal'; // basics
 export type ScriptOutputFormatModel = 'buffer'|'gltf'|'glb'|'step'|'stl'|'svg'|'dae'|'obj'|'dxf'; // TODO:brep,dxf
 export type ScriptOutputFormatMetric = 'json'|'xlsx';
 export type ScriptOutputFormatTable = 'json'|'xlsx'|'gsheets';
-export type ScriptOutputFormatDoc = 'json'|'pdf'|'svg';
+export type ScriptOutputFormatDoc = 'json'|'pdf'|'svg'|'svg-pages';
 export type ScriptOutputFormat = ScriptOutputFormatInternal|ScriptOutputFormatModel
                                 |ScriptOutputFormatMetric|ScriptOutputFormatTable|
                                 ScriptOutputFormatDoc
@@ -72,7 +72,7 @@ export interface ScriptOutputPathData
 export interface ScriptOutputData
 {
     path:ScriptOutputPathData
-    output: string|ArrayBuffer|Record<string,any>|ScriptOutputDataWrapper // raw data or wrapped data with metadata
+    output: string|ArrayBuffer|Record<string,any>|Array<any>|ScriptOutputDataWrapper // raw data or wrapped data with metadata
     footer?: Array<ComputedFooterRow> // optional computed table footer rows (aggregations), kept separate from output rows
 }
 

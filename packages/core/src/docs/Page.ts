@@ -28,9 +28,9 @@ export class Page
     //// END SETTINGS ////
 
     name:string;
-    _doc:Docs; // main Docs module
-    _DocDocument:Document; // doc instance to which this page belongs
-    _units:DocUnits; // taken from _doc module and _DocDocument
+    _docs:Docs; // main Docs module
+    _doc:Document; // doc instance to which this page belongs
+    _units:DocUnits; // taken from _docs module and _doc
     _size:PageSize; // ISO page size (A0-A7)
     _width:number; // in doc units (mm,cm,inch)
     _height:number;
@@ -42,8 +42,8 @@ export class Page
     constructor(doc:Docs, DocDocumentName:Document, name:string)
     {
         this.name = name;
-        this._doc = doc;
-        this._DocDocument = DocDocumentName;
+        this._docs = doc;
+        this._doc = DocDocumentName;
         this.setDefaultsFromDoc();
         this.setDefaults();
     }
@@ -52,9 +52,9 @@ export class Page
     setDefaultsFromDoc()
     {
         /** Set defaults from Document */
-        this._units = this._DocDocument._units || this._doc.DOC_UNITS_DEFAULT;
-        this._orientation = this._DocDocument._pageOrientation || this._doc.PAGE_ORIENTATION_DEFAULT;
-        this.size(this._DocDocument._pageSize || this._doc.PAGE_SIZE_DEFAULT);
+        this._units = this._doc._units || this._docs.DOC_UNITS_DEFAULT;
+        this._orientation = this._doc._pageOrientation || this._docs.PAGE_ORIENTATION_DEFAULT;
+        this.size(this._doc._pageSize || this._docs.PAGE_SIZE_DEFAULT);
     }
 
     setDefaults()
@@ -121,8 +121,8 @@ export class Page
     padding(w:WidthHeightInput, h?:WidthHeightInput):Page
     {
         // only resolved size needed, padding is always relative to page
-        const paddingX = this._DocDocument._resolveWidthHeightInput(w, this, 'width')[0];
-        const paddingY = this._DocDocument._resolveWidthHeightInput((h || w), this, 'height')[0];
+        const paddingX = this._doc._resolveWidthHeightInput(w, this, 'width')[0];
+        const paddingY = this._doc._resolveWidthHeightInput((h || w), this, 'height')[0];
 
         if( (paddingX > 0.5 || paddingX < 0) || (paddingY > 0.5 || paddingY < 0))
         {
@@ -152,7 +152,7 @@ export class Page
     /** Transform numeric value with units to relative position to page width or height */
     _resolveValueWithUnitsStringToRel(s:ValueWithUnitsString, side:PageSide):number
     {
-        return this?._DocDocument._resolveValueWithUnitsStringToRel(s,this,side);
+        return this?._doc._resolveValueWithUnitsStringToRel(s,this,side);
     }
 
 
@@ -185,7 +185,7 @@ export class Page
         const wMm       = fmt(pageWidthMm);
         const hMm       = fmt(pageHeightMm);
         const transform = yOffset > 0 ? ` transform="translate(0,${fmt(yOffset)})"` : '';
-        const pageIndex = this._DocDocument._pages.indexOf(this);
+        const pageIndex = this._doc._pages.indexOf(this);
 
         const layer = [
             `  <g id="layer${pageIndex + 1}"`,

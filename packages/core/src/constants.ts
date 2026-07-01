@@ -27,7 +27,7 @@ export const SCRIPT_OUTPUT_MODEL_FORMATS = ['gltf','glb','step','stl','svg', 'da
 export const SCRIPT_OUTPUT_METRIC_FORMATS = ['json','xlsx'] // see types: ScriptOutputMetricFormat
 export const METRIC_DEFAULT_ICON = 'gauge' // default icon for metrics without an explicit icon set (Lucide icon name)
 export const SCRIPT_OUTPUT_TABLE_FORMATS = ['json','xlsx', 'gsheets'] // see types: ScriptOutputTableFormat
-export const SCRIPT_OUTPUT_DOC_FORMATS = ['json','pdf','svg'] // see types: ScriptOutputDocFormat
+export const SCRIPT_OUTPUT_DOC_FORMATS = ['json','pdf','svg','svg-pages'] // see types: ScriptOutputDocFormat
 
 export const SCRIPT_OUTPUT_GLTF_OPTIONS_DEFAULT = 
 {

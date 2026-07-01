@@ -57,7 +57,7 @@ export class View extends Container
             throw new Error(`View::resolveShapeNameToSVG(): Given shapes reference is not a string (got ${typeof shapesRef}). Pass either a ShapeCollection or the name (string) of a variable returned from the pipeline.`)
         }
 
-        const archiyou = this._page?._doc?._archiyou as any;
+        const archiyou = this._page?._docs?._archiyou as any;
         if(!archiyou)
         {
             console.warn(`View::resolveShapeNameToSVG(): No archiyou modules wired into Doc — cannot resolve shapes reference "${shapesRef}". Was the Doc constructed via the Runner?`);

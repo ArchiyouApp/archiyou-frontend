@@ -82,7 +82,7 @@ export class Image extends Container
         }
         else {
             // async load the image through a proxy (to avoid CORS issues in browser)
-            const proxyUrl = this._page._doc?._settings?.proxy;
+            const proxyUrl = this._page._docs?._settings?.proxy;
             if(!proxyUrl)
             {
                 console.warn(`DocPageContainerImage::loadImageData(): No proxy given. Please supply settings with proxy url in Doc()! Querying the images directly. This might not work in the browser!`);

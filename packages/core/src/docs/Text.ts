@@ -35,6 +35,14 @@ export class Text extends Container
         this._position = this.DEFAULT_TEXT_POSITION;
     }
 
+    /** Set content of this Text Container */
+    setContent(v:any):this
+    {
+        console.info(`Text::setContent(): Setting content of container "${this.name}" from "${this._content}" to: ${v}`);
+        this._text = v;
+        return this;
+    }
+
     /** Set options after added to page (overriden from parent class) */
     _onPlaced(options?:TextOptions)
     {

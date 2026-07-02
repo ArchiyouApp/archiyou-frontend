@@ -2,10 +2,8 @@
  * shape-picker — main script (script mode)
  *
  * Declares the plugin's input schema via $PARAMS and generates a primitive
- * shape from it. This IS the "menu that runs a script": the SHAPE param is an
- * `options` type, so even the default archiyou param menu renders it as a
- * dropdown today. The custom `ui/param-menu.html` is the plugin's own version
- * of that dropdown, driven over the `archiyou` bridge (needs the plugin loader).
+ * shape from it. Plain ESM so it can be loaded at runtime by URL (fetch +
+ * dynamic import) with no build step — see the plugin loader.
  *
  * The `code` string is the archiyou script language (same shape as the fixtures
  * in packages/core/tests/cadscripts/scripts). `box`/`sphere`/`cylinder` are

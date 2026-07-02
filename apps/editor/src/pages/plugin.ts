@@ -18,7 +18,7 @@ import '../plugins/plugin-part-frame';
 
 import type { ScriptParamData } from '@archiyou/core/src/execution/types';
 import { PluginManager } from '../plugins/PluginManager';
-import { loadShapePicker } from '../plugins/example-plugins';
+import { loadShapePicker } from '../plugins/plugin-loader';
 
 @customElement('page-plugin')
 export class PagePlugin extends LitElement
@@ -48,7 +48,7 @@ export class PagePlugin extends LitElement
     super.connectedCallback();
     try
     {
-      const plugin = loadShapePicker();
+      const plugin = await loadShapePicker();
       const schema = await this.manager.activate(plugin);
       this._partHtml = this.manager.paramMenuHtml();
       this._schema = schema;

@@ -10,10 +10,12 @@ generate it. It is implementation slice 1 of the plugin architecture in
 ```
 shape-picker/
   manifest.json          # id, engine ^1, mode "script", mainScript, paramMenu
-  scripts/main.ts        # declares $PARAMS (SHAPE options + SIZE number) → the input schema
+  scripts/main.js        # declares $PARAMS (SHAPE options + SIZE number) → the input schema
   ui/param-menu.html     # the custom dropdown, driven over the `archiyou` bridge
   README.md
 ```
+
+`main.js` is plain ESM (no build step) so it can be loaded at runtime by URL.
 
 - **`scripts/main.ts`** is the geometry logic. Its `$PARAMS` **is** the input schema; the
   `SHAPE` param is an `options` type, and the code branches to `box()` / `sphere()` /
@@ -23,18 +25,19 @@ shape-picker/
   `archiyou.submit({ SHAPE, SIZE })` on change. archiyou validates the values against the
   schema and executes.
 
-## What runs today vs. what needs the loader
+## How it runs
 
-- **Runs today (no new infra):** paste the string in `scripts/main.ts`'s `code` into the
-  editor codebox. Because `SHAPE` is an `options` param, the **existing** archiyou param menu
-  already renders it as a dropdown; changing it re-runs the script and the viewer shows the
-  cube / sphere / cylinder. This proves the "menu that runs a script" end to end on the
-  current engine.
-- **Needs the plugin loader (roadmap steps 3–5):** mounting `ui/param-menu.html` as the
-  plugin's *own* menu requires the `PluginManager` + `archiyou` bridge (the sandboxed
-  `srcdoc` iframe + `postMessage`). Until then, `param-menu.html` opened standalone renders
-  against a small built-in stub bridge (interactions log to the console) so it stays
-  reviewable and testable in isolation.
+- **In the editor at `/plugin`:** the `PluginManager` loads this folder at runtime over HTTP
+  (`fetch(manifest.json)` + dynamic `import(main.js)` + `fetch(param-menu.html)`), runs the
+  main script in the shared worker, mounts `ui/param-menu.html` as a sandboxed `srcdoc` iframe
+  driven by the `archiyou` bridge, and shows the result in the host `<model-viewer>`. Changing
+  the dropdown → `archiyou.submit(values)` → re-run → viewer. In dev, the repo-root `plugins/`
+  dir is served at `/plugins/*` by a Vite middleware (see `apps/editor/vite.config.ts`).
+- **Standalone review:** `param-menu.html` opened on its own renders against a small built-in
+  stub bridge (interactions log to the console) so it stays reviewable in isolation.
+- **Headless:** the main script is covered by
+  `packages/core/tests/unit/runner/shape-picker.plugin.test.ts`, which asserts cube / sphere /
+  cylinder produce distinct geometry.
 
 ## Notes
 

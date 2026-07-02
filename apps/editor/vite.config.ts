@@ -1,4 +1,40 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+
+const PLUGIN_MIME: Record<string, string> = {
+  '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json',
+  '.html': 'text/html', '.css': 'text/css', '.svg': 'image/svg+xml', '.wasm': 'application/wasm',
+};
+
+/**
+ * Dev-only: serve the repo-root `plugins/` directory at /plugins/* so plugins
+ * can be loaded at runtime by URL (fetch + dynamic import) instead of being
+ * bundled. Mirrors how a published plugin would be served from a static host.
+ */
+function servePluginsDir(): Plugin {
+  const root = path.resolve(process.cwd(), '../../plugins');
+  return {
+    name: 'serve-plugins-dir',
+    configureServer(server) {
+      // Registered here (not via a returned fn) so it runs before Vite's
+      // internal middlewares and can claim the /plugins/* prefix.
+      server.middlewares.use('/plugins', async (req, res, next) => {
+        try {
+          const rel = decodeURIComponent((req.url ?? '/').split('?')[0]);
+          const file = path.join(root, rel);
+          if (!file.startsWith(root)) { res.statusCode = 403; return res.end('Forbidden'); }
+          const body = await readFile(file);
+          res.setHeader('Content-Type', PLUGIN_MIME[path.extname(file)] ?? 'application/octet-stream');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.end(body);
+        } catch {
+          next();
+        }
+      });
+    },
+  };
+}
 
 export default defineConfig(() => {
   // APP env var selects a single app for dev/build:
@@ -15,6 +51,8 @@ export default defineConfig(() => {
   const inputs = app ? { [app]: allInputs[app] } : allInputs;
 
   return {
+    plugins: [servePluginsDir()],
+
     // WASM files served as assets; consumers use `?url` imports
     assetsInclude: ['**/*.wasm'],
 

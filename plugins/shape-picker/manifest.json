@@ -7,6 +7,6 @@
   "license": "MIT",
   "engine": "^1",
   "mode": "script",
-  "mainScript": "scripts/main.ts",
+  "mainScript": "scripts/main.js",
   "paramMenu": "ui/param-menu.html"
 }

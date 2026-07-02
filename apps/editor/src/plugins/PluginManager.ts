@@ -48,7 +48,7 @@ export class PluginManager
 
     const result = await this.run({});
     const defs = result?.state?.managedParams?.new ?? [];
-    for (const p of defs) this.paramDefs[p.name] = p;
+    for (const p of defs) { if (p.name) this.paramDefs[p.name] = p; }
     return defs;
   }
 

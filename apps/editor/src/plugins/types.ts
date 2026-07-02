@@ -44,6 +44,8 @@ export interface LoadedPlugin
   manifest: PluginManifest;
   /** archiyou script code from `manifest.mainScript`. */
   mainCode: string;
+  /** `$component` scripts from `manifest.scripts`, keyed by file stem → code. */
+  scripts: Record<string, string>;
   /** manifest-relative path → HTML source (e.g. the param menu, tools). */
   parts: Record<string, string>;
 }

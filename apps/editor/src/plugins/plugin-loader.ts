@@ -20,6 +20,12 @@ function partPaths(manifest: PluginManifest): string[]
   return [manifest.paramMenu, ...(manifest.tools ?? []).map(t => t.ui)].filter(Boolean) as string[];
 }
 
+/** `$component` script name for a manifest path (its file stem: scripts/bracket.ts → bracket). */
+export function scriptStem(path: string): string
+{
+  return path.split('/').pop()!.replace(/\.[^.]+$/, '');
+}
+
 /** Import an ESM `export default { code }` module from source text, return its code. */
 async function importDefaultCode(source: string, id: string): Promise<string>
 {
@@ -50,10 +56,17 @@ export async function loadPluginFromUrl(baseUrl: string): Promise<LoadedPlugin>
   const mainCode = mainMod?.default?.code;
   if (typeof mainCode !== 'string') throw new Error(`Plugin "${manifest.id}": mainScript has no code`);
 
+  const scripts: Record<string, string> = {};
+  for (const p of manifest.scripts ?? [])
+  {
+    const mod = await import(/* @vite-ignore */ `${base}/${p}`);
+    if (typeof mod?.default?.code === 'string') scripts[scriptStem(p)] = mod.default.code;
+  }
+
   const parts: Record<string, string> = {};
   for (const p of partPaths(manifest)) parts[p] = await fetchText(`${base}/${p}`);
 
-  return { manifest, mainCode, parts };
+  return { manifest, mainCode, scripts, parts };
 }
 
 /** The bundled example plugin, loaded over HTTP like any other. */
@@ -72,10 +85,16 @@ export async function loadPluginFromDirectory(dir: FileSystemDirectoryHandle): P
 
   const mainCode = await importDefaultCode(await readFileText(dir, manifest.mainScript), manifest.id);
 
+  const scripts: Record<string, string> = {};
+  for (const p of manifest.scripts ?? [])
+  {
+    scripts[scriptStem(p)] = await importDefaultCode(await readFileText(dir, p), scriptStem(p));
+  }
+
   const parts: Record<string, string> = {};
   for (const p of partPaths(manifest)) parts[p] = await readFileText(dir, p);
 
-  return { manifest, mainCode, parts };
+  return { manifest, mainCode, scripts, parts };
 }
 
 /** True when the browser supports the "Open plugin folder" flow. */

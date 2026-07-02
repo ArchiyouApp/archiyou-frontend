@@ -19,6 +19,15 @@ import { executionResult } from '../state/core';
 import { scenegraph, reconcileScenegraph, setInteractiveShapes } from '../state/editor';
 
 import type { LoadedPlugin, PluginManifest } from './types';
+import { scriptStem } from './plugin-loader';
+
+/** An editable script in the plugin working set (main or a $component). */
+export interface PluginScriptEntry
+{
+  name: string;   // file stem; used for $component resolution
+  code: string;
+  isMain: boolean;
+}
 
 /** A generated output, unwrapped to plain data for a tool to consume/download. */
 export interface GeneratedOutput
@@ -38,7 +47,8 @@ export interface PluginResultSummary
 export class PluginManager
 {
   private plugin: LoadedPlugin | null = null;
-  private script: Script | null = null;
+  /** Editable working set: the main script + any $component scripts. */
+  private workingSet: PluginScriptEntry[] = [];
   /**
    * Param definitions captured from the first run's managedParams. They must be
    * sent back on every run (as `script.params`) so the Runner sets up the
@@ -61,6 +71,18 @@ export class PluginManager
     return this.plugin?.parts[path] ?? null;
   }
 
+  /** The editable working set (main + $component scripts), for the plugin-mode codebox. */
+  scripts(): PluginScriptEntry[] { return this.workingSet; }
+  scriptCode(name: string): string | undefined { return this.workingSet.find(s => s.name === name)?.code; }
+  mainScriptName(): string | undefined { return this.workingSet.find(s => s.isMain)?.name; }
+
+  /** Update a working-set script's code (from the codebox). Caller re-runs. */
+  setScriptCode(name: string, code: string): void
+  {
+    const entry = this.workingSet.find(s => s.name === name);
+    if (entry) entry.code = code;
+  }
+
   /**
    * Load + first run. Returns the input schema (the main script's $PARAMS,
    * as ScriptParamData[]) for the param menu to render.
@@ -69,9 +91,11 @@ export class PluginManager
   {
     this.plugin = plugin;
 
-    const script = Script.fromData({ name: plugin.manifest.id, code: plugin.mainCode });
-    if (!script) throw new Error(`PluginManager: invalid main script for "${plugin.manifest.id}"`);
-    this.script = script;
+    const mainName = scriptStem(plugin.manifest.mainScript ?? 'main');
+    this.workingSet = [
+      { name: mainName, code: plugin.mainCode, isMain: true },
+      ...Object.entries(plugin.scripts ?? {}).map(([name, code]) => ({ name, code, isMain: false })),
+    ];
 
     const result = await this.run({});
     const defs = result?.state?.managedParams?.new ?? [];
@@ -110,13 +134,21 @@ export class PluginManager
 
   private _execute(params: Record<string, any>, outputs: string[]): Promise<RunnerScriptExecutionResult | undefined>
   {
-    if (!this.script) throw new Error('PluginManager: no active plugin');
+    const main = this.workingSet.find(s => s.isMain);
+    if (!main) throw new Error('PluginManager: no active plugin');
 
-    const script = this.script.toData();
+    const script = Script.fromData({ name: main.name, code: main.code })?.toData();
+    if (!script) throw new Error(`PluginManager: invalid main script "${main.name}"`);
     script.params = { ...(script.params ?? {}), ...this.paramDefs };
 
+    // $component scripts, linked in the worker (linkComponentScripts) by name.
+    const componentScripts = this.workingSet
+      .filter(s => !s.isMain)
+      .map(s => Script.fromData({ name: s.name, code: s.code })?.toData())
+      .filter((d): d is NonNullable<typeof d> => Boolean(d));
+
     const request: RunnerScriptExecutionRequest = {
-      kernel: 'mesh', script, params, outputs, messages: ['error'],
+      kernel: 'mesh', script, params, outputs, messages: ['error'], componentScripts,
     };
     return runScript(request);
   }

@@ -1,9 +1,13 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
-import { Router, type RouterLocation } from '@vaadin/router';
+import { type RouterLocation } from '@vaadin/router';
 
-import { setPendingPluginDir } from '../plugins/plugin-session';
+import { pluginMode, enterPluginMode, exitPluginMode, type PluginModeState } from '../state/plugin-mode';
+import { PluginManager, type PluginResultSummary, type GeneratedOutput } from '../plugins/PluginManager';
+import { loadPluginFromDirectory, loadShapePicker } from '../plugins/plugin-loader';
+import type { LoadedPlugin } from '../plugins/types';
+import '../plugins/plugin-part-frame';
 
 import { createExecutionFailureResult, runScript, warmupWorker } from '../services/execution-service';
 
@@ -27,7 +31,7 @@ import type { ToolDef } from '@archiyou/ui/editor/toolbar.js';
 import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, deleteScriptById, importScriptFromData, selectedPath } from '../state/workspace';
 import { registerScheduleExecution, triggerResetCamera } from '../state/viewer';
 import { RunnerScriptExecutionRequest } from '@archiyou/core/src/runner/types';
-import type { ScriptData } from '@archiyou/core/src/execution/types';
+import type { ScriptData, ScriptParamData } from '@archiyou/core/src/execution/types';
 
 @customElement('page-editor')
 export class PageEditor extends SignalWatcher(LitElement)
@@ -48,6 +52,7 @@ export class PageEditor extends SignalWatcher(LitElement)
 
   override render()
   {
+    const pm = pluginMode.get();
     return html`
       <editor-main-menu
         .active=${this._activeSection}
@@ -60,6 +65,7 @@ export class PageEditor extends SignalWatcher(LitElement)
         >
         <wa-icon class="split-grip"
             slot="divider" variant="solid" name="grip-lines-vertical"></wa-icon>
+        ${pm ? this._renderPluginLeftPanel(pm) : html`
         <div class="left-panel" slot="start">
           <editor-file-manager></editor-file-manager>
           <presets-menu></presets-menu>
@@ -69,7 +75,7 @@ export class PageEditor extends SignalWatcher(LitElement)
             @change=${this._handleCodeChange}
             @execute=${this._handleExecute}
           ></editor-code-box>
-        </div>
+        </div>`}
         <wa-split-panel
           slot="end"
           class="viewer-tools-split"
@@ -110,6 +116,13 @@ export class PageEditor extends SignalWatcher(LitElement)
   @state() private _activeTools: ToolDef[] = [];
   @state() private _showScriptManager = false;
   @state() private _showScriptImporter = false;
+
+  // Plugin mode (isolated session; personal scripts untouched)
+  @state() private _pluginSchema: ScriptParamData[] | null = null;
+  @state() private _pluginActiveScriptName: string | null = null;
+  @state() private _pluginResult: PluginResultSummary | null = null;
+  private _pluginValues: Record<string, any> = {};
+  private _pluginRunTimeout: number | null = null;
 
 
 
@@ -356,7 +369,8 @@ export class PageEditor extends SignalWatcher(LitElement)
 
     if (value === 'plugin-start')
     {
-      // Placeholder — starting/running a selected plugin lands here later.
+      // Enter plugin mode with the bundled example plugin.
+      void this._enterPluginMode(() => loadShapePicker());
       return;
     }
 
@@ -373,7 +387,7 @@ export class PageEditor extends SignalWatcher(LitElement)
     }));
   }
 
-  /** Plugins ▸ Add plugin — pick a plugin folder from disk and open it in the plugin view. */
+  /** Plugins ▸ Add plugin — pick a plugin folder from disk and enter plugin mode in the editor. */
   private async _addPluginFromFolder()
   {
     const picker = (window as any).showDirectoryPicker as undefined | (() => Promise<FileSystemDirectoryHandle>);
@@ -385,14 +399,118 @@ export class PageEditor extends SignalWatcher(LitElement)
     try
     {
       const dir = await picker();
-      setPendingPluginDir(dir);
-      Router.go('/plugin');
+      await this._enterPluginMode(() => loadPluginFromDirectory(dir), dir);
     }
     catch (err)
     {
-      if ((err as Error)?.name !== 'AbortError') console.error('Add plugin failed:', err);
+      if ((err as Error)?.name !== 'AbortError')
+      {
+        console.error('Add plugin failed:', err);
+        window.alert(`Could not load plugin: ${(err as Error)?.message ?? err}`);
+      }
     }
   }
+
+  // ── Plugin mode (isolated session) ──
+
+  /** Load a plugin and enter plugin mode (isolated; personal scripts untouched). */
+  private async _enterPluginMode(
+    loader: () => Promise<LoadedPlugin>,
+    dirHandle: FileSystemDirectoryHandle | null = null,
+  ): Promise<void>
+  {
+    const plugin = await loader();
+    const manager = new PluginManager();
+    this._pluginSchema = await manager.activate(plugin);
+    this._pluginValues = {};
+    this._pluginResult = manager.summary;
+    this._pluginActiveScriptName = manager.mainScriptName() ?? null;
+    enterPluginMode({ plugin, dirHandle, manager });
+  }
+
+  private _renderPluginLeftPanel(pm: PluginModeState)
+  {
+    const manager = pm.manager;
+    const list = manager.scripts();
+    const active = this._pluginActiveScriptName ?? manager.mainScriptName() ?? '';
+    const paramMenuHtml = manager.paramMenuHtml();
+    return html`
+      <div class="left-panel plugin" slot="start">
+        <div class="plugin-banner">
+          <span class="plugin-badge">PLUGIN</span>
+          <span class="plugin-name">${pm.plugin.manifest.name}</span>
+          <button class="plugin-exit" @click=${this._exitPluginMode}>Exit</button>
+        </div>
+        ${list.length > 1 ? html`
+          <select class="plugin-script-select" @change=${this._onPluginScriptSelect}>
+            ${list.map(s => html`<option value=${s.name} ?selected=${s.name === active}>${s.name}${s.isMain ? ' (main)' : ''}</option>`)}
+          </select>` : ''}
+        ${paramMenuHtml ? html`
+          <plugin-part-frame
+            class="plugin-param-frame"
+            .src=${paramMenuHtml}
+            .schema=${this._pluginSchema}
+            .result=${this._pluginResult}
+            .onGenerate=${this._pluginGenerate}
+            @plugin-submit=${this._handlePluginSubmit}
+          ></plugin-part-frame>` : ''}
+        <editor-code-box
+          .code=${manager.scriptCode(active) ?? ''}
+          @change=${this._handlePluginCodeChange}
+          @execute=${this._handlePluginExecute}
+        ></editor-code-box>
+      </div>`;
+  }
+
+  private _onPluginScriptSelect = (e: Event): void =>
+  {
+    this._pluginActiveScriptName = (e.target as HTMLSelectElement).value;
+  };
+
+  private _handlePluginCodeChange = (e: CustomEvent<string>): void =>
+  {
+    const pm = pluginMode.get();
+    if (!pm) return;
+    const name = this._pluginActiveScriptName ?? pm.manager.mainScriptName();
+    if (name) pm.manager.setScriptCode(name, e.detail);
+    if (this._pluginRunTimeout !== null) clearTimeout(this._pluginRunTimeout);
+    this._pluginRunTimeout = window.setTimeout(() => void this._runPlugin(), this.CONST_AUTORUN_DELAY);
+  };
+
+  private _handlePluginExecute = (): void =>
+  {
+    if (this._pluginRunTimeout !== null) clearTimeout(this._pluginRunTimeout);
+    void this._runPlugin();
+  };
+
+  private _handlePluginSubmit = (e: Event): void =>
+  {
+    this._pluginValues = (e as CustomEvent).detail as Record<string, any>;
+    void this._runPlugin();
+  };
+
+  private _pluginGenerate = (selectors: string[]): Promise<GeneratedOutput[]> =>
+    pluginMode.get()?.manager.generate(selectors) ?? Promise.resolve([]);
+
+  private async _runPlugin(): Promise<void>
+  {
+    const pm = pluginMode.get();
+    if (!pm) return;
+    await pm.manager.run(this._pluginValues ?? {});
+    this._pluginResult = pm.manager.summary;
+  }
+
+  private _exitPluginMode = (): void =>
+  {
+    if (this._pluginRunTimeout !== null) { clearTimeout(this._pluginRunTimeout); this._pluginRunTimeout = null; }
+    exitPluginMode();
+    this._pluginSchema = null;
+    this._pluginActiveScriptName = null;
+    this._pluginResult = null;
+    this._pluginValues = {};
+    // Restore the viewer to the user's own (untouched) script.
+    void this._handleExecute();
+  };
 
   private _handleScriptManagerOpen(e: CustomEvent<string>)
   {
@@ -560,6 +678,51 @@ export class PageEditor extends SignalWatcher(LitElement)
       flex: 1;
       min-height: 0;
     }
+
+    /* Plugin mode */
+    .plugin-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      background: var(--color-primary-subtle, color-mix(in srgb, var(--color-primary, #4f46e5) 12%, transparent));
+      border-bottom: 1px solid var(--color-border, #e5e7eb);
+      font-family: system-ui, sans-serif;
+    }
+    .plugin-badge {
+      background: var(--color-primary, #4f46e5);
+      color: #fff;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .plugin-name { font-weight: 600; font-size: 13px; }
+    .plugin-exit {
+      margin-left: auto;
+      font: inherit;
+      font-size: 12px;
+      padding: 3px 10px;
+      border: 1px solid var(--color-border, #d1d5db);
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+    }
+    .plugin-script-select {
+      margin: 8px 10px 0;
+      padding: 4px 6px;
+      font: inherit;
+      border: 1px solid var(--color-border, #d1d5db);
+      border-radius: 6px;
+    }
+    .plugin-param-frame {
+      display: block;
+      flex: 0 0 auto;
+      height: 240px;
+      border-bottom: 1px solid var(--color-border, #e5e7eb);
+    }
+    .left-panel.plugin editor-code-box { flex: 1; min-height: 0; }
 
     wa-split-panel::part(divider) {
       background-color: var(--color-divider);

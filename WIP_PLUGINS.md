@@ -422,6 +422,109 @@ gives public-facing products without adding shell-composition complexity to the 
 
 ---
 
+## Editor plugin mode, "App" preview & plugin publishing (refinement)
+
+Fleshes out roadmap steps 4 & 7. Today a plugin runs on a *separate* `/plugin` route
+(isolated from editor state). The goal: open a plugin **really in the editor** — all menus,
+the main script in the codebox, the plugin's own param menu + tools — clearly flagged; make
+the left-bar preview button show the **app**; and design how to publish a whole plugin
+directory (not just one script).
+
+Decisions: **isolated plugin session** · **scripts-only editing** · **design publishing now,
+build editor first**.
+
+### Part A — In-editor plugin mode (BUILD)
+
+Reuses the real editor shell (`apps/editor/src/pages/editor.ts`) but scopes it to the plugin.
+
+- **State** — new `apps/editor/src/state/plugin-mode.ts`: `pluginMode` signal
+  `{ plugin: LoadedPlugin; dirHandle? } | null`; `pluginScripts` (main + `$component` scripts as
+  `Script[]`, **isolated — never added to the `scripts` collection or localStorage**);
+  `pluginActiveScriptId` (which one is in the codebox, default main); `enterPluginMode()` /
+  `exitPluginMode()`. Because the personal `editorScript`/`scripts` signals are untouched,
+  exit just clears `pluginMode` and the user's work reappears.
+- **Entry** — Plugins ▸ Add plugin: `loadPluginFromDirectory` → `enterPluginMode(...)` and
+  **stay on `/editor`** (change today's `_addPluginFromFolder` which navigates to `/plugin`).
+- **Execution** — reuse `PluginManager`; extend it to hold the working set (main + components)
+  and pass the components as `componentScripts` (+ `linkComponentScripts`) on each run so
+  multi-script plugins resolve `$component`. Codebox edits update the active working-set script
+  and trigger `PluginManager.run(lastParams)`.
+- **Render branch** in `editor.ts` when `pluginMode` is set (the panels at `editor.ts:63-79`):
+  the left panel swaps `<param-menu>` → the plugin's `<plugin-part-frame .src=paramMenuHtml>`
+  (submit → `PluginManager.run`), the codebox binds to the active plugin script's code (with a
+  small plugin-script switcher), plugin `tools[]` mount (reuse `page-plugin`'s toggle+panel),
+  and `<model-viewer>` stays (PluginManager writes its signals). A **banner** flags
+  `Plugin: <name>` with an **Exit** button.
+- **Scripts-only editing** — the codebox edits a plugin script's archiyou `code`; live re-run.
+  Writing edits back to the on-disk `.js` is an **explicit, opt-in "Save to plugin"** action
+  (via the `dirHandle`, requesting read-write on demand). HTML parts + manifest are read-only
+  in this build.
+
+Reuse: `PluginManager`, `plugin-part-frame`, `plugin-loader`, `model-viewer`, the existing
+Plugins menu + `plugin-session`.
+
+### Part B — "App" preview button (BUILD)
+
+The left-bar **Configurator** button (`main-menu.ts` `_openConfigurator` → `<page-configurator>`
+dialog) becomes **context-aware**: in `pluginMode` it reads **"App"** and opens a dialog
+previewing the plugin app (its custom param menu + tools + viewer); otherwise it stays
+"Configurator" (single script). Preview = a reusable `<plugin-app>` component (extract the
+plugin-rendering half of `page-plugin.ts`) mounted from the already-loaded `pluginMode.plugin`.
+Simple, because the runtime already exists.
+
+### Part C — Publishing a plugin app (DESIGN / study)
+
+The unit of publish is a **plugin app definition** — the whole directory serialized:
+```ts
+interface PluginAppDefinition {
+  manifest: PluginManifest;          // id, version, author, …
+  files:   Record<string, string>;   // relative path → text (scripts .js, ui/*.html, manifest.json)
+  assets?: Record<string, string>;   // relative path → base64 (icons/images)
+}
+```
+- **Client** — `apps/editor/src/services/publish-app-service.ts`: read every file of the loaded
+  plugin (from `dirHandle` or URL) into the definition and POST it (reuse the `services/api.ts`
+  HTTP client + `auth-service` JWT).
+- **API** — new `POST /admin/publish-app` (JWT) on `apps/publish` (`ApiServer.ts`): store under
+  `{LIBRARY_PATH}/__apps__/{author}/{id}/{version}/`, writing each file **verbatim** (scripts
+  `.js`, parts `.html`, `manifest.json`). Mirrors the existing `{author}/{name}/{version}`
+  Library layout (`Library.ts`), namespaced `__apps__`, immutable per version — fills the
+  `/admin/publish` TODO stub for the multi-file case.
+- **Serving** — `GET /apps/:author/:id/:version/*` serves those files, so a published app is
+  loadable by the **same `loadPluginFromUrl('/apps/author/id/version')`**. Publish = store files;
+  run = load by URL — no new runtime.
+- **Public app** — the reborn **embed host** (`apps/configurator/*`) `loadPluginFromUrl`s the
+  published app and renders its custom UI + viewer client-side (worker execution, like the
+  editor). The in-editor "App" preview (Part B) is its twin.
+- **Trigger** — in `pluginMode` the `publish` menu-action publishes the *app* (whole dir); in
+  normal mode it stays single-script "Publish as configurator" (context-aware, like the button).
+- *Optional later:* server-side execution + cache of a published app's main script (via
+  `ExecutionManager` + the per-script cache) — not needed for v1 (apps run client-side).
+
+### Build order & representative files
+
+1. **Plugin mode** — `apps/editor/src/state/plugin-mode.ts` (new), `apps/editor/src/pages/editor.ts`
+   (render branch + enter/exit + save-to-plugin), `apps/editor/src/plugins/PluginManager.ts`
+   (working set + `componentScripts`), a `Plugin: <name>` banner element.
+2. **App button** — `packages/ui/src/editor/main-menu.ts` (App vs Configurator), new
+   `apps/editor/src/pages/plugin-app.ts` (extracted from `page-plugin.ts`).
+3. **Publishing** (after 1–2) — `apps/editor/src/services/publish-app-service.ts` (new),
+   `apps/publish/src/ApiServer.ts` + `Library.ts` (`/admin/publish-app`, `/apps/...`),
+   `apps/configurator/*` reborn as the embed host.
+
+### Verification
+
+- Plugins ▸ Add plugin → pick `plugins/shape-picker` → editor enters plugin mode: banner
+  "Plugin: Shape Picker", codebox shows the main script, the custom dropdown param menu on the
+  left, the Export tool available, viewer renders the shape. Edit the code → live re-run.
+  Exit → the personal script reappears unchanged (isolation).
+- The left-bar button reads **"App"** and opens a dialog previewing the plugin's custom UI +
+  viewer.
+- (Publishing, after build) publish `shape-picker` → `GET /apps/archiyou/shape-picker/0.1.0/manifest.json`
+  returns the manifest; `loadPluginFromUrl` of that base renders the app in the embed host.
+
+---
+
 ## Prior art: Figma — now aligned (guest), remaining deltas
 
 We now adopt Figma's guest model, so the philosophies converge. **Borrowed:** permission
@@ -457,14 +560,17 @@ trusted code (our core modules run in-worker directly).
    - **Session mode** — the no-reset/persistent-scope Runner variant + command recorder +
      `archiyou.exec`/`query`/`session.*`. Ships once script mode is proven; reuses the same eval.
 4. **In-editor plugin IDE** — *Open plugin folder*: codebox loads the main script, parts mount
-   into the slots, live re-run + hot reload.
+   into the slots, live re-run + hot reload. **Detailed as "Editor plugin mode & App preview"
+   below** (isolated session, scripts-only editing, context-aware App button).
 5. **Sandbox + flattened parts + CLI** — `srcdoc` iframe adapter + injected `archiyou` bridge/design
    tokens, `permissions`/CSP enforcement, and the `ay` CLI (`dev`/`validate`/`build`) + headless
    test doubles.
 6. **Core modules (trusted)** — `registerScopeModule` + worker `registerCoreModule(url)`, the
    `load`/`setup` lifecycle, `ScopeModuleContext`, namespace guard, `.d.ts` → completions.
 7. **Embed/publish path** — rebuild `apps/configurator` as the minimal embed host for a finished
-   plugin (schema-driven param menu + viewer).
+   plugin (schema-driven param menu + viewer). **Publishing designed in the refinement below**:
+   a `PluginAppDefinition` bundle → `POST /admin/publish-app` (stored under `__apps__`) →
+   served at `/apps/...` → loaded by `loadPluginFromUrl`.
 8. **AI authoring** — templates + the generation contract bundle (SDK `.d.ts` + manifest schema)
    + a validate → smoke-run → mount-in-editor pipeline. AI targets the **safe surface only**
    (`$component` scripts + flattened parts) — never core modules.

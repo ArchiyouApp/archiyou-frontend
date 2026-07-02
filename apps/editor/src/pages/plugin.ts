@@ -20,6 +20,7 @@ import { PluginManager, type GeneratedOutput, type PluginResultSummary } from '.
 import {
   loadShapePicker, loadPluginFromDirectory, directoryPickerSupported, pluginMaxMtime,
 } from '../plugins/plugin-loader';
+import { takePendingPluginDir } from '../plugins/plugin-session';
 
 @customElement('page-plugin')
 export class PagePlugin extends LitElement
@@ -67,7 +68,18 @@ export class PagePlugin extends LitElement
   override async connectedCallback(): Promise<void>
   {
     super.connectedCallback();
-    await this._load(() => loadShapePicker());
+    // A folder picked via Plugins ▸ Add plugin takes precedence over the example.
+    const pending = takePendingPluginDir();
+    if (pending)
+    {
+      this._dirHandle = pending;
+      await this._load(() => loadPluginFromDirectory(pending));
+      await this._startWatch();
+    }
+    else
+    {
+      await this._load(() => loadShapePicker());
+    }
   }
 
   override disconnectedCallback(): void

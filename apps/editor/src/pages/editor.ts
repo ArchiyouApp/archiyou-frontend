@@ -1,7 +1,9 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
-import type { RouterLocation } from '@vaadin/router';
+import { Router, type RouterLocation } from '@vaadin/router';
+
+import { setPendingPluginDir } from '../plugins/plugin-session';
 
 import { createExecutionFailureResult, runScript, warmupWorker } from '../services/execution-service';
 
@@ -352,11 +354,44 @@ export class PageEditor extends SignalWatcher(LitElement)
       return;
     }
 
+    if (value === 'plugin-start')
+    {
+      // Placeholder — starting/running a selected plugin lands here later.
+      return;
+    }
+
+    if (value === 'plugin-add')
+    {
+      void this._addPluginFromFolder();
+      return;
+    }
+
     this.dispatchEvent(new CustomEvent('editor-action', {
       detail: value,
       bubbles: true,
       composed: true,
     }));
+  }
+
+  /** Plugins ▸ Add plugin — pick a plugin folder from disk and open it in the plugin view. */
+  private async _addPluginFromFolder()
+  {
+    const picker = (window as any).showDirectoryPicker as undefined | (() => Promise<FileSystemDirectoryHandle>);
+    if (typeof picker !== 'function')
+    {
+      window.alert('Opening a folder is only supported in Chromium-based browsers.');
+      return;
+    }
+    try
+    {
+      const dir = await picker();
+      setPendingPluginDir(dir);
+      Router.go('/plugin');
+    }
+    catch (err)
+    {
+      if ((err as Error)?.name !== 'AbortError') console.error('Add plugin failed:', err);
+    }
   }
 
   private _handleScriptManagerOpen(e: CustomEvent<string>)

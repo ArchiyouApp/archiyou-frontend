@@ -40,6 +40,9 @@ export class PluginPartFrame extends LitElement
   /** The input schema handed to the part on 'ready'. */
   @property({ attribute: false }) schema: unknown = null;
 
+  /** Whether the iframe has announced 'ready' (so schema changes can be re-posted). */
+  private _ready = false;
+
   static override styles = css`
     :host { display: block; height: 100%; }
     iframe { width: 100%; height: 100%; border: 0; background: #fff; }
@@ -55,6 +58,7 @@ export class PluginPartFrame extends LitElement
 
     if (d.type === 'ready')
     {
+      this._ready = true;
       this._post({ type: 'schema', schema: this.schema });
     }
     else if (d.type === 'submit')
@@ -83,6 +87,17 @@ export class PluginPartFrame extends LitElement
   {
     window.removeEventListener('message', this._onMessage);
     super.disconnectedCallback();
+  }
+
+  override updated(changed: Map<string, unknown>): void
+  {
+    // If the part re-mounts (src changed), it will re-announce 'ready'.
+    if (changed.has('src')) this._ready = false;
+    // A schema change on an already-ready part (e.g. a folder reload) is re-posted.
+    else if (changed.has('schema') && this._ready)
+    {
+      this._post({ type: 'schema', schema: this.schema });
+    }
   }
 
   /** Inject the bridge shim so `window.archiyou` exists before the part runs. */

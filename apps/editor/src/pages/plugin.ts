@@ -1,14 +1,11 @@
 /**
- * <page-plugin> — in-editor plugin preview + dev loop (implementation slice 2–3).
+ * <page-plugin> — in-editor plugin preview + dev loop.
  *
- * On load it fetches the bundled `shape-picker` example over HTTP and runs it.
- * "Open plugin folder" loads a plugin straight off disk (File System Access API)
- * for the full in-editor dev loop; "Reload" re-reads the opened folder after edits.
- *
- * The plugin's custom param menu mounts as a sandboxed bridge-driven iframe on the
- * left; the result shows in the host-owned <model-viewer> on the right. Changing
- * an input → archiyou.submit(values) → re-run → viewer. Reachable at /plugin.
- * This preview does not touch the user's active editor script.
+ * Loads the bundled `shape-picker` example over HTTP on start; "Open plugin
+ * folder" loads a plugin off disk (File System Access API) with optional
+ * auto-reload. Mounts the plugin's custom param menu (left) and any toolbar
+ * tools (togglable right panel), and renders results in the host-owned
+ * <model-viewer>. Reachable at /plugin. Does not touch the user's editor script.
  */
 
 import { LitElement, html, css } from 'lit';
@@ -18,51 +15,46 @@ import '@archiyou/ui/viewer/model-viewer.js';
 import '../plugins/plugin-part-frame';
 
 import type { ScriptParamData } from '@archiyou/core/src/execution/types';
-import type { LoadedPlugin } from '../plugins/types';
-import { PluginManager } from '../plugins/PluginManager';
-import { loadShapePicker, loadPluginFromDirectory, directoryPickerSupported } from '../plugins/plugin-loader';
+import type { LoadedPlugin, PluginToolManifest } from '../plugins/types';
+import { PluginManager, type GeneratedOutput, type PluginResultSummary } from '../plugins/PluginManager';
+import {
+  loadShapePicker, loadPluginFromDirectory, directoryPickerSupported, pluginMaxMtime,
+} from '../plugins/plugin-loader';
 
 @customElement('page-plugin')
 export class PagePlugin extends LitElement
 {
   private manager: PluginManager | null = null;
   private _dirHandle: FileSystemDirectoryHandle | null = null;
+  private _watchTimer?: number;
+  private _lastMtime = 0;
 
   @state() private _schema: ScriptParamData[] | null = null;
   @state() private _partHtml: string | null = null;
+  @state() private _tools: PluginToolManifest[] = [];
+  @state() private _activeTool: string | null = null;
+  @state() private _result: PluginResultSummary | null = null;
   @state() private _error: string | null = null;
   @state() private _pluginName = '';
   @state() private _status = 'Loading…';
+  @state() private _autoReload = true;
 
   private _fsSupported = directoryPickerSupported();
 
   static override styles = css`
     :host { display: flex; height: 100%; min-height: 0; }
-    .menu {
-      width: 320px;
-      flex: 0 0 320px;
-      display: flex;
-      flex-direction: column;
-      border-right: 1px solid var(--sl-color-neutral-200, #e5e7eb);
-    }
-    .toolbar {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      padding: 8px;
-      border-bottom: 1px solid var(--sl-color-neutral-200, #e5e7eb);
-      font-family: system-ui, sans-serif;
-      font-size: 13px;
-    }
-    .toolbar button {
-      font: inherit;
-      padding: 4px 10px;
-      border: 1px solid var(--sl-color-neutral-300, #d1d5db);
-      border-radius: 6px;
-      background: #fff;
-      cursor: pointer;
-    }
+    .menu { width: 320px; flex: 0 0 320px; display: flex; flex-direction: column;
+            border-right: 1px solid var(--sl-color-neutral-200, #e5e7eb); }
+    .tools-panel { width: 320px; flex: 0 0 320px;
+            border-left: 1px solid var(--sl-color-neutral-200, #e5e7eb); }
+    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+            padding: 8px; border-bottom: 1px solid var(--sl-color-neutral-200, #e5e7eb);
+            font-family: system-ui, sans-serif; font-size: 13px; }
+    .toolbar button { font: inherit; padding: 4px 10px; cursor: pointer;
+            border: 1px solid var(--sl-color-neutral-300, #d1d5db); border-radius: 6px; background: #fff; }
+    .toolbar button[aria-pressed="true"] { background: #eef2ff; border-color: #6366f1; }
     .toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .toolbar label { display: inline-flex; align-items: center; gap: 4px; color: #6b7280; }
     .toolbar .name { margin-left: auto; color: #6b7280; }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; }
     .viewer { flex: 1 1 auto; min-width: 0; position: relative; }
@@ -78,6 +70,12 @@ export class PagePlugin extends LitElement
     await this._load(() => loadShapePicker());
   }
 
+  override disconnectedCallback(): void
+  {
+    this._stopWatch();
+    super.disconnectedCallback();
+  }
+
   private _openFolder = async (): Promise<void> =>
   {
     try
@@ -85,6 +83,7 @@ export class PagePlugin extends LitElement
       const dir = await (window as any).showDirectoryPicker();
       this._dirHandle = dir;
       await this._load(() => loadPluginFromDirectory(dir));
+      await this._startWatch();
     }
     catch (e)
     {
@@ -97,7 +96,19 @@ export class PagePlugin extends LitElement
     if (this._dirHandle) await this._load(() => loadPluginFromDirectory(this._dirHandle!));
   };
 
-  /** Load a plugin from any source, (re)run it, and mount its param menu. */
+  private _toggleAutoReload = (e: Event): void =>
+  {
+    this._autoReload = (e.target as HTMLInputElement).checked;
+    if (this._autoReload) void this._startWatch();
+    else this._stopWatch();
+  };
+
+  private _toggleTool = (id: string): void =>
+  {
+    this._activeTool = this._activeTool === id ? null : id;
+  };
+
+  /** Load a plugin from any source, (re)run it, and mount its parts. */
   private async _load(loader: () => Promise<LoadedPlugin>): Promise<void>
   {
     this._error = null;
@@ -110,6 +121,8 @@ export class PagePlugin extends LitElement
       const schema = await this.manager.activate(plugin);
       this._pluginName = plugin.manifest.name;
       this._partHtml = this.manager.paramMenuHtml();
+      this._tools = plugin.manifest.tools ?? [];
+      this._result = this.manager.summary;
       this._schema = schema;
       if (!this._partHtml) this._status = 'Plugin has no param menu.';
     }
@@ -119,14 +132,51 @@ export class PagePlugin extends LitElement
     }
   }
 
-  private _onSubmit = (e: Event): void =>
+  private _onSubmit = async (e: Event): Promise<void> =>
   {
     const values = (e as CustomEvent).detail as Record<string, any>;
-    void this.manager?.run(values);
+    await this.manager?.run(values);
+    this._result = this.manager?.summary ?? null;
   };
+
+  private _onGenerate = (selectors: string[]): Promise<GeneratedOutput[]> =>
+    this.manager?.generate(selectors) ?? Promise.resolve([]);
+
+  // ── auto-reload (poll the picked directory; the browser has no file-watch) ──
+
+  private async _startWatch(): Promise<void>
+  {
+    this._stopWatch();
+    if (!this._dirHandle || !this._autoReload || !this.manager?.manifest) return;
+    this._lastMtime = await pluginMaxMtime(this._dirHandle, this.manager.manifest);
+    this._watchTimer = window.setInterval(() => void this._pollReload(), 1000);
+  }
+
+  private _stopWatch(): void
+  {
+    if (this._watchTimer) { clearInterval(this._watchTimer); this._watchTimer = undefined; }
+  }
+
+  private async _pollReload(): Promise<void>
+  {
+    if (!this._dirHandle || !this._autoReload || !this.manager?.manifest) return;
+    try
+    {
+      const mtime = await pluginMaxMtime(this._dirHandle, this.manager.manifest);
+      if (mtime > this._lastMtime)
+      {
+        this._lastMtime = mtime;
+        await this._load(() => loadPluginFromDirectory(this._dirHandle!));
+      }
+    }
+    catch { /* transient error mid-edit; retry next tick */ }
+  }
 
   override render()
   {
+    const activeToolUi = this._tools.find(t => t.id === this._activeTool)?.ui;
+    const toolHtml = activeToolUi ? this.manager?.partHtml(activeToolUi) : null;
+
     return html`
       <div class="menu">
         <div class="toolbar">
@@ -134,8 +184,11 @@ export class PagePlugin extends LitElement
             @click=${this._openFolder}
             ?disabled=${!this._fsSupported}
             title=${this._fsSupported ? 'Load a plugin from a local folder' : 'Not supported in this browser'}
-          >Open plugin folder</button>
+          >Open folder</button>
           <button @click=${this._reload} ?disabled=${!this._dirHandle}>Reload</button>
+          ${this._dirHandle ? html`
+            <label><input type="checkbox" .checked=${this._autoReload} @change=${this._toggleAutoReload}>auto</label>
+          ` : ''}
           <span class="name">${this._pluginName}</span>
         </div>
         <div class="body">
@@ -145,12 +198,32 @@ export class PagePlugin extends LitElement
               ? html`<plugin-part-frame
                   .src=${this._partHtml}
                   .schema=${this._schema}
+                  .result=${this._result}
+                  .onGenerate=${this._onGenerate}
                   @plugin-submit=${this._onSubmit}
                 ></plugin-part-frame>`
               : html`<div class="status">${this._status}</div>`}
         </div>
+        ${this._tools.length ? html`
+          <div class="toolbar">
+            ${this._tools.map(t => html`
+              <button aria-pressed=${this._activeTool === t.id} @click=${() => this._toggleTool(t.id)}>${t.name}</button>
+            `)}
+          </div>
+        ` : ''}
       </div>
+
       <div class="viewer"><model-viewer></model-viewer></div>
+
+      ${toolHtml ? html`
+        <div class="tools-panel">
+          <plugin-part-frame
+            .src=${toolHtml}
+            .result=${this._result}
+            .onGenerate=${this._onGenerate}
+          ></plugin-part-frame>
+        </div>
+      ` : ''}
     `;
   }
 }

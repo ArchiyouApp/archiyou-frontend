@@ -18,7 +18,22 @@ import { runScript } from '../services/execution-service';
 import { executionResult } from '../state/core';
 import { scenegraph, reconcileScenegraph, setInteractiveShapes } from '../state/editor';
 
-import type { LoadedPlugin } from './types';
+import type { LoadedPlugin, PluginManifest } from './types';
+
+/** A generated output, unwrapped to plain data for a tool to consume/download. */
+export interface GeneratedOutput
+{
+  path: string;
+  data: ArrayBuffer | string;
+}
+
+/** Lightweight, clone-safe run summary handed to tool parts (no heavy buffers). */
+export interface PluginResultSummary
+{
+  status?: string;
+  meta?: unknown;
+  outputPaths: string[];
+}
 
 export class PluginManager
 {
@@ -31,8 +46,20 @@ export class PluginManager
    * otherwise the in-code `$PARAMS.define(...)` defaults win and values are lost.
    */
   private paramDefs: Record<string, ScriptParamData> = {};
+  /** Most recently submitted values — reused for tool-driven `generate()` calls. */
+  private lastParams: Record<string, any> = {};
+  private _summary: PluginResultSummary | null = null;
 
   get active(): LoadedPlugin | null { return this.plugin; }
+  get manifest(): PluginManifest | null { return this.plugin?.manifest ?? null; }
+  /** Last run summary (status + meta + output paths), for tool parts. */
+  get summary(): PluginResultSummary | null { return this._summary; }
+
+  /** HTML source of a declared part (param menu or a tool), by manifest-relative path. */
+  partHtml(path: string): string | null
+  {
+    return this.plugin?.parts[path] ?? null;
+  }
 
   /**
    * Load + first run. Returns the input schema (the main script's $PARAMS,
@@ -55,22 +82,43 @@ export class PluginManager
   /** Run the plugin's main script with the given param values; updates the viewer. */
   async run(params: Record<string, any>): Promise<RunnerScriptExecutionResult | undefined>
   {
+    this.lastParams = params;
+    const result = await this._execute(params, ['default/model/glb']);
+    if (result)
+    {
+      this._applyToViewer(result);
+      this._summary = {
+        status: result.status,
+        meta: result.meta,
+        outputPaths: (result.outputs ?? []).map(o => o.path.requestedPath),
+      };
+    }
+    return result;
+  }
+
+  /**
+   * Produce the requested outputs for the current param values, without touching
+   * the viewer. Used by toolbar tools via `archiyou.generate(selectors)`.
+   */
+  async generate(selectors: string[]): Promise<GeneratedOutput[]>
+  {
+    const result = await this._execute(this.lastParams, selectors);
+    return (result?.outputs ?? [])
+      .map(o => ({ path: o.path.requestedPath, data: unwrapOutput(o.output) }))
+      .filter((o): o is GeneratedOutput => o.data !== undefined);
+  }
+
+  private _execute(params: Record<string, any>, outputs: string[]): Promise<RunnerScriptExecutionResult | undefined>
+  {
     if (!this.script) throw new Error('PluginManager: no active plugin');
 
     const script = this.script.toData();
     script.params = { ...(script.params ?? {}), ...this.paramDefs };
 
     const request: RunnerScriptExecutionRequest = {
-      kernel:  'mesh',
-      script,
-      params,
-      outputs: ['default/model/glb'],
-      messages: ['error'],
+      kernel: 'mesh', script, params, outputs, messages: ['error'],
     };
-
-    const result = await runScript(request);
-    if (result) this._applyToViewer(result);
-    return result;
+    return runScript(request);
   }
 
   /** The HTML source of the plugin's custom param menu, if it declares one. */
@@ -92,4 +140,28 @@ export class PluginManager
     setInteractiveShapes(result.state?.interactiveShapes ?? []);
     executionResult.set(result);
   }
+}
+
+/**
+ * Unwrap a script output to plain data (mirrors <model-viewer>._loadGlbOutput):
+ * raw Uint8Array / ArrayBuffer / string, or a wrapped `{ encoding?, data }`.
+ */
+function unwrapOutput(output: unknown): ArrayBuffer | string | undefined
+{
+  if (output instanceof Uint8Array) return output.slice().buffer;
+  if (output instanceof ArrayBuffer) return output;
+  if (typeof output === 'string') return output;
+  if (output && typeof output === 'object' && 'data' in (output as any))
+  {
+    const w = output as { encoding?: string; data: ArrayBuffer | string };
+    if (w.encoding === 'base64' && typeof w.data === 'string')
+    {
+      const bin = atob(w.data);
+      const buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      return buf.buffer;
+    }
+    if (w.data instanceof ArrayBuffer || typeof w.data === 'string') return w.data;
+  }
+  return undefined;
 }

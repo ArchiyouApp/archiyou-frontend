@@ -6,10 +6,11 @@ This is a hands-on manual for the parts that work today. For the full architectu
 modes, tools, worker-scope modules, permissions, the embed path), see
 [`../WIP_PLUGINS.md`](../WIP_PLUGINS.md).
 
-> **Status.** Implemented today: `script`-mode plugins with a **main script** + a **custom
-> param menu**, loaded at runtime (by URL or from a local folder) and previewed at `/plugin`.
-> Not yet wired into the loader: toolbar tools, worker-scope core modules, `session` mode, and
-> permissions. Those are specified in `WIP_PLUGINS.md`.
+> **Status.** Implemented today: `script`-mode plugins with a **main script**, a **custom param
+> menu**, and **toolbar tools** (with `archiyou.generate` + `archiyou.download`), loaded at
+> runtime (by URL or from a local folder, with auto-reload) and previewed at `/plugin`.
+> Not yet wired into the loader: worker-scope core modules, `session` mode, and permissions.
+> Those are specified in `WIP_PLUGINS.md`.
 
 ---
 
@@ -24,6 +25,8 @@ my-plugin/
     main.js              # the entry script — declares $PARAMS (the input schema)
   ui/
     param-menu.html      # a self-contained HTML "part" that renders the inputs
+    tools/
+      export.html        # optional: a toolbar tool (panel + button)
   README.md
 ```
 
@@ -131,10 +134,29 @@ The **`archiyou` bridge** (available inside the iframe):
 |---|---|---|
 | `archiyou.onSchema(cb)` | host → part | Receive the schema: `ScriptParamData[]` (`name`, `label`, `_value`, `schema`). |
 | `archiyou.submit(values)` | part → host | Submit a `{ NAME: value }` object → validate + execute + repaint the viewer. |
-| `archiyou.onResult(cb)` | host → part | Receive execution results *(reserved; the host does not push results yet)*. |
+| `archiyou.onResult(cb)` | host → part | Receive the run summary: `{ status, meta, outputPaths }` (no heavy buffers). |
+| `archiyou.generate(selectors)` | part → host | `await` the requested outputs, e.g. `['default/model/glb']` → `[{ path, data }]`. |
+| `archiyou.download(name, data)` | part → host | Download `data` (ArrayBuffer/string) as a file. |
 
 Each schema entry's `schema` is JSON Schema: `schema.enum` for `options`,
 `schema.minimum` / `schema.maximum` / `schema.multipleOf` for numbers, etc.
+
+### Toolbar tools
+
+Declare tools in the manifest; each is another flattened HTML part that gets a toolbar button
+and a side panel:
+
+```jsonc
+"tools": [
+  { "id": "export", "name": "Export", "ui": "ui/tools/export.html" }
+]
+```
+
+A tool typically listens with `archiyou.onResult(...)` (to show info / metrics for the current
+model) and calls `archiyou.generate([...])` + `archiyou.download(...)` to export. See
+[`shape-picker/ui/tools/export.html`](shape-picker/ui/tools/export.html) — it shows the bounding
+box and downloads GLB / STL. Output selectors are `pipeline/category/name/format`, e.g.
+`default/model/glb`, `default/model/stl`, `default/tables/*/xlsx`, `default/docs/*/svg`.
 
 **Tips**
 - The part is sandboxed (`sandbox="allow-scripts"`, null origin): no access to the host DOM,
@@ -155,9 +177,11 @@ cd apps/editor && pnpm dev        # then open http://localhost:5173/plugin
 ```
 
 - On load it runs the bundled **shape-picker** example.
-- **Open plugin folder** → pick your plugin directory to load it straight off disk
+- **Open folder** → pick your plugin directory to load it straight off disk
   (Chromium browsers; uses the File System Access API).
-- **Reload** re-reads the opened folder after you edit files — the inner dev loop.
+- **auto** (on by default once a folder is open) polls the folder ~1×/s and reloads on edits;
+  **Reload** does it on demand — the inner dev loop.
+- Tool buttons (bottom of the menu) toggle each tool's side panel.
 - Change an input → the viewer repaints.
 
 > If the dev server dies with `ENOSPC … file watchers`, raise your inotify limit

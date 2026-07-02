@@ -84,8 +84,28 @@ export function directoryPickerSupported(): boolean
   return typeof (globalThis as any).showDirectoryPicker === 'function';
 }
 
-/** Read a file at a `/`-separated path relative to a directory handle. */
-async function readFileText(dir: FileSystemDirectoryHandle, relPath: string): Promise<string>
+/**
+ * Newest mtime across a plugin's files (manifest + main script + parts). Used to
+ * poll a picked directory for edits (the browser has no native file-watch).
+ */
+export async function pluginMaxMtime(dir: FileSystemDirectoryHandle, manifest: PluginManifest): Promise<number>
+{
+  const paths = ['manifest.json', manifest.mainScript, ...partPaths(manifest)].filter(Boolean) as string[];
+  let max = 0;
+  for (const p of paths)
+  {
+    try
+    {
+      const file = await (await getFileHandle(dir, p)).getFile();
+      if (file.lastModified > max) max = file.lastModified;
+    }
+    catch { /* file may be missing mid-edit; ignore */ }
+  }
+  return max;
+}
+
+/** Resolve a `/`-separated path to a FileSystemFileHandle relative to a directory. */
+async function getFileHandle(dir: FileSystemDirectoryHandle, relPath: string): Promise<FileSystemFileHandle>
 {
   const segments = relPath.split('/').filter(Boolean);
   let handle: FileSystemDirectoryHandle = dir;
@@ -93,8 +113,13 @@ async function readFileText(dir: FileSystemDirectoryHandle, relPath: string): Pr
   {
     handle = await handle.getDirectoryHandle(segments[i]!);
   }
-  const fileHandle = await handle.getFileHandle(segments[segments.length - 1]!);
-  return (await fileHandle.getFile()).text();
+  return handle.getFileHandle(segments[segments.length - 1]!);
+}
+
+/** Read a file at a `/`-separated path relative to a directory handle. */
+async function readFileText(dir: FileSystemDirectoryHandle, relPath: string): Promise<string>
+{
+  return (await (await getFileHandle(dir, relPath)).getFile()).text();
 }
 
 // ── fetch helpers ──────────────────────────────────────────────────────────

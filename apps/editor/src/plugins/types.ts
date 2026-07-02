@@ -46,6 +46,8 @@ export interface LoadedPlugin
   mainCode: string;
   /** `$component` scripts from `manifest.scripts`, keyed by file stem → code. */
   scripts: Record<string, string>;
+  /** Full script-module default objects (main + components), keyed by stem — for save-back. */
+  scriptModules: Record<string, Record<string, unknown>>;
   /** manifest-relative path → HTML source (e.g. the param menu, tools). */
   parts: Record<string, string>;
 }

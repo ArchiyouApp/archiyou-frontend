@@ -5,8 +5,9 @@ import { type RouterLocation } from '@vaadin/router';
 
 import { pluginMode, enterPluginMode, exitPluginMode, type PluginModeState } from '../state/plugin-mode';
 import { PluginManager, type PluginResultSummary, type GeneratedOutput } from '../plugins/PluginManager';
-import { loadPluginFromDirectory, loadShapePicker } from '../plugins/plugin-loader';
+import { loadPluginFromDirectory, loadShapePicker, scriptStem, requestWritePermission, writeFileText } from '../plugins/plugin-loader';
 import type { LoadedPlugin } from '../plugins/types';
+import { dataToModuleString } from '@archiyou/core/src/utils';
 import '../plugins/plugin-part-frame';
 
 import { createExecutionFailureResult, runScript, warmupWorker } from '../services/execution-service';
@@ -121,6 +122,7 @@ export class PageEditor extends SignalWatcher(LitElement)
   @state() private _pluginSchema: ScriptParamData[] | null = null;
   @state() private _pluginActiveScriptName: string | null = null;
   @state() private _pluginResult: PluginResultSummary | null = null;
+  @state() private _pluginSaved = false;
   private _pluginValues: Record<string, any> = {};
   private _pluginRunTimeout: number | null = null;
 
@@ -439,6 +441,10 @@ export class PageEditor extends SignalWatcher(LitElement)
         <div class="plugin-banner">
           <span class="plugin-badge">PLUGIN</span>
           <span class="plugin-name">${pm.plugin.manifest.name}</span>
+          ${pm.dirHandle ? html`
+            <button class="plugin-save" @click=${this._savePluginToDisk} title="Save edited scripts back to the plugin folder">
+              ${this._pluginSaved ? 'Saved ✓' : 'Save'}
+            </button>` : ''}
           <button class="plugin-exit" @click=${this._exitPluginMode}>Exit</button>
         </div>
         ${list.length > 1 ? html`
@@ -499,6 +505,42 @@ export class PageEditor extends SignalWatcher(LitElement)
     await pm.manager.run(this._pluginValues ?? {});
     this._pluginResult = pm.manager.summary;
   }
+
+  /** Save the (scripts-only) working set back to the on-disk plugin folder. */
+  private _savePluginToDisk = async (): Promise<void> =>
+  {
+    const pm = pluginMode.get();
+    if (!pm?.dirHandle) return;
+
+    const manifest = pm.plugin.manifest;
+    const pathByStem = new Map<string, string>();
+    if (manifest.mainScript) pathByStem.set(scriptStem(manifest.mainScript), manifest.mainScript);
+    for (const p of manifest.scripts ?? []) pathByStem.set(scriptStem(p), p);
+
+    try
+    {
+      if (!(await requestWritePermission(pm.dirHandle)))
+      {
+        window.alert('Write permission was denied.');
+        return;
+      }
+      for (const entry of pm.manager.scripts())
+      {
+        const path = pathByStem.get(entry.name);
+        if (!path) continue;
+        // Preserve the module's other fields (name/author/…); only the code changed.
+        const moduleObj = pm.plugin.scriptModules[entry.name] ?? { name: entry.name };
+        await writeFileText(pm.dirHandle, path, dataToModuleString({ ...moduleObj, code: entry.code }));
+      }
+      this._pluginSaved = true;
+      window.setTimeout(() => { this._pluginSaved = false; }, 1500);
+    }
+    catch (err)
+    {
+      console.error('Save plugin failed:', err);
+      window.alert(`Save failed: ${(err as Error)?.message ?? err}`);
+    }
+  };
 
   private _exitPluginMode = (): void =>
   {
@@ -699,8 +741,18 @@ export class PageEditor extends SignalWatcher(LitElement)
       letter-spacing: 0.04em;
     }
     .plugin-name { font-weight: 600; font-size: 13px; }
-    .plugin-exit {
+    .plugin-save {
       margin-left: auto;
+      font: inherit;
+      font-size: 12px;
+      padding: 3px 10px;
+      border: 1px solid var(--color-primary, #4f46e5);
+      border-radius: 6px;
+      background: var(--color-primary, #4f46e5);
+      color: #fff;
+      cursor: pointer;
+    }
+    .plugin-exit {
       font: inherit;
       font-size: 12px;
       padding: 3px 10px;
@@ -709,6 +761,8 @@ export class PageEditor extends SignalWatcher(LitElement)
       background: #fff;
       cursor: pointer;
     }
+    .plugin-banner .plugin-save + .plugin-exit { margin-left: 0; }
+    .plugin-banner:not(:has(.plugin-save)) .plugin-exit { margin-left: auto; }
     .plugin-script-select {
       margin: 8px 10px 0;
       padding: 4px 6px;

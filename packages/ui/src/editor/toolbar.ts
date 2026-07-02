@@ -19,6 +19,10 @@ export interface ToolDef
   height: number;
   /** Runner output paths this tool needs; only requested while the tool is active */
   outputs?: string[];
+  /** True for plugin-contributed tools (rendered as a flattened part, tinted). */
+  plugin?: boolean;
+  /** For plugin tools: the manifest-relative HTML part path. */
+  ui?: string;
 }
 
 @customElement('editor-toolbar')
@@ -33,7 +37,7 @@ export class EditorToolbar extends LitElement
           <wa-button
             id="tool-btn-${i}"
             appearance="plain"
-            class=${this.activeIds.includes(tool.id) ? 'active' : ''}
+            class="${this.activeIds.includes(tool.id) ? 'active' : ''} ${tool.plugin ? 'plugin' : ''}"
             @click=${() => this._toggle(tool.id)}
           >
             <wa-icon library="lucide" name=${tool.icon} label=${tool.name}></wa-icon>
@@ -85,6 +89,15 @@ export class EditorToolbar extends LitElement
     wa-button.active::part(base) {
       background-color: var(--color-primary-subtle, color-mix(in srgb, var(--color-primary) 15%, transparent));
       color: var(--color-primary);
+    }
+
+    /* Plugin-contributed tools are tinted to stand apart from built-in tools. */
+    wa-button.plugin::part(base) {
+      color: var(--color-plugin, #7c3aed);
+    }
+    wa-button.plugin.active::part(base) {
+      background-color: color-mix(in srgb, var(--color-plugin, #7c3aed) 15%, transparent);
+      color: var(--color-plugin, #7c3aed);
     }
   `;
 }

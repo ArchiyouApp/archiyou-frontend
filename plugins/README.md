@@ -148,9 +148,12 @@ and a side panel:
 
 ```jsonc
 "tools": [
-  { "id": "export", "name": "Export", "ui": "ui/tools/export.html" }
+  { "id": "export", "name": "Export", "icon": "download", "ui": "ui/tools/export.html" }
 ]
 ```
+
+`icon` is a [lucide](https://lucide.dev) icon name; in editor plugin mode the tool appears in
+the right toolbar with this icon, tinted to stand apart from the built-in tools.
 
 A tool typically listens with `archiyou.onResult(...)` (to show info / metrics for the current
 model) and calls `archiyou.generate([...])` + `archiyou.download(...)` to export. See

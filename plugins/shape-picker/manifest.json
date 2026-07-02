@@ -10,6 +10,6 @@
   "mainScript": "scripts/main.js",
   "paramMenu": "ui/param-menu.html",
   "tools": [
-    { "id": "export", "name": "Export", "ui": "ui/tools/export.html" }
+    { "id": "export", "name": "Export", "icon": "download", "ui": "ui/tools/export.html" }
   ]
 }

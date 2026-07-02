@@ -92,7 +92,7 @@ export class PageEditor extends SignalWatcher(LitElement)
         </wa-split-panel>
       </wa-split-panel>
       <editor-toolbar
-        .tools=${this.TOOLS}
+        .tools=${this._toolbarTools(pm)}
         .activeIds=${this._activeTools.map(t => t.id)}
         @tool-toggle=${this._handleToolToggle}
       ></editor-toolbar>
@@ -550,6 +550,7 @@ export class PageEditor extends SignalWatcher(LitElement)
     this._pluginActiveScriptName = null;
     this._pluginResult = null;
     this._pluginValues = {};
+    this._activeTools = this._activeTools.filter(t => !t.plugin);
     // Restore the viewer to the user's own (untouched) script.
     void this._handleExecute();
   };
@@ -612,10 +613,32 @@ export class PageEditor extends SignalWatcher(LitElement)
     }));
   }
 
+  /** Plugin tools as toolbar entries (tinted, rendered as flattened parts). */
+  private _pluginToolDefs(pm: PluginModeState | null): ToolDef[]
+  {
+    return (pm?.plugin.manifest.tools ?? []).map(t => ({
+      id: `plugin:${t.id}`,
+      icon: t.icon ?? 'puzzle',
+      name: t.name,
+      exclusive: t.exclusive ?? false,
+      component: '',
+      width: 30,
+      height: 100,
+      plugin: true,
+      ui: t.ui,
+    }));
+  }
+
+  /** Built-in tools plus (in plugin mode) the plugin's tools. */
+  private _toolbarTools(pm: PluginModeState | null): ToolDef[]
+  {
+    return pm ? [...this.TOOLS, ...this._pluginToolDefs(pm)] : this.TOOLS;
+  }
+
   private _handleToolToggle(e: CustomEvent<string>)
   {
     const id = e.detail;
-    const tool = this.TOOLS.find(t => t.id === id);
+    const tool = this._toolbarTools(pluginMode.get()).find(t => t.id === id);
     if (!tool) return;
 
     const isActive = this._activeTools.some(t => t.id === id);

@@ -40,6 +40,11 @@ export const routes: Route[] = [
         component: 'page-editor',
         action: async () => { await import('../../pages/editor.js'); },
       },
+      {
+        path: 'plugin',
+        component: 'page-plugin',
+        action: async () => { await import('../../pages/plugin.js'); },
+      },
     ],
   },
 

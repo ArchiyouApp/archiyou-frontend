@@ -26,7 +26,7 @@ export default {
       label: 'Shape',
     });
     $PARAMS.define('SIZE', 'number', {
-      min: 10, max: 300, step: 10, default: 100,
+      minimum: 10, maximum: 300, multipleOf: 10, default: 100,
       label: 'Size', units: 'mm', group: 'Size',
     });
 

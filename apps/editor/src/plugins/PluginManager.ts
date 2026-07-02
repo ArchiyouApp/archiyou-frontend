@@ -24,6 +24,13 @@ export class PluginManager
 {
   private plugin: LoadedPlugin | null = null;
   private script: Script | null = null;
+  /**
+   * Param definitions captured from the first run's managedParams. They must be
+   * sent back on every run (as `script.params`) so the Runner sets up the
+   * ParamManager with these params and can bind the submitted `params` values —
+   * otherwise the in-code `$PARAMS.define(...)` defaults win and values are lost.
+   */
+  private paramDefs: Record<string, ScriptParamData> = {};
 
   get active(): LoadedPlugin | null { return this.plugin; }
 
@@ -40,7 +47,9 @@ export class PluginManager
     this.script = script;
 
     const result = await this.run({});
-    return result?.state?.managedParams?.new ?? [];
+    const defs = result?.state?.managedParams?.new ?? [];
+    for (const p of defs) this.paramDefs[p.name] = p;
+    return defs;
   }
 
   /** Run the plugin's main script with the given param values; updates the viewer. */
@@ -48,9 +57,12 @@ export class PluginManager
   {
     if (!this.script) throw new Error('PluginManager: no active plugin');
 
+    const script = this.script.toData();
+    script.params = { ...(script.params ?? {}), ...this.paramDefs };
+
     const request: RunnerScriptExecutionRequest = {
       kernel:  'mesh',
-      script:  this.script.toData(),
+      script,
       params,
       outputs: ['default/model/glb'],
       messages: ['error'],

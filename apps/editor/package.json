@@ -7,6 +7,7 @@
     "dev": "vite",
     "dev:workspace": "APP=workspace vite",
     "dev:viewer": "APP=viewer vite --port 5174",
+    "dev:poll": "CHOKIDAR_USEPOLLING=true vite",
     "build": "tsc && vite build",
     "build:workspace": "tsc && APP=workspace vite build",
     "build:viewer": "tsc && APP=viewer vite build",

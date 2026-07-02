@@ -157,12 +157,12 @@ export class PluginManager
     return runScript(request);
   }
 
-  /** The HTML source of the plugin's custom param menu, if it declares one. */
-  paramMenuHtml(): string | null
+  /** The HTML source of the plugin's main UI part, if it declares one. */
+  mainUiHtml(): string | null
   {
     const p = this.plugin;
-    if (!p?.manifest.paramMenu) return null;
-    return p.parts[p.manifest.paramMenu] ?? null;
+    if (!p?.manifest.ui) return null;
+    return p.parts[p.manifest.ui] ?? null;
   }
 
   /**

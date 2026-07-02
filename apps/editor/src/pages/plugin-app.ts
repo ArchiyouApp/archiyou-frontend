@@ -52,6 +52,20 @@ export class PluginApp extends SignalWatcher(LitElement)
     this._activeTool = this._activeTool === id ? null : id;
   };
 
+  /** archiyou.ui.open/close/toggle('Export') from the main UI → toggle the tool panel. */
+  private _onUiCommand = (e: Event): void =>
+  {
+    const { action, tool } = (e as CustomEvent).detail as { action: 'open' | 'close' | 'toggle'; tool: string };
+    const key = String(tool).toLowerCase();
+    const t = (pluginMode.get()?.manager.manifest?.tools ?? [])
+      .find(x => x.id.toLowerCase() === key || x.name.toLowerCase() === key);
+    if (!t) return;
+    const isActive = this._activeTool === t.id;
+    if (action === 'toggle') this._activeTool = isActive ? null : t.id;
+    else if (action === 'open') this._activeTool = t.id;
+    else if (isActive) this._activeTool = null;
+  };
+
   override render()
   {
     const pm = pluginMode.get();
@@ -61,7 +75,7 @@ export class PluginApp extends SignalWatcher(LitElement)
     const tools = m.manifest?.tools ?? [];
     const activeToolUi = tools.find(t => t.id === this._activeTool)?.ui;
     const toolHtml = activeToolUi ? m.partHtml(activeToolUi) : null;
-    const paramMenuHtml = m.paramMenuHtml();
+    const paramMenuHtml = m.mainUiHtml();
 
     return html`
       <div class="menu">
@@ -72,7 +86,8 @@ export class PluginApp extends SignalWatcher(LitElement)
             .result=${m.summary}
             .onGenerate=${this._onGenerate}
             @plugin-submit=${this._onSubmit}
-          ></plugin-part-frame>` : html`<div class="empty">This plugin has no param menu.</div>`}
+            @plugin-ui-command=${this._onUiCommand}
+          ></plugin-part-frame>` : html`<div class="empty">This plugin has no main UI.</div>`}
         ${tools.length ? html`
           <div class="tools">
             ${tools.map(t => html`

@@ -120,6 +120,19 @@ export class PagePlugin extends LitElement
     this._activeTool = this._activeTool === id ? null : id;
   };
 
+  /** archiyou.ui.open/close/toggle('Export') from the main UI. */
+  private _onUiCommand = (e: Event): void =>
+  {
+    const { action, tool } = (e as CustomEvent).detail as { action: 'open' | 'close' | 'toggle'; tool: string };
+    const key = String(tool).toLowerCase();
+    const t = this._tools.find(x => x.id.toLowerCase() === key || x.name.toLowerCase() === key);
+    if (!t) return;
+    const isActive = this._activeTool === t.id;
+    if (action === 'toggle') this._activeTool = isActive ? null : t.id;
+    else if (action === 'open') this._activeTool = t.id;
+    else if (isActive) this._activeTool = null;
+  };
+
   /** Load a plugin from any source, (re)run it, and mount its parts. */
   private async _load(loader: () => Promise<LoadedPlugin>): Promise<void>
   {
@@ -132,7 +145,7 @@ export class PagePlugin extends LitElement
       this.manager = new PluginManager();
       const schema = await this.manager.activate(plugin);
       this._pluginName = plugin.manifest.name;
-      this._partHtml = this.manager.paramMenuHtml();
+      this._partHtml = this.manager.mainUiHtml();
       this._tools = plugin.manifest.tools ?? [];
       this._result = this.manager.summary;
       this._schema = schema;
@@ -213,6 +226,7 @@ export class PagePlugin extends LitElement
                   .result=${this._result}
                   .onGenerate=${this._onGenerate}
                   @plugin-submit=${this._onSubmit}
+                  @plugin-ui-command=${this._onUiCommand}
                 ></plugin-part-frame>`
               : html`<div class="status">${this._status}</div>`}
         </div>

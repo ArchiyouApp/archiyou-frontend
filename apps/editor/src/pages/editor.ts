@@ -435,7 +435,7 @@ export class PageEditor extends SignalWatcher(LitElement)
     const manager = pm.manager;
     const list = manager.scripts();
     const active = this._pluginActiveScriptName ?? manager.mainScriptName() ?? '';
-    const paramMenuHtml = manager.paramMenuHtml();
+    const paramMenuHtml = manager.mainUiHtml();
     return html`
       <div class="left-panel plugin" slot="start">
         <div class="plugin-banner">
@@ -459,6 +459,7 @@ export class PageEditor extends SignalWatcher(LitElement)
             .result=${this._pluginResult}
             .onGenerate=${this._pluginGenerate}
             @plugin-submit=${this._handlePluginSubmit}
+            @plugin-ui-command=${this._handlePluginUiCommand}
           ></plugin-part-frame>` : ''}
         <editor-code-box
           .code=${manager.scriptCode(active) ?? ''}
@@ -634,6 +635,30 @@ export class PageEditor extends SignalWatcher(LitElement)
   {
     return pm ? [...this.TOOLS, ...this._pluginToolDefs(pm)] : this.TOOLS;
   }
+
+  /** archiyou.ui.open/close/toggle('Export') from a plugin part → toggle its tool panel. */
+  private _handlePluginUiCommand = (e: Event): void =>
+  {
+    const { action, tool } = (e as CustomEvent).detail as { action: 'open' | 'close' | 'toggle'; tool: string };
+    const pm = pluginMode.get();
+    if (!pm) return;
+    const key = String(tool).toLowerCase();
+    const def = this._pluginToolDefs(pm).find(d =>
+      d.id.replace(/^plugin:/, '').toLowerCase() === key || d.name.toLowerCase() === key);
+    if (!def) return;
+
+    const isActive = this._activeTools.some(t => t.id === def.id);
+    const open = action === 'toggle' ? !isActive : action === 'open';
+    if (open && !isActive)
+    {
+      const base = def.exclusive ? [] : this._activeTools.filter(t => !t.exclusive);
+      this._activeTools = [...base, def];
+    }
+    else if (!open && isActive)
+    {
+      this._activeTools = this._activeTools.filter(t => t.id !== def.id);
+    }
+  };
 
   private _handleToolToggle(e: CustomEvent<string>)
   {

@@ -28,7 +28,8 @@ export interface PluginManifest
   mode?: 'script' | 'session';
   mainScript?: string;
   scripts?: string[];
-  paramMenu?: string;
+  /** Main UI part (replaces the default param panel); was `paramMenu`. */
+  ui?: string;
   tools?: PluginToolManifest[];
   coreModules?: unknown[];
   permissions?: unknown;

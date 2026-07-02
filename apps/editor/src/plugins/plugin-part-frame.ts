@@ -31,6 +31,12 @@ const BRIDGE_SHIM = `<script>
       });
     },
     download: function(filename, data){ P({type:'download', filename:filename, data:data}); },
+    // Open/close/toggle a tool panel by its name or id.
+    ui: {
+      open:   function(tool){ P({type:'ui', action:'open',   tool:tool}); },
+      close:  function(tool){ P({type:'ui', action:'close',  tool:tool}); },
+      toggle: function(tool){ P({type:'ui', action:'toggle', tool:tool}); },
+    },
   };
   window.addEventListener('message', function(e){
     var d=e.data; if(!d||!d.__archiyou) return;
@@ -92,6 +98,11 @@ export class PluginPartFrame extends LitElement
         break;
       case 'download':
         this._download(d.filename, d.data);
+        break;
+      case 'ui':
+        this.dispatchEvent(new CustomEvent('plugin-ui-command', {
+          detail: { action: d.action, tool: d.tool }, bubbles: true, composed: true,
+        }));
         break;
     }
   };

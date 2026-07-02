@@ -6,8 +6,8 @@ This is a hands-on manual for the parts that work today. For the full architectu
 modes, tools, worker-scope modules, permissions, the embed path), see
 [`../WIP_PLUGINS.md`](../WIP_PLUGINS.md).
 
-> **Status.** Implemented today: `script`-mode plugins with a **main script**, a **custom param
-> menu**, and **toolbar tools** (with `archiyou.generate` + `archiyou.download`), loaded at
+> **Status.** Implemented today: `script`-mode plugins with a **main script**, a **custom main
+> UI**, and **toolbar tools** (with `archiyou.generate` + `archiyou.download` + `archiyou.ui`), loaded at
 > runtime (by URL or from a local folder, with auto-reload) and previewed at `/plugin`.
 > Not yet wired into the loader: worker-scope core modules, `session` mode, and permissions.
 > Those are specified in `WIP_PLUGINS.md`.
@@ -24,7 +24,7 @@ my-plugin/
   scripts/
     main.js              # the entry script — declares $PARAMS (the input schema)
   ui/
-    param-menu.html      # a self-contained HTML "part" that renders the inputs
+    ui.html              # the plugin main UI (a self-contained HTML part)
     tools/
       export.html        # optional: a toolbar tool (panel + button)
   README.md
@@ -32,7 +32,7 @@ my-plugin/
 
 - **`scripts/main.js`** is the geometry logic in the Archiyou script language. Its `$PARAMS`
   declarations *are* the plugin's input schema.
-- **`ui/param-menu.html`** is one self-contained HTML file (inline CSS + JS). It runs in a
+- **`ui/ui.html`** is one self-contained HTML file (inline CSS + JS). It runs in a
   sandboxed iframe and talks to the host over the `archiyou` bridge.
 
 The fastest way to start is to copy [`shape-picker/`](shape-picker/) and edit it.
@@ -51,7 +51,7 @@ Minimum for a `script`-mode plugin with a custom menu:
   "engine": "^1",                // host API version gate
   "mode": "script",              // functional: params -> run -> outputs
   "mainScript": "scripts/main.js",
-  "paramMenu": "ui/param-menu.html"
+  "ui": "ui/ui.html"
 }
 ```
 
@@ -93,12 +93,12 @@ Key points:
   `modeler`, `docs`, `$PARAMS`, `$component`, and more (see
   `packages/core/src/constants.ts` › `MODELER_METHODS_INTO_GLOBAL`).
 
-The schema you declare here is what the param menu renders — the script is the single source
+The schema you declare here is what the main UI renders — the script is the single source
 of truth for parameters.
 
 ---
 
-## 4. The param menu (`ui/param-menu.html`)
+## 4. The main UI (`ui/ui.html`)
 
 One self-contained HTML document. The host injects a `window.archiyou` bridge before your
 script runs, then hands you the schema. Your job: render inputs, collect a **values object**,
@@ -137,6 +137,7 @@ The **`archiyou` bridge** (available inside the iframe):
 | `archiyou.onResult(cb)` | host → part | Receive the run summary: `{ status, meta, outputPaths }` (no heavy buffers). |
 | `archiyou.generate(selectors)` | part → host | `await` the requested outputs, e.g. `['default/model/glb']` → `[{ path, data }]`. |
 | `archiyou.download(name, data)` | part → host | Download `data` (ArrayBuffer/string) as a file. |
+| `archiyou.ui.open/close/toggle(tool)` | part → host | Open/close/toggle a tool panel by name or id, e.g. `archiyou.ui.open('Export')`. |
 
 Each schema entry's `schema` is JSON Schema: `schema.enum` for `options`,
 `schema.minimum` / `schema.maximum` / `schema.multipleOf` for numbers, etc.
@@ -165,7 +166,7 @@ box and downloads GLB / STL. Output selectors are `pipeline/category/name/format
 - The part is sandboxed (`sandbox="allow-scripts"`, null origin): no access to the host DOM,
   other plugins, or the network beyond what a manifest permits (permissions land later).
 - Keep it one file per panel. Opened standalone (outside the editor), guard a missing
-  `archiyou` so the file still renders — see `shape-picker/ui/param-menu.html`.
+  `archiyou` so the file still renders — see `shape-picker/ui/ui.html`.
 
 ---
 

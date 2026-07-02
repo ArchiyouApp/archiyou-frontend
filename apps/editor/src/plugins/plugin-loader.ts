@@ -17,7 +17,7 @@ import type { LoadedPlugin, PluginManifest } from './types';
 /** UI part paths declared by a manifest (param menu + tools). */
 function partPaths(manifest: PluginManifest): string[]
 {
-  return [manifest.paramMenu, ...(manifest.tools ?? []).map(t => t.ui)].filter(Boolean) as string[];
+  return [manifest.ui, ...(manifest.tools ?? []).map(t => t.ui)].filter(Boolean) as string[];
 }
 
 /** `$component` script name for a manifest path (its file stem: scripts/bracket.ts → bracket). */

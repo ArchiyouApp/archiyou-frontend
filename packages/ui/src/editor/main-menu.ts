@@ -1,5 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { SignalWatcher } from '@lit-labs/signals';
 import { msg } from '@lit/localize';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
@@ -8,14 +9,18 @@ import '@awesome.me/webawesome/dist/components/dialog/dialog.js';
 import './main-menu-file-menu.js';
 import '../configurator/configurator.js';
 
+import { pluginMode } from '@archiyou/editor/src/state/plugin-mode';
+import '@archiyou/editor/src/pages/plugin-app.js';
+
 type MenuItem = 'info' | 'code' | 'history' | 'files' | 'templates' | 'help' | 'settings';
 
 @customElement('editor-main-menu')
-export class MainMenu extends LitElement
+export class MainMenu extends SignalWatcher(LitElement)
 {
   // ── 1. Render ──
   override render()
   {
+    const inPluginMode = pluginMode.get() !== null;
     return html`
       <!-- top: hamburger dropdown -->
       <editor-main-menu-file-menu></editor-main-menu-file-menu>
@@ -34,20 +39,22 @@ export class MainMenu extends LitElement
           id="btn-configurator"
           appearance="plain"
           @click=${this._openConfigurator}
-        ><wa-icon library="lucide" name="tv-minimal-play" label="Configurator"></wa-icon></wa-button>
-        <wa-tooltip for="btn-configurator" placement="right">${msg('Configurator')}</wa-tooltip>
+        ><wa-icon library="lucide" name=${inPluginMode ? 'app-window' : 'tv-minimal-play'} label=${inPluginMode ? 'App' : 'Configurator'}></wa-icon></wa-button>
+        <wa-tooltip for="btn-configurator" placement="right">${inPluginMode ? msg('App') : msg('Configurator')}</wa-tooltip>
 
       </div>
 
-      <!-- configurator dialog -->
+      <!-- configurator / app preview dialog -->
       <wa-dialog
         class="configurator-dialog"
-        label=${msg('configurator')}
+        label=${inPluginMode ? msg('app') : msg('configurator')}
         style="--width: 80vw"
         ?open=${this._configuratorOpen}
         @wa-after-hide=${() => { this._configuratorOpen = false; }}
       >
-        <page-configurator></page-configurator>
+        ${this._configuratorOpen
+          ? (inPluginMode ? html`<plugin-app></plugin-app>` : html`<page-configurator></page-configurator>`)
+          : ''}
       </wa-dialog>
 
       <!-- bottom: templates, help, settings -->
@@ -179,7 +186,8 @@ export class MainMenu extends LitElement
       overflow: hidden;
     }
 
-    page-configurator
+    page-configurator,
+    plugin-app
     {
       flex: 1;
       min-height: 0;

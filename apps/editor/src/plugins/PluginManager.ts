@@ -59,11 +59,14 @@ export class PluginManager
   /** Most recently submitted values — reused for tool-driven `generate()` calls. */
   private lastParams: Record<string, any> = {};
   private _summary: PluginResultSummary | null = null;
+  private _schema: ScriptParamData[] = [];
 
   get active(): LoadedPlugin | null { return this.plugin; }
   get manifest(): PluginManifest | null { return this.plugin?.manifest ?? null; }
   /** Last run summary (status + meta + output paths), for tool parts. */
   get summary(): PluginResultSummary | null { return this._summary; }
+  /** Input schema (main script's $PARAMS) captured on activate, for the param menu. */
+  get schema(): ScriptParamData[] { return this._schema; }
 
   /** HTML source of a declared part (param menu or a tool), by manifest-relative path. */
   partHtml(path: string): string | null
@@ -100,6 +103,7 @@ export class PluginManager
     const result = await this.run({});
     const defs = result?.state?.managedParams?.new ?? [];
     for (const p of defs) { if (p.name) this.paramDefs[p.name] = p; }
+    this._schema = defs;
     return defs;
   }
 

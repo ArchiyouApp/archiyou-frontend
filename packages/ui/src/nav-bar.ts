@@ -1,76 +1,100 @@
-import { LitElement, html, css } from 'lit';
-import { customElement, state } from 'lit/decorators.js';
+import { LitElement, html, css, nothing } from 'lit';
+import { customElement } from 'lit/decorators.js';
 import { msg } from '@lit/localize';
 import { Router } from '@vaadin/router';
-import { authService } from '../services/auth-service.js';
-import { applyDarkTheme, removeDarkTheme, isDarkTheme } from '../styles/dark-theme.js';
+import { SignalWatcher } from '@lit-labs/signals';
+
+import { userState } from '@archiyou/editor/src/state/workspace';
+import { authService } from '@archiyou/editor/src/services/auth-service.js';
+import { applyDarkTheme, removeDarkTheme, isDarkTheme } from '@archiyou/editor/src/styles/dark-theme.js';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@awesome.me/webawesome/dist/components/button/button.js';
+import '@awesome.me/webawesome/dist/components/tooltip/tooltip.js';
+import '@awesome.me/webawesome/dist/components/dropdown/dropdown.js';
+import '@awesome.me/webawesome/dist/components/dropdown-item/dropdown-item.js';
 
+/** Shown to anonymous users to flag that persistence is local-only. */
+const NOT_SIGNED_IN_MESSAGE = 'Not signed in. Saving is local only.';
 
 @customElement('nav-bar')
-export class NavBar extends LitElement
+export class NavBar extends SignalWatcher(LitElement)
 {
   // ── 1. Render ──
   override render()
   {
+    const user = userState.get();
+    const signedIn = !user.anonymous;
+    const dark = isDarkTheme();
+
     return html`
       <span class="brand" @click=${() => Router.go('/editor')}>
-          <img src="img/ay_logo_white.png" alt="Archiyou">
+        <img src="img/ay_logo_white.png" alt="Archiyou">
       </span>
 
       <div class="spacer"></div>
 
-      ${this._userName
-        ? html`
-            <span class="user">${this._userName}</span>
-            <wa-button size="small" @click=${this._logout}>
-              ${msg('Sign out')}
-            </wa-button>
-          `
-        : html`
-            <wa-button size="small" variant="brand" @click=${this._login}>
-              ${msg('Sign in')}
-            </wa-button>
-          `}
+      ${signedIn ? this._renderAccountMenu(user) : this._renderSignedOut()}
 
-      <wa-button appearance="plain" @click=${this._toggleTheme}>
+      <wa-button appearance="plain" class="theme-toggle" @click=${this._toggleTheme}>
         <wa-icon
           library="lucide"
-          name=${this._dark ? 'sun' : 'moon'}
-          label=${this._dark ? msg('Light mode') : msg('Dark mode')}
+          name=${dark ? 'sun' : 'moon'}
+          label=${dark ? msg('Light mode') : msg('Dark mode')}
         ></wa-icon>
       </wa-button>
     `;
   }
 
-  // ── 2. State ──
-  @state() private _userName = '';
-  @state() private _dark = false;
-
-  // ── 3. Lifecycle ──
-  override async connectedCallback()
+  /** Signed-in: account dropdown with the user's name + a sign-out action. */
+  private _renderAccountMenu(user: ReturnType<typeof userState.get>)
   {
-    super.connectedCallback();
-    this._dark = isDarkTheme();
-    const user = await authService.getUser();
-    this._userName = user?.profile.name ?? user?.profile.email ?? '';
+    const label = user.name || user.email || msg('Account');
+    return html`
+      <wa-dropdown placement="bottom-end" @wa-select=${this._onMenuSelect}>
+        <wa-button slot="trigger" appearance="plain" class="account" with-caret>
+          <wa-icon slot="start" library="lucide" name="circle-user"></wa-icon>
+          <span class="account-label">${label}</span>
+        </wa-button>
+
+        ${user.email
+          ? html`<wa-dropdown-item disabled class="account-email">${user.email}</wa-dropdown-item>`
+          : nothing}
+        <wa-dropdown-item value="logout">
+          <wa-icon slot="icon" library="lucide" name="log-out"></wa-icon>
+          ${msg('Sign out')}
+        </wa-dropdown-item>
+      </wa-dropdown>
+    `;
+  }
+
+  /** Anonymous: a warning icon (with tooltip) + a Sign-in account button. */
+  private _renderSignedOut()
+  {
+    return html`
+      <wa-button size="small" variant="brand" class="account" @click=${this._login}>
+        <wa-icon slot="start" library="lucide" name="circle-user"></wa-icon>
+        ${msg('Sign in')}
+        <span id="nav-not-signed-in" slot="end" class="warning" tabindex="0" aria-label=${NOT_SIGNED_IN_MESSAGE} @click=${(e: Event) => e.stopPropagation()}>
+          <wa-icon library="lucide" name="triangle-alert"></wa-icon>
+        </span>
+      </wa-button>
+      <wa-tooltip for="nav-not-signed-in" placement="bottom">${msg(NOT_SIGNED_IN_MESSAGE)}</wa-tooltip>
+    `;
   }
 
   // ── 4. Behaviour & Methods ──
+  private _onMenuSelect(e: CustomEvent)
+  {
+    const value = (e.detail?.item as { value?: string } | undefined)?.value;
+    if (value === 'logout') this._logout();
+  }
+
   private _toggleTheme()
   {
-    if (isDarkTheme())
-    {
-      removeDarkTheme();
-      this._dark = false;
-    }
-    else
-    {
-      applyDarkTheme();
-      this._dark = true;
-    }
+    if (isDarkTheme()) removeDarkTheme();
+    else applyDarkTheme();
+    this.requestUpdate();
   }
 
   private _login()
@@ -78,9 +102,9 @@ export class NavBar extends LitElement
     Router.go('/login');
   }
 
-  private async _logout()
+  private _logout()
   {
-    await authService.logout();
+    authService.logout();
   }
 
   // ── 5. Styles ──
@@ -92,30 +116,49 @@ export class NavBar extends LitElement
       padding: 0 var(--space-4);
       background: var(--color-secondary);
       border-bottom: 1px solid var(--color-border);
-      gap: var(--space-4);
+      gap: var(--space-3, 0.75rem);
     }
 
     .brand {
       display: flex;
       align-items: center;
-      font-weight: 700;
       margin-left: 14px;
-      font-size: 1.1rem;
-      color: var(--color-primary);
-      text-decoration: none;
       cursor: pointer;
     }
-
-    .brand img {
-      height: 32px;
-    }
+    .brand img { height: 32px; }
 
     .spacer { flex: 1; }
 
-    .user {
-      font-size: 0.875rem;
-      color: var(--color-text-muted);
+    /* Not-signed-in warning */
+    .warning {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-warning, #d97706);
+      font-size: 1.15rem;
+      cursor: help;
+      outline: none;
     }
+    .warning:focus-visible {
+      outline: 2px solid var(--color-warning, #d97706);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+
+    .account { --wa-color-text-link: var(--color-text); }
+    .account-label {
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .account-email::part(base) {
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+      opacity: 0.85;
+    }
+
+    .theme-toggle { color: var(--color-text-muted); }
   `;
 }
 

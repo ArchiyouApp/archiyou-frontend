@@ -39,7 +39,6 @@
     "lucide-static": "^1.16.0",
     "meshup": "workspace:*",
     "n8ao": "^1.10.1",
-    "oidc-client-ts": "^3.1.0",
     "three": "^0.171.0"
   },
   "devDependencies": {

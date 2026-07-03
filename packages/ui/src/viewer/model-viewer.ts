@@ -20,12 +20,13 @@ import type { HandleDef } from './gltf-handles.js';
 import type { ManagedHandlesData } from '@archiyou/core/src/interaction/types.js';
 import './viewer-handles-overlay.js';
 import type { ViewerHandlesOverlay, HandleOverlay, HandleOverlayPos, HandleDragEventDetail } from './viewer-handles-overlay.js';
-import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR,
+import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR, VIEWER_BACKGROUND_COLOR_DARK,
   VIEWER_SCENE_SIZE, VIEWER_GRID_CELLS_PER_SCENE,
   VIEWER_GIZMO_AXIS_LENGTH, VIEWER_GIZMO_COLOR_X, VIEWER_GIZMO_COLOR_Y,
   VIEWER_GIZMO_COLOR_Z, VIEWER_GIZMO_COLOR_ORIGIN, VIEWER_GIZMO_LABEL_SIZE,
   VIEWER_MODEL_COORDSYSTEM, VIEWER_HANDLE_RANGE_LINE_COLOR, VIEWER_HANDLE_RANGE_LINE_WIDTH,
   VIEWER_LIGHT_POSITION } from '@archiyou/editor/src/settings';
+import { THEME_CHANGE_EVENT } from '@archiyou/editor/src/styles/dark-theme.js';
 import { VIEW_STYLES } from './view-styles.js';
 import type { ViewStyle, ViewStyleMaterialConfig } from './view-styles.js';
 import { FadingGrid } from './fading-grid.js';
@@ -182,6 +183,25 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     this._resizeObserver = new ResizeObserver(() => this._resize());
     this._resizeObserver.observe(this);
+
+    window.addEventListener(THEME_CHANGE_EVENT, this._onThemeChange);
+  }
+
+  /** Re-apply the current view style so the neutral background swaps light/dark. */
+  private _onThemeChange = () =>
+  {
+    if (this._renderer) this._applyViewStyle(this._activeStyleId);
+    this._syncDimBackground();
+  };
+
+  /** Keep the HTML dimension-value background matched to the (theme-resolved)
+   *  viewer background, so the text stays readable in both themes. */
+  private _syncDimBackground()
+  {
+    const overlay = this.renderRoot?.querySelector('viewer-labels-overlay') as HTMLElement | null;
+    if (!overlay) return;
+    const bg = this._resolveBackground(VIEWER_BACKGROUND_COLOR);
+    overlay.style.setProperty('--ay-dim-bg', '#' + bg.toString(16).padStart(6, '0'));
   }
 
   override updated(_changed: Map<string, unknown>)
@@ -220,6 +240,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
   override disconnectedCallback()
   {
     super.disconnectedCallback();
+    window.removeEventListener(THEME_CHANGE_EVENT, this._onThemeChange);
     cancelAnimationFrame(this._frameId);
     this._resizeObserver?.disconnect();
     this._controls?.dispose();
@@ -335,14 +356,23 @@ export class ModelViewer extends SignalWatcher(LitElement)
     r.toneMappingExposure = 1.0;
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFSoftShadowMap;
-    r.setClearColor(VIEWER_BACKGROUND_COLOR);
+    r.setClearColor(this._resolveBackground(VIEWER_BACKGROUND_COLOR));
     this._renderer = r;
+  }
+
+  /** Resolve a style's background against the active theme. The neutral light
+   *  background follows the theme (dark in dark mode); styles with their own
+   *  deliberate background (blueprint, wireframe, …) are left untouched. */
+  private _resolveBackground(styleBg: number): number
+  {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    return dark && styleBg === VIEWER_BACKGROUND_COLOR ? VIEWER_BACKGROUND_COLOR_DARK : styleBg;
   }
 
   private _initScene()
   {
     this._scene = new THREE.Scene();
-    this._scene.background = new THREE.Color(VIEWER_BACKGROUND_COLOR);
+    this._scene.background = new THREE.Color(this._resolveBackground(VIEWER_BACKGROUND_COLOR));
 
     // Image-based lighting from a procedural studio-style room environment
     const pmrem = new THREE.PMREMGenerator(this._renderer);
@@ -822,9 +852,19 @@ export class ModelViewer extends SignalWatcher(LitElement)
     }
 
     // Use a neutral fallback color when the active style has no grid config
-    const primary      = style?.grid?.primaryColor   ?? 0x666666;
-    const secondary    = style?.grid?.secondaryColor ?? 0xAAAAAA;
+    let primary        = style?.grid?.primaryColor   ?? 0x666666;
+    let secondary      = style?.grid?.secondaryColor ?? 0xAAAAAA;
     const primaryEvery = style?.grid?.primaryEvery   ?? 5;
+
+    // In dark mode, the neutral (light-background) styles get a dimmed grid that
+    // fades into the dark background instead of glaring light lines.
+    const styleBg  = style?.background ?? VIEWER_BACKGROUND_COLOR;
+    const fadeColor = this._resolveBackground(styleBg);
+    if (fadeColor !== styleBg) // neutral style, dark theme active
+    {
+      primary   = 0x475569; // slate-600
+      secondary = 0x334155; // slate-700
+    }
 
     if (!this._gridHelper)
     {
@@ -834,7 +874,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
       this._gridHelper = new FadingGrid(
         size, divisions, primary, secondary,
-        VIEWER_BACKGROUND_COLOR, primaryEvery,
+        fadeColor, primaryEvery,
       );
       // GridHelper is XZ by default; rotate to XY for Z-up ground plane
       this._gridHelper.rotation.x = -Math.PI / 2;
@@ -861,6 +901,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._gridHelper.setPrimaryEvery(primaryEvery);
       this._appliedGridPrimaryEvery = primaryEvery;
     }
+    // Keep the radial fade matched to the (theme-resolved) background.
+    this._gridHelper.setFadeColor(fadeColor);
   }
 
   private _initGizmo()
@@ -1116,8 +1158,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // Restore materials from any previous override style before applying new one
     this._restoreStyleOverrides();
 
-    // Background + renderer
-    const bg = style.background ?? VIEWER_BACKGROUND_COLOR;
+    // Background + renderer (neutral background follows the light/dark theme)
+    const bg = this._resolveBackground(style.background ?? VIEWER_BACKGROUND_COLOR);
     this._scene.background = new THREE.Color(bg);
     this._renderer.setClearColor(bg);
 
@@ -1608,9 +1650,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
     const overlay = this.renderRoot.querySelector('viewer-labels-overlay') as ViewerLabelsOverlay | null;
     if (overlay)
     {
-      // dimension value text background = viewer background (kept in sync)
-      const bgHex = '#' + VIEWER_BACKGROUND_COLOR.toString(16).padStart(6, '0');
-      overlay.style.setProperty('--ay-dim-bg', bgHex);
+      // dimension value text background = viewer background (kept in sync,
+      // theme-aware so the text stays readable in dark mode)
+      this._syncDimBackground();
 
       overlay.labels = htmlLabels.map((l): OverlayLabel => ({
         id: l.id,

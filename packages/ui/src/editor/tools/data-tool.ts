@@ -1,5 +1,5 @@
 import { LitElement, html, css } from 'lit';
-import { customElement, state } from 'lit/decorators.js';
+import { customElement, state, query } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/select/select.js';
@@ -46,7 +46,7 @@ export class EditorDataTool extends SignalWatcher(LitElement)
         <wa-select
           class="table-select"
           .value=${selected}
-          @wa-change=${(e: Event) =>
+          @change=${(e: Event) =>
           {
             this._selectedTable = ((e.target as HTMLElement & { value: string }).value);
           }}
@@ -95,14 +95,23 @@ export class EditorDataTool extends SignalWatcher(LitElement)
 
   // ── 2. State ──
   @state() private _selectedTable: string | null = null;
+  @query('.table-select') private _select!: HTMLElement & { value: string };
 
   // ── 3. Lifecycle ──
   override updated()
   {
     const tableNames = Object.keys(this._buildTableMap());
-    if (tableNames.length > 0 && (!this._selectedTable || !tableNames.includes(this._selectedTable)))
+    if (tableNames.length === 0) return;
+
+    if (!this._selectedTable || !tableNames.includes(this._selectedTable))
     {
       this._selectedTable = tableNames[0];
+    }
+
+    // Keep wa-select in sync (its value can lag the slotted options on first paint)
+    if (this._select && this._select.value !== this._selectedTable)
+    {
+      this._select.value = this._selectedTable;
     }
   }
 

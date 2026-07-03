@@ -51,8 +51,10 @@ export const isProgrammatic    = (p: ScriptParamClass): boolean => !!p._definedP
 export interface UserState
 {
   anonymous: boolean;
+  id: string | null;
+  email: string | null;
   name: string | null;
-  // TODO: more + typing
+  avatarUrl: string | null;
 }
 
 /**

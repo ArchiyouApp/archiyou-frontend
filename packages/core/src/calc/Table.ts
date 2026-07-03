@@ -5,8 +5,11 @@
 */
 
 import type { JSONSchema7 } from 'json-schema';
+import { Type, type TSchema } from 'typebox'
+import { Check, Errors } from 'typebox/value'
 
 import { Db } from './Db';
+import { STANDARD_SCHEMAS } from './schemas';
 import type { DataRowColumnValue, DataRows, DataRowsColumnValue,
     FooterSpec, FooterOptions, FooterColumnSpec, FooterAggKeyword, ComputedFooterRow } from './types'
 import { isDataRowsValues, isDataRowsColumnValue } from './typeguards';
@@ -22,7 +25,8 @@ export class Table
     _name:string;
     _db:Db; // reference to database parent
     _dataRows: DataRowsColumnValue; // raw data fallback: [{ col1: v1, col2: v2}, { col1: v3, col2: v4 }]}
-    _schema:JSONSchema7; // optional JSON schema for this table
+    _schema:TSchema; // optional row schema (TypeBox) that every row is validated against
+    _idColumn:string; // name of the column used as identity/default group key (see id())
     _component:string; // component name if this table came from a component
     _footers:Array<{ spec:FooterSpec, options:FooterOptions }> = []; // footer aggregation blocks, kept separate from row data
 
@@ -54,10 +58,47 @@ export class Table
     
     }
     
-    /** Print table to console */
-    print()
+    /** Pretty-print the table (header, rows and any footers) as an aligned grid to the console. */
+    print():this
     {
-        return this._dataRows;
+        console.log(this._asciiTable());
+        return this;
+    }
+
+    /** Render the table as an aligned unicode-box grid string (used by print()). */
+    _asciiTable():string
+    {
+        const cols = this.columns();
+        if(cols.length === 0){ return `${this._name ? this._name + ': ' : ''}(empty table)`; }
+
+        const fmt = (v:any) => (v === null || v === undefined) ? '' : String(v);
+        const bodyRows = this._dataRows.map(row => cols.map(c => fmt(row[c])));
+        const footerRows = this.computeFooterRows().map(f => cols.map(c => fmt(f.values[c])));
+
+        // column widths: widest of header and all body/footer cells
+        const widths = cols.map((c, i) =>
+            Math.max(c.length, ...bodyRows.map(r => r[i].length), ...footerRows.map(r => r[i].length)));
+
+        // right-align a column when every data cell in it is numeric, else left-align
+        const rightAlign = cols.map(c => this._dataRows.length > 0 && this._dataRows.every(row => this._isNumeric(row[c])));
+
+        const pad  = (s:string, i:number) => rightAlign[i] ? s.padStart(widths[i]) : s.padEnd(widths[i]);
+        const line = (cells:Array<string>) => `│ ${cells.map((s,i) => pad(s,i)).join(' │ ')} │`;
+        const rule = (l:string, m:string, r:string) => l + widths.map(w => '─'.repeat(w + 2)).join(m) + r;
+
+        const out:Array<string> = [];
+        if(this._name){ out.push(this._name); }
+        out.push(rule('┌','┬','┐'));
+        out.push(line(cols));
+        out.push(rule('├','┼','┤'));
+        bodyRows.forEach(r => out.push(line(r)));
+        if(footerRows.length)
+        {
+            out.push(rule('├','┼','┤'));
+            footerRows.forEach(r => out.push(line(r)));
+        }
+        out.push(rule('└','┴','┘'));
+        return out.join('\n');
     }
 
     /** Get/set name */
@@ -71,17 +112,69 @@ export class Table
         return this;
     }
 
-    /** Set JSON schema for defining the structure of this table */
-    schema(schema?:JSONSchema7):this
+    /** Set the row schema for this table.
+     *  Pass the name of a standard schema (e.g. schema('parts')) or a raw JSON Schema
+     *  object. Every row is validated against it; existing rows are checked immediately.
+     */
+    schema(schema?:string|JSONSchema7):this
     {
-        this._schema = schema;
+        if(typeof schema === 'string')
+        {
+            const std = STANDARD_SCHEMAS[schema];
+            if(!std)
+            {
+                throw new Error(`Table::schema(): Unknown standard schema '${schema}'. Known schemas: ${Object.keys(STANDARD_SCHEMAS).join(', ')}`);
+            }
+            this._schema = std;
+        }
+        else if(schema && typeof schema === 'object')
+        {
+            this._schema = Type.Unsafe(schema);
+        }
+        else {
+            throw new Error(`Table::schema(schema): Please supply a standard schema name (e.g. 'parts') or a JSON Schema object`);
+        }
+
+        this.validate(); // check current rows against the new schema
         return this;
     }
 
-    /** Validate this Table against its schema */
-    validate()
+    /** Validate every row against this table's schema. Throws on the first failing rows. */
+    validate():this
     {
-        // TODO validate this._dataRows against this._schema
+        if(!this._schema){ return this; }
+
+        const failures:Array<string> = [];
+        this._dataRows.forEach((row, i) =>
+        {
+            if(!Check(this._schema, row))
+            {
+                failures.push(`row ${i}: ${this._schemaErrors(row).join('; ')}`);
+            }
+        });
+
+        if(failures.length)
+        {
+            throw new Error(`Table::validate(): ${failures.length} row(s) failed schema validation: ${failures.join(' | ')}`);
+        }
+        return this;
+    }
+
+    /** Validate a single row against the schema (no-op when no schema). Throws on failure. */
+    _validateRow(row:DataRowColumnValue):void
+    {
+        if(!this._schema){ return; }
+        if(!Check(this._schema, row))
+        {
+            throw new Error(`Table::validate(): row failed schema validation: ${this._schemaErrors(row).join('; ')}`);
+        }
+    }
+
+    /** Human-readable validation messages for a row against the current schema */
+    _schemaErrors(row:DataRowColumnValue):Array<string>
+    {
+        // @ts-ignore TS2589: TypeBox Errors can trigger excessively deep type instantiation
+        return Errors(this._schema, row).map(e => e.message);
     }
 
     /** Save this Table in the database*/
@@ -174,15 +267,18 @@ export class Table
 
     //// SIMPLE OPS ////
 
-    /** Add a simple row consisting of valyues */
-    addRow(row:Array<string|number|Record<string,  string|number>>):this
+    /** Add a row, either as an array of values (zipped to the columns) or a column-value object */
+    addRow(row:Array<string|number> | DataRowColumnValue):this
     {
         if(Array.isArray(row))
         {
-            this._dataRows.push(this._zip(this.columns(), row))
+            const newRow = this._zip(this.columns(), row);
+            this._validateRow(newRow);
+            this._dataRows.push(newRow)
         }
         else if(typeof row === 'object'){
             const fullRow = { ...this._zip(this.columns(), []), ...(row as Object) };
+            this._validateRow(fullRow);
             this._dataRows.push(fullRow); // can directly push the key:value pair
         }
 
@@ -307,7 +403,110 @@ export class Table
 
     //// SLICING AND DICING ////
 
-    // TODO filtering, sorting, groupby, joins, merges, etc
+    // TODO filtering, joins, merges, etc
+
+    /** Get/set the id column: the column used as row identity and default group key */
+    id():string;
+    id(columnName:string):this;
+    id(columnName?:string):string|this
+    {
+        if(columnName === undefined)
+        {
+            return this._idColumn;
+        }
+        if(!this._checkColumn(columnName))
+        {
+            throw new Error(`Table::id(columnName): No column '${columnName}'. Columns: ${this.columns().join(', ')}`);
+        }
+        this._idColumn = columnName;
+        return this;
+    }
+
+    /** Sort rows in place. `by` is a column name or a compare fn(row1,row2); order 'asc'|'desc'. */
+    sort(by:string|((a:DataRowColumnValue, b:DataRowColumnValue) => number), order:'asc'|'desc'='asc'):this
+    {
+        const dir = (order === 'desc') ? -1 : 1;
+
+        if(typeof by === 'function')
+        {
+            this._dataRows.sort((a,b) => by(a,b) * dir);
+            return this;
+        }
+
+        if(!this._checkColumn(by))
+        {
+            throw new Error(`Table::sort(by): No column '${by}'. Columns: ${this.columns().join(', ')}`);
+        }
+        this._dataRows.sort((a,b) =>
+        {
+            const va = a[by];
+            const vb = b[by];
+            const cmp = (this._isNumeric(va) && this._isNumeric(vb))
+                ? parseFloat(va) - parseFloat(vb)
+                : String(va ?? '').localeCompare(String(vb ?? ''));
+            return cmp * dir;
+        });
+        return this;
+    }
+
+    /** Group rows by a column (defaults to the id column). Within each group numeric columns
+     *  are summed and string columns collapsed to their unique values, comma-joined. */
+    group(by?:string):this
+    {
+        const col = by ?? this._idColumn;
+        if(!col)
+        {
+            throw new Error(`Table::group(by): No column given and no id() column set`);
+        }
+        if(!this._checkColumn(col))
+        {
+            throw new Error(`Table::group(by): No column '${col}'. Columns: ${this.columns().join(', ')}`);
+        }
+
+        const cols = this.columns();
+        // bucket rows by group value, keeping first-seen order (as computeFooterRows does)
+        const groups = new Map<any, DataRowsColumnValue>();
+        const order:Array<any> = [];
+        this._dataRows.forEach(row =>
+        {
+            const k = row[col];
+            if(!groups.has(k)){ groups.set(k, []); order.push(k); }
+            groups.get(k).push(row);
+        });
+
+        this._dataRows = order.map(k =>
+        {
+            const groupRows = groups.get(k);
+            const out:DataRowColumnValue = {};
+            cols.forEach(c =>
+            {
+                if(c === col){ out[c] = k; return; } // the group key stays as-is
+                const values = groupRows.map(r => r[c]);
+                if(values.every(v => this._isNumeric(v)))
+                {
+                    out[c] = values.reduce((s,v) => s + parseFloat(v), 0); // sum numbers
+                }
+                else {
+                    // unique non-empty values, comma-joined
+                    out[c] = [...new Set(values.filter(v => v != null && v !== ''))].join(', ');
+                }
+            });
+            return out;
+        });
+        return this;
+    }
+
+    /** Append the rows of another Table to this one (validated against this table's schema). */
+    append(other:Table):this
+    {
+        other.toDataRows().forEach(row =>
+        {
+            const copy = { ...row };
+            this._validateRow(copy);
+            this._dataRows.push(copy);
+        });
+        return this;
+    }
 
     //// OUTPUT ////
 

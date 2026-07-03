@@ -76,6 +76,16 @@ export default defineConfig(() => {
 
     server: {
       port: 5173,
+      // Proxy the editor's `/api` calls to the backend (apps/server) so dev needs
+      // no CORS and no VITE_API_BASE_URL. The server serves routes at the root,
+      // so strip the `/api` prefix. Override the target with VITE_API_PROXY_TARGET.
+      proxy: {
+        '/api': {
+          target: process.env['VITE_API_PROXY_TARGET'] || 'http://localhost:4100',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/api/, ''),
+        },
+      },
     },
   };
 });

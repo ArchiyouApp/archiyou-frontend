@@ -12,6 +12,7 @@ import '@dile/editor/editor.js';
 
 import {
   editorScript,
+  userState,
   fileManagerCollapsed,
   setFileManagerCollapsed,
   updateScriptName,
@@ -85,6 +86,21 @@ export class EditorFileManager extends SignalWatcher(LitElement)
         }
 
         <span class="spacer"></span>
+
+        ${userState.get().anonymous
+          ? html`
+              <span
+                id=${`fm-not-signed-in-${this._uid}`}
+                class="fm-warning"
+                @click=${(e: Event) => e.stopPropagation()}
+              >
+                <wa-icon library="lucide" name="triangle-alert"></wa-icon>
+              </span>
+              <wa-tooltip for=${`fm-not-signed-in-${this._uid}`} placement="bottom">
+                Not signed in. Saving is local only.
+              </wa-tooltip>`
+          : nothing}
+
         <wa-icon library="lucide" name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
       </div>
 
@@ -570,6 +586,18 @@ export class EditorFileManager extends SignalWatcher(LitElement)
     .header:hover .edit-name-btn { opacity: 1; }
 
     .spacer { flex: 1; }
+
+    /* Not-signed-in warning (saving is local-only) */
+    .fm-warning
+    {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-warning, #d97706);
+      font-size: 1rem;
+      cursor: help;
+      flex-shrink: 0;
+    }
 
     /* ── Body ── */
 

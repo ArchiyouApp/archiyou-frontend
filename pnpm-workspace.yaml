@@ -9,3 +9,5 @@ overrides:
 allowBuilds:
   '@vaadin/vaadin-usage-statistics': false
   esbuild: false
+  # native module — needs its build script to compile the SQLite binding
+  better-sqlite3: true

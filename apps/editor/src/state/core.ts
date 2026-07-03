@@ -22,6 +22,8 @@ import { EDITOR_START_SCRIPT } from '../settings';
 import type { UserState, WorkspaceCoreState } from './types';
 import { scenegraph, reconcileScenegraph, setInteractiveShapes, applyManagedParamsAndPresets } from './editor';
 import { applyManagedBehaviours, evaluateParamBehaviours } from './param-behaviours';
+import { currentUser } from '../services/auth-service.js';
+import { syncCreate, syncSaveActive, syncDelete } from '../services/scripts-sync.js';
 
 //// LOCAL STORAGE ////
 
@@ -112,6 +114,8 @@ export function saveActive(): void
     const script = editorScript.get();
     if (!script) return;
     localStorage.setItem(SCRIPT_STORAGE_KEY, JSON.stringify(script.toData()));
+    // Mirror to the server (debounced + no-op when anonymous).
+    syncSaveActive(script);
   }
   catch { /* storage unavailable – silently ignore */ }
 }
@@ -138,9 +142,13 @@ export function saveCore(): void
 
 //// SIGNALS ////
 
-export const userState = signal<UserState>({
-  anonymous: true,
-  name: null,
+/** User state, derived from the auth service's `currentUser` signal so the
+ *  whole app reacts to sign-in/out through one source of truth. */
+export const userState = computed<UserState>(() => {
+  const u = currentUser.get();
+  return u
+    ? { anonymous: false, id: u.id, email: u.email, name: u.name, avatarUrl: u.avatarUrl }
+    : { anonymous: true, id: null, email: null, name: null, avatarUrl: null };
 });
 
 // Hydration: load collection first, then active, then ensure the active
@@ -218,6 +226,7 @@ export function createNewScript(): Script
   bumpScripts();
   saveActive();
   saveCollection();
+  syncCreate(fresh);
   return fresh;
 }
 
@@ -273,6 +282,7 @@ export function importScriptFromData(data: Record<string, any>): Script | null
   bumpScripts();
   saveActive();
   saveCollection();
+  syncCreate(localScript);
 
   return localScript;
 }
@@ -318,6 +328,7 @@ export function deleteScriptById(fileId: string): void
   }
 
   saveCollection();
+  syncDelete(fileId);
 }
 
 /** Create a new empty script and select it. Returns the new script.

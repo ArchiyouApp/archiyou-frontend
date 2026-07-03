@@ -61,7 +61,8 @@ export const SCENE_EXPLORER_MINIMIZED_TREE_LEVEL = 1;
  */
 export const VIEWER_MODEL_COORDSYSTEM = { up: 'z', forward: 'y', right: 'x' } as const;
 
-export const VIEWER_BACKGROUND_COLOR = 0xf1f5f9; // scene + renderer clear color
+export const VIEWER_BACKGROUND_COLOR = 0xf1f5f9; // scene + renderer clear color (light theme)
+export const VIEWER_BACKGROUND_COLOR_DARK = 0x0f172a; // scene + renderer clear color (dark theme)
 export const VIEWER_AUTO_FRAME_ON_FIRST_LOAD = true;
 
 // Dimension lines (3D viewer) — the in-scene line + arrowhead cones.

@@ -3,6 +3,7 @@ import { customElement } from 'lit/decorators.js';
 import { Router } from '@vaadin/router';
 import { msg } from '@lit/localize';
 import { authService } from '../services/auth-service.js';
+import { pullUserScripts } from '../services/scripts-sync.js';
 
 @customElement('page-callback')
 export class PageCallback extends LitElement
@@ -20,6 +21,7 @@ export class PageCallback extends LitElement
     try
     {
       await authService.callback();
+      await pullUserScripts();
       Router.go('/');
     }
     catch (err)

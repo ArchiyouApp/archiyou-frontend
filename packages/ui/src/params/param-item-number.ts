@@ -191,6 +191,9 @@ export class ParamItemNumber extends LitElement
             flex:      1 1 0;
             min-width: 0;
             cursor:    pointer;
+            /* Tints the native range track/thumb so it follows the theme
+               (avoids a glaring white track in dark mode). */
+            accent-color: var(--color-primary);
         }
 
         /* ── step arrows ── */

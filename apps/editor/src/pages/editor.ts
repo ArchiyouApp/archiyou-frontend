@@ -5,7 +5,7 @@ import { type RouterLocation } from '@vaadin/router';
 
 import { pluginMode, enterPluginMode, exitPluginMode, type PluginModeState } from '../state/plugin-mode';
 import { PluginManager, type PluginResultSummary, type GeneratedOutput } from '../plugins/PluginManager';
-import { loadPluginFromDirectory, loadShapePicker, scriptStem, requestWritePermission, writeFileText } from '../plugins/plugin-loader';
+import { loadPluginFromDirectory, loadPluginFromFiles, loadShapePicker, scriptStem, requestWritePermission, writeFileText, pickPluginFolderFiles } from '../plugins/plugin-loader';
 import type { LoadedPlugin } from '../plugins/types';
 import { dataToModuleString } from '@archiyou/core/src/utils';
 import '../plugins/plugin-part-frame';
@@ -393,15 +393,20 @@ export class PageEditor extends SignalWatcher(LitElement)
   private async _addPluginFromFolder()
   {
     const picker = (window as any).showDirectoryPicker as undefined | (() => Promise<FileSystemDirectoryHandle>);
-    if (typeof picker !== 'function')
-    {
-      window.alert('Opening a folder is only supported in Chromium-based browsers.');
-      return;
-    }
     try
     {
-      const dir = await picker();
-      await this._enterPluginMode(() => loadPluginFromDirectory(dir), dir);
+      if (typeof picker === 'function')
+      {
+        const dir = await picker();
+        await this._enterPluginMode(() => loadPluginFromDirectory(dir), dir);
+      }
+      else
+      {
+        // Firefox/Safari: read-only snapshot — no dirHandle, so save-back stays hidden.
+        const files = await pickPluginFolderFiles();
+        if (!files) return;
+        await this._enterPluginMode(() => loadPluginFromFiles(files), null);
+      }
     }
     catch (err)
     {

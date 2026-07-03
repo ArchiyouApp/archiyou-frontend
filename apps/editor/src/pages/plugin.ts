@@ -18,7 +18,8 @@ import type { ScriptParamData } from '@archiyou/core/src/execution/types';
 import type { LoadedPlugin, PluginToolManifest } from '../plugins/types';
 import { PluginManager, type GeneratedOutput, type PluginResultSummary } from '../plugins/PluginManager';
 import {
-  loadShapePicker, loadPluginFromDirectory, directoryPickerSupported, pluginMaxMtime,
+  loadShapePicker, loadPluginFromDirectory, loadPluginFromFiles,
+  directoryPickerSupported, pickPluginFolderFiles, pluginMaxMtime,
 } from '../plugins/plugin-loader';
 import { takePendingPluginDir } from '../plugins/plugin-session';
 
@@ -39,6 +40,8 @@ export class PagePlugin extends LitElement
   @state() private _pluginName = '';
   @state() private _status = 'Loading…';
   @state() private _autoReload = true;
+  /** True when the folder was loaded read-only (no live handle: no reload/save-back). */
+  @state() private _readOnly = false;
 
   private _fsSupported = directoryPickerSupported();
 
@@ -56,6 +59,8 @@ export class PagePlugin extends LitElement
     .toolbar button[aria-pressed="true"] { background: #eef2ff; border-color: #6366f1; }
     .toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
     .toolbar label { display: inline-flex; align-items: center; gap: 4px; color: #6b7280; }
+    .toolbar .ro { color: #b45309; background: #fef3c7; border-radius: 4px;
+            padding: 1px 6px; font-size: 11px; cursor: help; }
     .toolbar .name { margin-left: auto; color: #6b7280; }
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; }
     .viewer { flex: 1 1 auto; min-width: 0; position: relative; }
@@ -92,10 +97,24 @@ export class PagePlugin extends LitElement
   {
     try
     {
-      const dir = await (window as any).showDirectoryPicker();
-      this._dirHandle = dir;
-      await this._load(() => loadPluginFromDirectory(dir));
-      await this._startWatch();
+      if (this._fsSupported)
+      {
+        const dir = await (window as any).showDirectoryPicker();
+        this._dirHandle = dir;
+        this._readOnly = false;
+        await this._load(() => loadPluginFromDirectory(dir));
+        await this._startWatch();
+      }
+      else
+      {
+        // Firefox/Safari: one-shot read-only snapshot, no live handle.
+        const files = await pickPluginFolderFiles();
+        if (!files) return;
+        this._stopWatch();
+        this._dirHandle = null;
+        this._readOnly = true;
+        await this._load(() => loadPluginFromFiles(files));
+      }
     }
     catch (e)
     {
@@ -207,12 +226,16 @@ export class PagePlugin extends LitElement
         <div class="toolbar">
           <button
             @click=${this._openFolder}
-            ?disabled=${!this._fsSupported}
-            title=${this._fsSupported ? 'Load a plugin from a local folder' : 'Not supported in this browser'}
+            title=${this._fsSupported
+              ? 'Load a plugin from a local folder'
+              : 'Load a plugin folder (read-only: this browser has no live folder access)'}
           >Open folder</button>
           <button @click=${this._reload} ?disabled=${!this._dirHandle}>Reload</button>
           ${this._dirHandle ? html`
             <label><input type="checkbox" .checked=${this._autoReload} @change=${this._toggleAutoReload}>auto</label>
+          ` : ''}
+          ${this._readOnly ? html`
+            <span class="ro" title="This browser has no live folder access. Re-open the folder to pick up edits; use a Chromium browser for hot-reload.">read-only</span>
           ` : ''}
           <span class="name">${this._pluginName}</span>
         </div>

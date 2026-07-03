@@ -30,42 +30,54 @@ export class ApiServer
     private library: Library;
     private executionManager: ExecutionManager;
     private port: number;
+    private external: boolean; // true when mounted onto a shared Fastify instance
 
-    constructor(port?:number) 
+    /**
+     * @param opts  a port number (standalone), or `{ fastify }` to register the
+     *              publish routes onto an existing (possibly prefixed) instance
+     *              for a combined server. In `fastify` mode the caller owns the
+     *              lifecycle and must call `initExecution()` (see plugin.ts).
+     */
+    constructor(opts?: number | { port?: number; fastify?: FastifyInstance })
     {
-        this.port = port || this.PORT;
-        console.log('🔧 Creating ApiServer with port:', port);
-        this.library = new Library();
-        console.log('✅ Library initialized');
-        
-        console.log('🔧 Initializing Fastify...');
-        this.fastify = Fastify({
-            logger: this.DEBUG_LOGGER
-        });
+        let port: number | undefined;
+        let injected: FastifyInstance | undefined;
+        if (typeof opts === 'number') { port = opts; }
+        else if (opts) { port = opts.port; injected = opts.fastify; }
 
-        console.log('🔧 Setting up authentication...');
+        this.port = port || this.PORT;
+        this.external = !!injected;
+
+        this.library = new Library();
+        this.fastify = injected ?? Fastify({ logger: this.DEBUG_LOGGER });
+
         this.setupAuthentication();
-        console.log('🔧 Setting up routes...');
         this.setupRoutes();
         this.setupErrorHandling();
-        
-        console.log('✅ ApiServer constructor completed. Use start() to run...');
     }
 
 
     //// MAIN CONTROL ////
 
-    async start(): Promise<void> 
+    /** Initialize the Redis/BullMQ execution pipeline (needed before routes
+     *  that execute scripts serve requests). Separated from `start()` so a
+     *  combined server can init it without listening. */
+    async initExecution(): Promise<void>
+    {
+        this.executionManager = await new ExecutionManager().init();
+    }
+
+    async start(): Promise<void>
     {
         console.log('🔧 ApiServer::start(): Initializing Execution Manager...');
-        this.executionManager = await new ExecutionManager().init();
+        await this.initExecution();
 
-        try 
+        try
         {
             await this.fastify.listen({ port: this.port, host: '0.0.0.0' });
             console.log(`🚀 API Server running on http://localhost:${this.port}`);
-        } 
-        catch (error) 
+        }
+        catch (error)
         {
             this.fastify.log.error(error);
             process.exit(1);
@@ -524,18 +536,24 @@ export class ApiServer
 
 //// MAIN ////
 
-(async () => 
+// Only auto-start when this file is executed directly (standalone). When the
+// module is imported (e.g. by the combined gateway via plugin.ts), do nothing.
+const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+if (isMain)
 {
-    console.log('🔧 Starting API server...');
-    try 
+    (async () =>
     {
-        const apiServer = new ApiServer();
-        await apiServer.start();
-        console.log('✅ ApiServer started successfully');
-    } 
-    catch (error) 
-    {
-        console.error('❌ Failed to start API server:', error);
-        process.exit(1);
-    }
-})();
+        console.log('🔧 Starting API server...');
+        try
+        {
+            const apiServer = new ApiServer();
+            await apiServer.start();
+            console.log('✅ ApiServer started successfully');
+        }
+        catch (error)
+        {
+            console.error('❌ Failed to start API server:', error);
+            process.exit(1);
+        }
+    })();
+}

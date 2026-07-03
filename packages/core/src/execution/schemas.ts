@@ -45,7 +45,6 @@ const ParamPresetsSchema = Type.Record(Type.String(), ParamRecordSchema)
 
 /** Published part of script */
 export const ScriptPublishedSchema = Type.Object({
-    published:   Type.Optional(Type.Boolean()),
     public:      Type.Optional(Type.Boolean()), // if shown up in lists
     version:     SemverSchema, // semver version string, e.g. "1.0.0"
     url:         Type.Optional(Type.String()),

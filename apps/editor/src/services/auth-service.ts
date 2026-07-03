@@ -1,53 +1,117 @@
 /**
- * Auth service — thin singleton wrapper around oidc-client-ts UserManager.
+ * auth-service — JWT session client for the Archiyou server (apps/server).
  *
- * Configure OIDC settings via environment variables injected by Vite:
- *   VITE_OIDC_AUTHORITY   e.g. https://auth.example.com
- *   VITE_OIDC_CLIENT_ID   e.g. archiyou-web
- *   VITE_OIDC_REDIRECT_URI  (optional, defaults to origin/callback)
+ * Replaces the previous oidc-client-ts scaffold: our server is the identity
+ * provider. Email/password + Google OAuth all resolve to one of our JWTs,
+ * which we persist in localStorage and send as `Authorization: Bearer` (see
+ * api.ts). `currentUser` is a signal so the UI reacts to sign-in/out.
+ *
+ * This module deliberately imports neither core state nor api.ts, so it sits
+ * at the bottom of the dependency graph (api.ts and core derive from it).
  */
 
-import { UserManager, type User } from 'oidc-client-ts';
+import { signal } from '@lit-labs/signals';
+import type { AuthResponse, PublicUser } from '@archiyou/types';
 
-const authority    = import.meta.env.VITE_OIDC_AUTHORITY  as string;
-const clientId     = import.meta.env.VITE_OIDC_CLIENT_ID  as string;
-const redirectUri  = (import.meta.env.VITE_OIDC_REDIRECT_URI as string | undefined)
-  ?? `${window.location.origin}/callback`;
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api';
+const TOKEN_KEY = 'archiyou:auth:token';
 
-const userManager = new UserManager({
-  authority,
-  client_id: clientId,
-  redirect_uri: redirectUri,
-  post_logout_redirect_uri: window.location.origin,
-  response_type: 'code',
-  scope: 'openid profile email',
-  automaticSilentRenew: true,
-});
+let _token: string | null = null;
+try { _token = localStorage.getItem(TOKEN_KEY); } catch { /* storage unavailable */ }
+
+/** The signed-in user, or null when anonymous. */
+export const currentUser = signal<PublicUser | null>(null);
+
+function setToken(t: string | null): void {
+  _token = t;
+  try {
+    if (t) localStorage.setItem(TOKEN_KEY, t);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch { /* storage unavailable */ }
+}
+
+async function post(path: string, body: unknown): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let msg = `Request failed (${res.status})`;
+    try { const b = await res.json(); if (b?.error) msg = b.error; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return res.json() as Promise<AuthResponse>;
+}
 
 export const authService = {
-  /** Redirect to the OIDC provider login page. */
-  login(): Promise<void> {
-    return userManager.signinRedirect();
+  /** Email/password sign-in. */
+  async login(email: string, password: string): Promise<PublicUser> {
+    const { token, user } = await post('/auth/login', { email, password });
+    setToken(token);
+    currentUser.set(user);
+    return user;
   },
 
-  /** Process the OAuth callback after redirect. */
-  callback(): Promise<User> {
-    return userManager.signinRedirectCallback();
+  /** Email/password registration. */
+  async register(email: string, password: string, name?: string): Promise<PublicUser> {
+    const { token, user } = await post('/auth/register', { email, password, name });
+    setToken(token);
+    currentUser.set(user);
+    return user;
   },
 
-  /** Sign out and redirect. */
-  logout(): Promise<void> {
-    return userManager.signoutRedirect();
+  /** Redirect to the server's Google OAuth entry point. */
+  loginWithGoogle(): void {
+    window.location.href = `${API_BASE}/auth/google`;
   },
 
-  /** Return the current authenticated user, or null. */
-  getUser(): Promise<User | null> {
-    return userManager.getUser();
+  /** Handle the OAuth redirect back to /callback (token or error in the hash). */
+  async callback(): Promise<PublicUser> {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const err = params.get('error');
+    if (err) throw new Error(err);
+    const token = params.get('token');
+    if (!token) throw new Error('missing_token');
+    setToken(token);
+    const user = await this.refresh();
+    if (!user) throw new Error('token_rejected');
+    return user;
   },
 
-  /** Return the raw access token string, or null. */
-  async getToken(): Promise<string | null> {
-    const user = await userManager.getUser();
-    return user?.access_token ?? null;
+  /** Validate the stored token against /auth/me and refresh currentUser. */
+  async refresh(): Promise<PublicUser | null> {
+    if (!_token) { currentUser.set(null); return null; }
+    try {
+      const res = await fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${_token}` } });
+      if (!res.ok) { setToken(null); currentUser.set(null); return null; }
+      const user = (await res.json()) as PublicUser;
+      currentUser.set(user);
+      return user;
+    } catch {
+      // Network/server down — keep the token but stay anonymous for now.
+      currentUser.set(null);
+      return null;
+    }
+  },
+
+  logout(): void {
+    setToken(null);
+    currentUser.set(null);
+  },
+
+  getToken(): Promise<string | null> {
+    return Promise.resolve(_token);
+  },
+
+  getUser(): PublicUser | null {
+    return currentUser.get();
+  },
+
+  isAuthenticated(): boolean {
+    return !!_token;
   },
 };
+
+// Restore the session on load (validates the persisted token in the background).
+void authService.refresh();

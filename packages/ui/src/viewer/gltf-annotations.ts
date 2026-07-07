@@ -6,6 +6,17 @@ import {
   DIMENSION_ARROW_RADIUS,
 } from '@archiyou/editor/src/settings';
 
+import { executionResult, scriptModelUnits } from '@archiyou/editor/src/state/workspace';
+import type { ModelUnits } from '@archiyou/core/src/modeler/types';
+import type { UnitSystem } from '@archiyou/core/src/units/UnitConverter';
+import { MM_PER_UNIT, toMM, formatLength } from '@archiyou/core/src/units/UnitConverter';
+
+/** The display system used for the current execution (metric fallback). */
+function _runDisplaySystem(): UnitSystem
+{
+  return (executionResult.get()?.request?.unitSystem as UnitSystem) ?? 'metric';
+}
+
 /**
  * Render archiyou annotations carried in the GLB root `extras`.
  *
@@ -76,6 +87,9 @@ export interface HtmlLabelDef
   /** Raw numeric value (for dimensions) — used as the starting input value
    *  when the user clicks the label to edit it. */
   rawValue?: number | string;
+  /** Source dimension data (for dimensions) — lets the viewer re-format the
+   *  label text when the Metric/Imperial switch flips, without a rebuild. */
+  dim?: { value: number | string; units?: string; showUnits?: boolean; round?: boolean; roundDecimals?: number };
 }
 
 export interface AnnotationsResult
@@ -186,12 +200,13 @@ export async function applyAnnotations(
       : a.clone().add(b).multiplyScalar(0.5);
     htmlLabels.push({
       id: `dim-${i}`,
-      text: _formatValue(d),
+      text: formatDimensionValue(d),
       variant: 'dimension',
       anchorLocal: lp,
       param: d.param,
       interactive: !!d.interactive && !!d.param,
       rawValue: d.value,
+      dim: { value: d.value, units: d.units, showUnits: d.showUnits, round: d.round, roundDecimals: d.roundDecimals },
     });
   });
 
@@ -199,19 +214,32 @@ export async function applyAnnotations(
   return { htmlLabels };
 }
 
-function _formatValue(d: DimensionLineData): string
+/**
+ * Format a dimension value for display, converting from the dimension's source
+ * unit (the script's model unit) into the run's Metric/Imperial display system
+ * with an auto-picked unit + fractional inches. Always converts + labels so the
+ * value is unambiguous and updates when the switch flips. Reads the execution
+ * result + scriptModelUnits so it reflects the current run each time it runs.
+ */
+export function formatDimensionValue(
+  d: Pick<DimensionLineData, 'value' | 'units' | 'showUnits' | 'round' | 'roundDecimals'>,
+): string
 {
-  let v: string;
-  if (typeof d.value === 'number')
+  // Non-numeric values are custom text — pass through unchanged.
+  if (typeof d.value !== 'number') return String(d.value);
+
+  const src: ModelUnits = (d.units && (d.units as ModelUnits) in MM_PER_UNIT)
+    ? (d.units as ModelUnits)
+    : scriptModelUnits.get();
+
+  // No valid source unit → fall back to the raw (optionally rounded) number.
+  if (!((src as string) in MM_PER_UNIT))
   {
-    v = (d.round ? _round(d.value, d.roundDecimals ?? 0) : d.value).toString();
+    return (d.round ? _round(d.value, d.roundDecimals ?? 0) : d.value).toString();
   }
-  else
-  {
-    v = String(d.value);
-  }
-  if (d.showUnits && d.units) v += d.units;
-  return v;
+
+  // Convert to the run's display system with unit label (auto unit + fractions).
+  return formatLength(toMM(d.value, src), _runDisplaySystem(), { withUnit: true });
 }
 
 function _round(n: number, decimals: number): number

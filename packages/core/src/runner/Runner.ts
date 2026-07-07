@@ -52,6 +52,7 @@ import { Annotator } from '../annotator/Annotator';
 import { Interactor } from '../interaction/Interactor';
 import { Calc } from '../calc/Calc';
 import { Docs } from '../docs/Docs';
+import { MaterialManager } from '../materials/MaterialManager';
 
 // Settings
 import { MODELER_METHODS_INTO_GLOBAL, SCRIPT_OUTPUT_GLTF_OPTIONS_DEFAULT } from '../constants'; 
@@ -212,12 +213,14 @@ export class Runner
             interactor: this._interactor, // reuse persistent instance so HandleRegistry survives runs
             calc: new Calc(),
             docs: new Docs(), // TODO: settings with proxy
+            materials: new MaterialManager(),
             runner: this,
         } as ArchiyouModules
 
         archiyou.modeler.setArchiyou(archiyou);
         archiyou.docs.setArchiyou(archiyou);
         archiyou.calc.setArchiyou(archiyou);
+        archiyou.materials.setArchiyou(archiyou);
         archiyou?.annotator?.setArchiyou(archiyou); // doesnt have it yet
         archiyou?.interactor?.setArchiyou(archiyou); // re-link fresh modules to persistent interactor
 
@@ -259,6 +262,7 @@ export class Runner
             docs: state._archiyou.docs,
             doc: state._archiyou.docs, // alias - backwards compatibility
             calc: state._archiyou.calc,
+            materials: state._archiyou.materials,
             exporter: state._archiyou.exporter,
             make: state._archiyou.make,
             interactor: state._archiyou.interactor,
@@ -867,6 +871,10 @@ ${e.message === '***** CODE ****\nUnexpected end of input' ? code : ''}
         
         // Reset some modules
         scope._archiyou.modeler.reset(); // reset before we begin
+        // Apply the display unit-system preference (presentation only). Geometry
+        // stays in the script's model unit (mm unless $modeler.units() is set);
+        // dimension lines / doc SVG convert to metric/imperial for display.
+        if (request.unitSystem) { scope._archiyou.modeler.unitSystem(request.unitSystem); }
         scope._archiyou.docs.reset(); // TODO: check after rename doc => docs
         scope._archiyou.calc.reset();
         // scope._archiyou.beams?.reset();

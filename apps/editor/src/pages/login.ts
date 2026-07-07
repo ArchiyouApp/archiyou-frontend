@@ -2,6 +2,12 @@ import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { Router } from '@vaadin/router';
 import { msg } from '@lit/localize';
+// The WebAwesome autoloader only discovers tags in the light DOM, so components
+// used inside this element's shadow root must be registered explicitly (same
+// pattern as packages/ui/src/nav-bar.ts).
+import '@awesome.me/webawesome/dist/components/input/input.js';
+import '@awesome.me/webawesome/dist/components/button/button.js';
+import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import { authService } from '../services/auth-service.js';
 import { pullUserScripts } from '../services/scripts-sync.js';
 
@@ -16,30 +22,46 @@ export class PageLogin extends LitElement
     const isRegister = this._mode === 'register';
     return html`
       <div class="card">
-        <h1>Archiyou</h1>
-        <p>${isRegister ? msg('Create your account') : msg('Sign in to continue')}</p>
+        <div class="logo">
+          <img src="img/ay_logo_white.png" alt="Archiyou" />
+        </div>
+
+        <h1>${isRegister ? msg('Create your account') : msg('Welcome back')}</h1>
+        <p>${isRegister ? msg('Sign up to get started') : msg('Sign in to continue')}</p>
 
         <form @submit=${this._handleSubmit}>
           ${isRegister
-            ? html`<input class="field" type="text" placeholder=${msg('Name (optional)')}
-                     .value=${this._name} @input=${(e: Event) => (this._name = (e.target as HTMLInputElement).value)} />`
+            ? html`<wa-input class="field" type="text" placeholder=${msg('Name (optional)')}
+                     .value=${this._name} @input=${(e: Event) => (this._name = (e.target as HTMLInputElement).value)}>
+                     <wa-icon slot="start" library="lucide" name="user"></wa-icon>
+                   </wa-input>`
             : null}
-          <input class="field" type="email" required placeholder=${msg('Email')}
-                 .value=${this._email} @input=${(e: Event) => (this._email = (e.target as HTMLInputElement).value)} />
-          <input class="field" type="password" required minlength="8" placeholder=${msg('Password')}
-                 .value=${this._password} @input=${(e: Event) => (this._password = (e.target as HTMLInputElement).value)} />
+
+          <wa-input class="field" type=${isRegister ? 'email' : 'text'} required
+                 placeholder=${isRegister ? msg('Email') : msg('Email or username')}
+                 .value=${this._email} @input=${(e: Event) => (this._email = (e.target as HTMLInputElement).value)}>
+            <wa-icon slot="start" library="lucide" name=${isRegister ? 'mail' : 'at-sign'}></wa-icon>
+          </wa-input>
+
+          <wa-input class="field" type="password" required minlength=${isRegister ? '8' : '1'}
+                 placeholder=${msg('Password')}
+                 .value=${this._password} @input=${(e: Event) => (this._password = (e.target as HTMLInputElement).value)}>
+            <wa-icon slot="start" library="lucide" name="lock"></wa-icon>
+          </wa-input>
 
           ${this._error ? html`<div class="error">${this._error}</div>` : null}
 
-          <wa-button variant="brand" type="submit" ?loading=${this._loading} style="width:100%"
+          <wa-button variant="brand" size="large" type="submit" ?loading=${this._loading} class="submit"
             @click=${this._handleSubmit}>
+            <wa-icon slot="start" library="lucide" name="log-in"></wa-icon>
             ${isRegister ? msg('Create account') : msg('Sign in')}
           </wa-button>
         </form>
 
         <div class="divider"><span>${msg('or')}</span></div>
 
-        <wa-button variant="neutral" style="width:100%" @click=${this._handleGoogle}>
+        <wa-button variant="neutral" class="google" @click=${this._handleGoogle}>
+          <wa-icon slot="start" library="lucide" name="chrome"></wa-icon>
           ${msg('Continue with Google')}
         </wa-button>
 
@@ -105,54 +127,70 @@ export class PageLogin extends LitElement
       align-items: center;
       justify-content: center;
       min-height: 100vh;
-      background: var(--color-bg);
+      padding: var(--space-lg, 16px);
+      box-sizing: border-box;
+      /* Grey page behind the card (light: #f3f3f3, dark: slate). */
+      background: var(--color-gray, #f3f3f3);
     }
 
     .card {
-      background: var(--color-bg-elevated);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-lg);
-      padding: var(--space-8);
+      background: var(--color-bg-elevated, #fff);
+      border: 1px solid var(--color-border, #cfcfcf);
+      border-radius: var(--radius-lg, 12px);
+      padding: var(--space-2xl, 32px);
       text-align: center;
-      max-width: 360px;
+      max-width: 380px;
       width: 100%;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
     }
 
+    /* Header logo on a brand-colored badge so the white logo reads on grey. */
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--color-secondary, #180c2d);
+      border-radius: var(--radius-lg, 12px);
+      padding: 14px 22px;
+      margin-bottom: var(--space-lg, 16px);
+    }
+    .logo img { height: 34px; display: block; }
+
     h1 {
-      font-family: var(--font-sans);
+      font-family: var(--font-display, var(--font-sans, sans-serif));
+      font-size: var(--text-2xl, 1.5rem);
       color: var(--color-text);
-      margin: 0 0 var(--space-sm);
+      margin: 0 0 var(--space-xs, 4px);
     }
 
     p {
       color: var(--color-text-muted);
-      margin: 0 0 var(--space-6);
+      font-size: var(--text-sm, 0.875rem);
+      margin: 0 0 var(--space-xl, 24px);
     }
 
     form {
       display: flex;
       flex-direction: column;
-      gap: var(--space-3, 0.75rem);
-      margin-bottom: var(--space-4, 1rem);
+      gap: var(--space-lg, 16px);
+      margin-bottom: var(--space-lg, 16px);
     }
 
     .field {
       width: 100%;
-      box-sizing: border-box;
-      padding: 0.6rem 0.75rem;
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-md, 6px);
-      background: var(--color-bg);
-      color: var(--color-text);
-      font: inherit;
-    }
-    .field:focus { outline: 2px solid var(--color-brand, #4f46e5); outline-offset: 1px; }
-
-    .error {
-      color: var(--color-danger, #dc2626);
-      font-size: 0.85rem;
       text-align: left;
     }
+
+    /* Centered under the input fields. */
+    .error {
+      color: var(--color-danger, #dc2626);
+      font-size: var(--text-sm, 0.85rem);
+      text-align: center;
+      margin: calc(-1 * var(--space-xs, 4px)) 0 0;
+    }
+
+    .submit { width: 100%; }
+    .google { width: 100%; }
 
     .divider {
       display: flex;
@@ -160,7 +198,7 @@ export class PageLogin extends LitElement
       gap: 0.75rem;
       color: var(--color-text-muted);
       font-size: 0.8rem;
-      margin: var(--space-4, 1rem) 0;
+      margin: var(--space-lg, 16px) 0;
     }
     .divider::before, .divider::after {
       content: '';
@@ -170,7 +208,7 @@ export class PageLogin extends LitElement
     }
 
     .switch {
-      margin-top: var(--space-4, 1rem);
+      margin-top: var(--space-lg, 16px);
       background: none;
       border: none;
       color: var(--color-text-muted);

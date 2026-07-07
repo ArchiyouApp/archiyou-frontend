@@ -24,6 +24,7 @@ import { DimensionOptionsSchema } from './schemas'
 import { Type } from 'typebox'
 
 import { roundTo } from '../utils' // utils
+import { MM_PER_UNIT, toMM, formatLength } from '../units/UnitConverter'
 
 export class DimensionLine extends BaseAnnotation
 {
@@ -837,8 +838,21 @@ export class DimensionLine extends BaseAnnotation
         lineMidArr[1] = -lineMidArr[1];
 
         const v = (typeof this.value === 'string') ? parseFloat(this.value) : this.value;
-        let dimText = ((this.round) ? roundTo(v, this.roundDecimals) : this.value).toString();
-        if (this.showUnits ) dimText += this.units;
+        // Convert the raw value (in this.units, the model unit) into the active
+        // display system with an auto-picked unit + fractional inches. Always
+        // labelled so the value is unambiguous when metric/imperial is toggled.
+        const system = this._archiyou?.modeler?.unitSystem?.();
+        const src = this.units;
+        let dimText:string;
+        if (system && src && (src as string) in MM_PER_UNIT && typeof v === 'number')
+        {
+            dimText = formatLength(toMM(v, src), system, { withUnit: true });
+        }
+        else
+        {
+            dimText = ((this.round) ? roundTo(v, this.roundDecimals) : this.value).toString();
+            if (this.showUnits) dimText += this.units;
+        }
 
         return `<g class="dimensionline">
                 ${this._makeSvgLinePath(lineStartArr,lineEndArr)}

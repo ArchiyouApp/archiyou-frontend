@@ -24,12 +24,12 @@ import '@archiyou/ui/editor/tools/data-tool.js';
 import '@archiyou/ui/editor/tools/metrics-tool.js';
 import '@archiyou/ui/editor/tools/document-viewer.js';
 import '@archiyou/ui/editor/tools/console-tool.js';
-import '@archiyou/ui/editor/file-manager.js';
+import '@archiyou/ui/editor/file-info.js';
 import '@archiyou/ui/editor/script-manager.js';
 import '@archiyou/ui/editor/script-importer.js';
 import type { ToolDef } from '@archiyou/ui/editor/toolbar.js';
 
-import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, deleteScriptById, importScriptFromData, selectedPath } from '../state/workspace';
+import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, deleteScriptById, importScriptFromData, selectedPath, scriptUnitSystem, ensureScriptUnitSystem } from '../state/workspace';
 import { registerScheduleExecution, triggerResetCamera } from '../state/viewer';
 import { RunnerScriptExecutionRequest } from '@archiyou/core/src/runner/types';
 import type { ScriptData, ScriptParamData } from '@archiyou/core/src/execution/types';
@@ -54,6 +54,8 @@ export class PageEditor extends SignalWatcher(LitElement)
   override render()
   {
     const pm = pluginMode.get();
+    // Track the script's unit system so a flip re-runs to regenerate doc/SVG text.
+    this._pendingUnitSystem = scriptUnitSystem.get();
     return html`
       <editor-main-menu
         .active=${this._activeSection}
@@ -68,7 +70,7 @@ export class PageEditor extends SignalWatcher(LitElement)
             slot="divider" variant="solid" name="grip-lines-vertical"></wa-icon>
         ${pm ? this._renderPluginLeftPanel(pm) : html`
         <div class="left-panel" slot="start">
-          <editor-file-manager></editor-file-manager>
+          <editor-file-info></editor-file-info>
           <presets-menu></presets-menu>
           <param-menu @param-value-change=${() => this._scheduleParamExecute()}></param-menu>
           <editor-code-box
@@ -162,6 +164,29 @@ export class PageEditor extends SignalWatcher(LitElement)
     // re-resolve the route without a full re-mount).
     if (changed.has('location')) this._consumeNewQueryParam();
   }
+
+  override updated()
+  {
+    // Persist a default (metric) unit system onto any script that has none, so
+    // every script carries an explicit setting. Idempotent — runs once per script.
+    ensureScriptUnitSystem();
+
+    // Metric/Imperial flip → re-run so doc/SVG dimension text regenerates with
+    // the new units (3D dims + readouts already update live). Skip the first
+    // paint (no prior value) to avoid an extra run on load.
+    if (this._lastUnitSystem !== null && this._pendingUnitSystem !== this._lastUnitSystem)
+    {
+      this._lastUnitSystem = this._pendingUnitSystem;
+      this.checkAutoRun(true);
+    }
+    else
+    {
+      this._lastUnitSystem = this._pendingUnitSystem;
+    }
+  }
+
+  private _pendingUnitSystem: string | null = null;
+  private _lastUnitSystem: string | null = null;
 
   /** If the URL has a `new` query param, archive the active script,
    *  create a fresh one, then clean the URL so a refresh doesn't repeat. */
@@ -262,6 +287,8 @@ export class PageEditor extends SignalWatcher(LitElement)
       params: paramValues,
       selection: selectedPath.get() ? [selectedPath.get() as string] : [],
       componentScripts,
+      // editor: display in the script's own unit system
+      unitSystem: scriptUnitSystem.get(),
     } as RunnerScriptExecutionRequest;
   }
 

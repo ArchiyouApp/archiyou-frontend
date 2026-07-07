@@ -31,6 +31,7 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
   });
 
   fastify.post('/auth/login', async (request) => {
+    // `email` is the login identifier — an email address OR a username handle.
     const { email, password } = parse(LoginRequestSchema, request.body);
     const user = await userService.login(email, password);
     return issue(fastify, user);

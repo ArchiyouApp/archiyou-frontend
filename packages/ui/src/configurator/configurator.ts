@@ -6,6 +6,7 @@ import '@awesome.me/webawesome/dist/components/split-panel/split-panel.js';
 
 import { createExecutionFailureResult, runScript, warmupWorker } from '@archiyou/editor/src/services/execution-service';
 import { editorScript, setExecutionResult, setExecuting } from '@archiyou/editor/src/state/workspace';
+import { configuratorUnitSystem } from '@archiyou/editor/src/state/workspace';
 import { configuratorParams, configuratorValueFor } from '@archiyou/editor/src/state/configurator';
 import type { RunnerScriptExecutionRequest } from '@archiyou/core/src/runner/types';
 
@@ -20,6 +21,9 @@ export class PageConfigurator extends SignalWatcher(LitElement)
   // ── 1. Render ──
   override render()
   {
+    // Track the local display system so a switch triggers a re-run (dims/docs
+    // are formatted at execution time from request.unitSystem).
+    this._pendingUnitSystem = configuratorUnitSystem.get();
     return html`
       <wa-split-panel position="33">
         <wa-icon
@@ -46,6 +50,8 @@ export class PageConfigurator extends SignalWatcher(LitElement)
   // ── 2. State ──
   @state() private _executing = false;
   private _paramExecTimeout: number | null = null;
+  private _pendingUnitSystem: string | null = null;
+  private _lastUnitSystem: string | null = null;
 
   // ── 3. Lifecycle ──
   override connectedCallback()
@@ -58,6 +64,20 @@ export class PageConfigurator extends SignalWatcher(LitElement)
         console.error('Configurator: worker init failed:', err);
         setExecutionResult(createExecutionFailureResult(this._buildRequest(), err));
       });
+  }
+
+  override updated()
+  {
+    // Local unit-system flip → re-run so dimension/doc text reformats.
+    if (this._lastUnitSystem !== null && this._pendingUnitSystem !== this._lastUnitSystem)
+    {
+      this._lastUnitSystem = this._pendingUnitSystem;
+      this._execute();
+    }
+    else
+    {
+      this._lastUnitSystem = this._pendingUnitSystem;
+    }
   }
 
   override disconnectedCallback()
@@ -116,6 +136,8 @@ export class PageConfigurator extends SignalWatcher(LitElement)
       messages: ['error'],
       script:   scriptData,
       params:   paramValues,
+      // display = the end-user's local choice (geometry stays in the model unit)
+      unitSystem: configuratorUnitSystem.get(),
     } as RunnerScriptExecutionRequest;
   }
 

@@ -84,4 +84,8 @@ export const ScriptSchema = Type.Object(
 
     // null or published as
     published:   Type.Optional(Type.Union([Type.Null(), ScriptPublishedSchema])),
+
+    // Main unit system of the script (metric shows mm, imperial shows inches).
+    // Presentation preference — does not rescale geometry. Default 'metric'.
+    units:       Type.Optional(Type.Union([Type.Literal('metric'), Type.Literal('imperial')])),
 })

@@ -756,7 +756,7 @@ export const shapeClasses: ShapeClassInfo[] = [
     { label: "intersect", detail: "(other: Curve): Array<Point>|null",
       info: "Get intersection points with other curve \n  Empty array if no intersections, null if error (e.g. invalid curve type)",
       type: 'function' },
-    { label: "connectTo", detail: "(other: Curve, maxGap?: number): this",
+    { label: "connect", detail: "(other: Curve, maxGap?: number): this",
       info: "Connect endpoints to endpoints of another Curve by creating Line \n     and if possible create a single continuous (closed) curve\n\n Setting the distance controls behaviour:\n - maxGap = undefined: connect both endpoints unrelated to distance\n - maxGap < distance(other) - can't connect\n - maxGap >= distance(other) - connect closest endpoints",
       type: 'function' },
     { label: "union", detail: "(other: Curve): Curve|ShapeCollection<Curve>|null",

@@ -30,6 +30,8 @@ export function withSmartShape<T extends Constructor>(Base: T)
         _modeler!: Modeler
         _node: SceneNode<any> | null = null
         _conversionLog: SmartShapeConversion[] = []
+        /** Assigned material name (see materials module). Set via .material('wood'). */
+        _material?: string
 
         /** Duck-type guard — lets meshup.ShapeCollection and SmartShapeCollection accept this shape. */
         isShapeClass(): boolean { return true }
@@ -180,6 +182,42 @@ export function withSmartShape<T extends Constructor>(Base: T)
             return this
         }
 
+        /**
+         *  Assign or read the material of this shape.
+         *
+         *  Setter (chainable): `box(10,10,2000).material('douglas')` — stores the
+         *  material name and mirrors it onto the render style so the GLTF export
+         *  can apply PBR + textures.
+         *
+         *  Getter (no arg): `beam.material()` returns a BoundMaterial with derived
+         *  calculations (`.weight()`, `.mass()`, `.density()`, `.property(key)`),
+         *  presented in the active unit system. Returns null when no material set
+         *  or the name is unknown.
+         */
+        material(name?: string): any
+        {
+            const manager = this._ay.materials
+            if (name === undefined)
+            {
+                return manager?.resolve(this._material, this) ?? null
+            }
+            this._material = name
+            // mirror onto the render style (best-effort — used by GLTF export)
+            const style = (this as any).style
+            if (style)
+            {
+                const spec = manager?.get(name) ? manager.renderSpec(manager.get(name)!) : name
+                style.material = spec ?? name
+            }
+            return this
+        }
+
+        /** Mass/weight of this shape in the active unit system (kg / lb). Shortcut for material().weight(). */
+        weight(): number | undefined
+        {
+            return this.material()?.weight?.()
+        }
+
         get shapeKind(): 'closed' | 'linear'
         {
             const t = (this as any).type as string | undefined
@@ -217,6 +255,7 @@ export function withSmartShape<T extends Constructor>(Base: T)
             kernelCopy._modeler = this._modeler
             kernelCopy._node = null
             kernelCopy._conversionLog = []
+            kernelCopy._material = this._material
             kernelCopy._suppressSceneAdd = suppressSceneAdd
             if (this._modeler && !suppressSceneAdd)
             {
@@ -227,7 +266,15 @@ export function withSmartShape<T extends Constructor>(Base: T)
 
         toString(): string
         {
-            return `<${this.constructor.name} id="${(this as any).id?.()}" type="${(this as any).type}">`
+            // Pass through the wrapped kernel object's own toString() (e.g. meshup Vertex<x,y,z>)
+            let wrapped: string | undefined
+            const baseToString = (Base as any).prototype?.toString
+            if (typeof baseToString === 'function' && baseToString !== Object.prototype.toString)
+            {
+                try { wrapped = baseToString.call(this) } catch { /* ignore */ }
+            }
+            const wrappedAttr = wrapped ? ` wrapped="${wrapped}"` : ''
+            return `<${this.constructor.name} id="${(this as any).id?.()}" type="${(this as any).type}"${wrappedAttr}>`
         }
     }
 

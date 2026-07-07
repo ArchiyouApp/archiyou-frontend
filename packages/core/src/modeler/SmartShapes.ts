@@ -81,6 +81,35 @@ export class SmartMeshCurve extends withSmartShape(meshup.Curve)
         return super.end() as any
     }
 
+    /** Corner vertices along the curve as a SmartShapeCollection of SmartMeshVertex,
+     *  so SmartShape methods (label(), dim(), …) are available on each. */
+    @toSmart
+    // @ts-ignore — return type SmartShapeCollection narrows base ShapeCollection<Vertex>; mixin prevents override check
+    override vertices(): SmartShapeCollection
+    {
+        // @ts-ignore — super.vertices() exists on the meshup.Curve kernel base at runtime
+        return super.vertices() as any
+    }
+
+    /** Atomic segments of this curve as a SmartShapeCollection of SmartMeshCurve,
+     *  so SmartShape methods (label(), dim(), …) are available on each. */
+    @toSmart
+    // @ts-ignore — return type SmartShapeCollection narrows base ShapeCollection<Curve>; mixin prevents override check
+    override segments(): SmartShapeCollection
+    {
+        // @ts-ignore — super.segments() exists on the meshup.Curve kernel base at runtime
+        return super.segments() as any
+    }
+
+    /** Alias for segments() (BREP compatibility) — SmartShapeCollection of SmartMeshCurve. */
+    @toSmart
+    // @ts-ignore — return type SmartShapeCollection narrows base ShapeCollection<Curve>; mixin prevents override check
+    override edges(): SmartShapeCollection
+    {
+        // @ts-ignore — super.edges() exists on the meshup.Curve kernel base at runtime
+        return super.edges() as any
+    }
+
     override replicate(
         num: number,
         transform: (curve: meshup.Curve, index: number, prev: meshup.Curve | undefined) => meshup.Curve,
@@ -109,7 +138,7 @@ export class SmartMeshCurve extends withSmartShape(meshup.Curve)
      *  added to the active layer.  Returns null when the kernel cannot extrude. */
     @sceneReplace
     // @ts-ignore — return type SmartMesh narrows base Mesh; TypeScript mixin inference prevents override check
-    override extrude(length: number, direction: meshup.PointLike = [0, 0, 1]): SmartMesh | null
+    override extrude(length: number, direction?: meshup.PointLike): SmartMesh | null
     {
         return super.extrude(length, direction) as any
     }
@@ -122,6 +151,24 @@ export class SmartMeshCurve extends withSmartShape(meshup.Curve)
     override toMesh(tolerance?: number): SmartMesh | undefined
     {
         return super.toMesh(tolerance) as any
+    }
+
+    /** Convert this closed planar Curve to a Polygon via tessellation.
+     *  The original Curve is removed from the scene and the resulting Polygon is
+     *  added to the active layer.  Returns undefined when conversion fails. */
+    @sceneReplace
+    // @ts-ignore — return type SmartMeshPolygon narrows base Polygon; TypeScript mixin inference prevents override check
+    override toPolygon(tolerance?: number): SmartMeshPolygon | undefined
+    {
+        return super.toPolygon(tolerance) as any
+    }
+
+    /** Alias for toPolygon(). */
+    @sceneReplace
+    // @ts-ignore — return type SmartMeshPolygon narrows base Polygon; TypeScript mixin inference prevents override check
+    override toFace(tolerance?: number): SmartMeshPolygon | undefined
+    {
+        return super.toFace(tolerance) as any
     }
 
     /** Offset this curve in place without letting meshup's temporary working
@@ -518,6 +565,17 @@ export class SmartMeshPolygon extends withSmartShape(meshup.Polygon)
     override offset(distance: number, cornerType: 'sharp' | 'round' | 'smooth' = 'sharp'): this | null
     {
         return super.offset(distance, cornerType) as any
+    }
+
+    /** Split this polygon into pieces with a cutting Curve or Polygon.
+     *  The original Polygon is removed from the scene and the resulting pieces are added
+     *  to the active layer as a SmartShapeCollection. Returns null (scene unchanged) when
+     *  no split happens (see meshup Polygon.split() for the rules and warnings). */
+    @sceneReplace
+    // @ts-ignore — return type SmartShapeCollection narrows base; mixin prevents override check
+    override split(other: meshup.Curve | meshup.Polygon, gap?: number): SmartShapeCollection | null
+    {
+        return super.split(other, gap) as any
     }
 }
 

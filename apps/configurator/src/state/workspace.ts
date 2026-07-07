@@ -19,3 +19,4 @@ export * from './editor';
 export * from './configurator';
 export * from './browser';
 export * from './viewer';
+export * from './units';

@@ -60,7 +60,7 @@ import type { Brep } from './brep/index'
 // Brep is loaded lazily in _loadBrep() to avoid pulling in the OpenCascade WASM at startup
 let brep: Brep | null = null;
 import { SmartShapeCollection } from "./SmartShapeCollection";
-import { SceneNodeGraphNode } from "meshup/src/types";
+import { SceneNodeGraphNode, isPointLike } from "meshup/src/types";
 import { Layouter } from "./Layouter";
 import { GLTFBuilder } from "../GLTFBuilder";
 import { Make } from './Make';
@@ -85,6 +85,9 @@ export class Modeler
 
     declare private _modules: ArchiyouModules
     private _units: ModelUnits
+    // Display preference (metric/imperial) — presentation only, does not change
+    // geometry. Set from the execution request; read by dimension-line SVG etc.
+    private _unitSystem: 'metric'|'imperial' = 'metric'
 
     declare private _scene: SmartSceneNode
     declare private _activeLayer: SmartSceneNode | null
@@ -270,6 +273,13 @@ export class Modeler
         return this._units;
     }
 
+    /** Display unit system (metric/imperial) — presentation preference only. */
+    unitSystem(s?:'metric'|'imperial'):'metric'|'imperial'
+    {
+        if(s){ this._unitSystem = s } // setter
+        return this._unitSystem;
+    }
+
     //// ==== MODELING PRIMITIVES ==== ////
 
     //// POINTLIKES ////
@@ -391,12 +401,14 @@ export class Modeler
         return shape;
     }
 
-    /** Creates a closed planar Polygon from 3+ points */
-    polygon(vertices: PointLike[]): SmartMeshPolygon | SmartBrepFace
+    /** Creates a closed planar Polygon from 3+ points.
+     *  Accepts either an array — polygon([p1, p2, p3]) — or flat args — polygon(p1, p2, p3). */
+    polygon(vertices: PointLike | PointLike[], ...args: PointLike[]): SmartMeshPolygon | SmartBrepFace
     {
+        const points = (isPointLike(vertices) ? [vertices, ...args] : [...vertices, ...args]) as PointLike[];
         const shape = (this.mode() === 'mesh')
-            ? SmartMeshPolygon.from(this, new meshup.Polygon(vertices) as meshup.Polygon)
-            : SmartBrepFace.from(this, new brep.Face().fromVertices(vertices as brep.PointLike[]) as brep.Face)
+            ? SmartMeshPolygon.from(this, new meshup.Polygon(points) as meshup.Polygon)
+            : SmartBrepFace.from(this, new brep.Face().fromVertices(points as brep.PointLike[]) as brep.Face)
         this.addToScene(shape);
         return shape;
     }
@@ -720,6 +732,10 @@ export class Modeler
 
         // Remove empty container nodes before export (e.g. pre-allocated Make group slots)
         this.scene().pruneEmptyNodes();
+
+        // Embed material textures (async, cached) into shape styles so the GLTF
+        // builder can bake them into the GLB. No-op when no materials carry textures.
+        await this._modules?.materials?.embedTexturesInShapes?.(this.scene().shapes());
 
         // Base GLB
         const glb = await this.scene().toGLB();

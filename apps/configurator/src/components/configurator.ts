@@ -6,6 +6,7 @@ import '@awesome.me/webawesome/dist/components/split-panel/split-panel.js';
 
 import { createExecutionFailureResult, runScript, warmupWorker } from '../services/execution-service';
 import { editorScript, setExecutionResult, setExecuting } from '../state/workspace';
+import { configuratorUnitSystem } from '../state/workspace';
 import { configuratorParams, configuratorValueFor } from '../state/configurator.js';
 import type { RunnerScriptExecutionRequest } from '@archiyou/core/src/runner/types.js';
 
@@ -116,6 +117,7 @@ export class PageConfigurator extends SignalWatcher(LitElement)
       messages: ['error'],
       script:   scriptData,
       params:   paramValues,
+      unitSystem: configuratorUnitSystem.get(),
     } as RunnerScriptExecutionRequest;
   }
 

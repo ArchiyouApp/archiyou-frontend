@@ -2,7 +2,7 @@
  * state/editor.ts — editor-only state.
  *
  * UI state for the editor (scene tree, hidden nodes, bottom panel,
- * file-manager, script metadata, param/preset menu collapse) PLUS the param +
+ * file-info, script metadata, param/preset menu collapse) PLUS the param +
  * preset *authoring* API. Param definitions live on the core active `Script`
  * (`script.params` / `script.presets`, canonical model). Mutators translate the
  * param-menu's flat spec into canonical `ScriptParam` (schema-driven) and bump

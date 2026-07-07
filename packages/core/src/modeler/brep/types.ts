@@ -22,7 +22,7 @@ import type { Console } from '../../console/Console'
 
 //// UNION TYPES ////
 
-export type ModelUnits = 'mm'|'cm'|'dm'|'m'|'km'|'in'|'ft'|'yd'|'mi'; // For now they are for administration only
+export type ModelUnits = 'mm'|'cm'|'dm'|'m'|'km'|'inch'|'feet'|'yd'|'mi'; // matches ModelUnitsSchema (modeler/schemas.ts)
 export type Units = DocUnits | ModelUnits
 export type UnitsWithPerc = Units | '%'
 export type Coord = number|string

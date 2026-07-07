@@ -17,6 +17,7 @@ import type { ManagedHandlesData } from "./interaction/types";
 import type { ParamOperation, ScriptParamData, ManagedBehavioursData } from "./execution/types";
 import type { Console } from "./console/Console";
 import type { Runner } from "./runner/Runner";
+import type { MaterialManager } from "./materials/MaterialManager";
 import { SmartSceneNodeData } from "./modeler/types";
 
 
@@ -28,7 +29,8 @@ export interface ArchiyouModules
     docs: Docs,
     annotator: Annotator,
     interactor: Interactor,
-    runner: Runner
+    runner: Runner,
+    materials: MaterialManager
     // modeling kernels
     oc?: any, // OpenCascade (BREP)
     meshup?: any, // Meshup (mesh/curve)

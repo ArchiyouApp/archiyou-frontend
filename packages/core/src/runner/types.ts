@@ -74,6 +74,11 @@ export interface RunnerScriptExecutionRequest
     preset?:string // TODO: preset - overrides param values
     variantId?:string // hash of param values for identifying unique requests - is filled in on submission
     mode?: 'main'|'component'
+    /** Display unit system (metric/imperial) — how dimension-line/doc SVG text
+     *  is formatted for this run. Editor sends the script's system; the
+     *  configurator sends the end-user's local choice. Presentation only;
+     *  geometry stays in the script's model unit. */
+    unitSystem?: 'metric'|'imperial'
 
     /** Local scripts the runner can resolve as components when the parent
      *  script references them via $component('./name'). Sent as ScriptData

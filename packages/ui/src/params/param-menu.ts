@@ -261,7 +261,7 @@ export class ParamMenu extends SignalWatcher(LitElement)
   {
     switch (p.type)
     {
-      case 'number':  return html`<param-item-number  .param=${p}></param-item-number>`;
+      case 'number':  return html`<param-item-number  .param=${p} context="editor"></param-item-number>`;
       case 'boolean': return html`<param-item-boolean .param=${p}></param-item-boolean>`;
       case 'text':    return html`<param-item-text    .param=${p}></param-item-text>`;
       case 'options': return html`<param-item-options .param=${p}></param-item-options>`;

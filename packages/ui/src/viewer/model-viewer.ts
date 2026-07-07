@@ -7,6 +7,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildScenegraphPath, executionResult, scenegraph, scriptParams, updateParam, selectedPath, setSelectedPath, interactiveShapes } from '@archiyou/editor/src/state/workspace';
+import { formatDimensionValue } from './gltf-annotations.js';
 import { scheduleExecution, resetCameraCounter } from '@archiyou/editor/src/state/viewer';
 import type { ScriptOutputData } from '@archiyou/core/src/execution/types.js';
 import type { SmartSceneNodeData } from '@archiyou/core/src/modeler/types.js';
@@ -128,6 +129,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._pendingResetCount = resetCameraCounter.get();
     this._pendingSelectedPath = selectedPath.get();
     this._interactiveShapes = interactiveShapes.get();
+    this._pendingUnitSystem = (executionResult.get()?.request?.unitSystem as string) ?? null;
 
     return html`
       <canvas></canvas>
@@ -220,6 +222,14 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._loadGlbOutput(glbOutput);
     }
 
+    // Metric/Imperial switch flipped → re-format existing dimension labels
+    // in place (no 3D rebuild needed; geometry is unit-agnostic).
+    if (this._pendingUnitSystem !== this._lastUnitSystem)
+    {
+      this._lastUnitSystem = this._pendingUnitSystem;
+      this._refreshDimLabelText();
+    }
+
     // Re-apply full view style when the scenegraph signal mutates (toggle, or
     // a fresh result reconciled into a new tree). The signal always replaces
     // the root reference on mutation, so cheap reference compare is enough.
@@ -287,6 +297,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _dirty = true;
   private _currentModel?: THREE.Object3D;
   private _htmlLabels: HtmlLabelDef[] = [];
+  private _pendingUnitSystem: string | null = null;
+  private _lastUnitSystem: string | null = null;
   private _htmlHandles: HandleDef[] = [];
   private _activeHandle: HandleDef | null = null;
   private _handleHitPlane = new THREE.Plane();
@@ -1982,6 +1994,38 @@ export class ModelViewer extends SignalWatcher(LitElement)
   };
 
   /** Project each HTML label's world anchor to screen px and push to the overlay */
+  /** Re-format dimension label text from cached raw data when the unit system
+   *  changes, and push the new text into the overlay (positions unchanged). */
+  private _refreshDimLabelText()
+  {
+    if (!this._htmlLabels.length) return;
+    let changed = false;
+    for (const l of this._htmlLabels)
+    {
+      if (l.variant !== 'dimension' || !l.dim) continue;
+      const next = formatDimensionValue(l.dim);
+      if (next !== l.text) { l.text = next; changed = true; }
+    }
+    if (!changed) return;
+
+    const overlay = this.renderRoot.querySelector('viewer-labels-overlay') as ViewerLabelsOverlay | null;
+    if (!overlay) return;
+    overlay.labels = this._htmlLabels.map((l): OverlayLabel => ({
+      id: l.id,
+      text: l.text,
+      variant: l.variant,
+      class: l.class,
+      line: l.line,
+      offset: l.offset,
+      angle: l.angle,
+      circle: l.circle,
+      param: l.param,
+      interactive: l.interactive,
+      rawValue: l.rawValue,
+    }));
+    this._updateLabelOverlay();
+  }
+
   private _updateLabelOverlay()
   {
     const overlay = this.renderRoot.querySelector('viewer-labels-overlay') as ViewerLabelsOverlay | null;

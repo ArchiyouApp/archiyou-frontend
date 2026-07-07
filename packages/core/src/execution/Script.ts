@@ -28,6 +28,7 @@ export class Script
     declare description: undefined|string;
     declare details:undefined|string;
     tags: string[] = []; // array of tags for the script
+    units: undefined|'metric'|'imperial'; // main unit system of the script (metric shows mm, imperial shows inches)
     
     declare code:string;
     params:Record<string,ScriptParam> = {}; 
@@ -403,6 +404,7 @@ export class Script
         script.author = data.author?.toLowerCase();
         script.description = data.description;
         script.tags = Array.isArray(data.tags) ? data.tags : [];
+        script.units = (data as any).units;
         script.created = data.created ? new Date(data.created) : new Date();
         script.updated = data.updated ? new Date(data.updated) : new Date();
         script.code = data.code;
@@ -449,6 +451,7 @@ export class Script
             author: this.author,
             description: this.description,
             tags: this.tags,
+            units: this.units,
             created: this.created ? this.created.toISOString() : null,
             updated: this.updated ? this.updated.toISOString() : null,
             code: this.code,

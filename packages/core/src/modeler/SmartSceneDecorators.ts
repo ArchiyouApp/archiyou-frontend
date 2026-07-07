@@ -112,6 +112,22 @@ function asAddable(result: any): any
     return result?.isShapeCollection?.() ? result.toArray() : result
 }
 
+/** Remove `self` from the scene. For a single Smart shape that's its own node;
+ *  for a SmartShapeCollection it's every member's node plus the backing layer. */
+function detachSelf(self: any): void
+{
+    if (self?.isShapeCollection?.())
+    {
+        self._shapes?.forEach((s: any) => s?._node?.detach?.())
+        self._layer?.detach?.()
+        self._layer = null
+    }
+    else
+    {
+        self._node?.detach?.()
+    }
+}
+
 type MethodDecorator = (target: any, key: string, descriptor: PropertyDescriptor) => PropertyDescriptor
 
 //// DECORATORS ////
@@ -139,7 +155,7 @@ export const sceneReplace: MethodDecorator = (_t, _k, descriptor) =>
         const result = wrapSmart(modeler, raw)
         if (modeler)
         {
-            this._node?.detach()
+            detachSelf(this)
             modeler.addToScene(asAddable(result))
         }
         return result

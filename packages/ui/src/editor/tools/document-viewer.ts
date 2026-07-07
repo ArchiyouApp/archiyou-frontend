@@ -11,6 +11,8 @@ import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import { executionResult } from '@archiyou/editor/src/state/workspace';
+import { formatLength } from '@archiyou/core/src/units/UnitConverter';
+import type { UnitSystem } from '@archiyou/core/src/units/UnitConverter';
 
 import { PDFExporter } from '@archiyou/core/src/docs/PDFExporter';
 import type { DocSVGPage } from '@archiyou/core/src/docs/types';
@@ -55,8 +57,8 @@ export class EditorDocumentTool extends SignalWatcher(LitElement)
         >
           ${docNames.map(name => html`<wa-option value=${name}>${name}</wa-option>`)}
         </wa-select>
-        ${this._docSize
-          ? html`<span class="doc-size">${this._docSize}</span>`
+        ${this._formatDocSize()
+          ? html`<span class="doc-size">${this._formatDocSize()}</span>`
           : ''}
         <span class="spacer"></span>
         <wa-button
@@ -82,7 +84,10 @@ export class EditorDocumentTool extends SignalWatcher(LitElement)
 
   // ── 2. State ──
   @state() private _selectedDoc: string | null = null;
-  @state() private _docSize: string | null = null;
+  // Document size in mm (the SVG viewBox unit). Formatted for display via the
+  // active Metric/Imperial preference in _formatDocSize().
+  @state() private _docW: number | null = null;
+  @state() private _docH: number | null = null;
   @state() private _exportingPdf = false;
   @query('.svg-wrapper') private _svgWrapper!: HTMLElement;
   @query('.doc-select') private _select!: HTMLElement & { value: string };
@@ -117,7 +122,7 @@ export class EditorDocumentTool extends SignalWatcher(LitElement)
     const svgEl = wrapperEl?.querySelector('svg') as SVGElement | null;
     if (!wrapperEl || !svgEl) return;
 
-    this._docSize = this._readDocSize(svgEl);
+    this._readDocSize(svgEl);
 
     // Panzoom the whole padded wrapper (page + gray padding + shadow) so it all
     // scales together as one floating sheet — no fixed border when zoomed.
@@ -218,8 +223,9 @@ export class EditorDocumentTool extends SignalWatcher(LitElement)
     }
   }
 
-  /** Read the document size (mm) from the SVG viewBox or width/height attributes */
-  private _readDocSize(svgEl: SVGElement): string | null
+  /** Read the document size (mm) from the SVG viewBox or width/height attributes
+   *  and cache the numeric width/height for reactive formatting. */
+  private _readDocSize(svgEl: SVGElement): void
   {
     const vb = svgEl.getAttribute('viewBox');
     let w: number | null = null;
@@ -239,9 +245,20 @@ export class EditorDocumentTool extends SignalWatcher(LitElement)
       w = parseFloat(svgEl.getAttribute('width') ?? '');
       h = parseFloat(svgEl.getAttribute('height') ?? '');
     }
-    if (w === null || h === null || isNaN(w) || isNaN(h)) return null;
+    if (w === null || h === null || isNaN(w) || isNaN(h)) { this._docW = this._docH = null; return; }
 
-    return `${Math.round(w)} × ${Math.round(h)} mm`;
+    this._docW = w;
+    this._docH = h;
+  }
+
+  /** Format the cached document size (mm) per the active Metric/Imperial system. */
+  private _formatDocSize(): string | null
+  {
+    if (this._docW === null || this._docH === null) return null;
+    const system = (executionResult.get()?.request?.unitSystem as UnitSystem) ?? 'metric';
+    const w = formatLength(this._docW, system, { withUnit: false });
+    const h = formatLength(this._docH, system, { withUnit: true });
+    return `${w} × ${h}`;
   }
 
   /** Strip the XML prolog / DOCTYPE so the string parses as inline SVG */

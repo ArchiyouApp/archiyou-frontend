@@ -21,7 +21,7 @@ import type { Axis } from 'meshup/src/types'
 import { ShapeCollection } from 'meshup/src/ShapeCollection'
 import { Mesh as MeshupMesh } from 'meshup/src/Mesh'
 import type { AnySmartShape } from './SmartShapes'
-import { toSmart, sceneAdd, sceneLayer } from './SmartSceneDecorators'
+import { toSmart, sceneAdd, sceneReplace, sceneLayer } from './SmartSceneDecorators'
 import type { SmartSceneNode } from './SmartSceneNode'
 import type { Modeler } from './Modeler'
 
@@ -238,6 +238,12 @@ export class SmartShapeCollection extends ShapeCollection<AnySmartShape>
         return this._toMeshCollection()?.isometry(viewpoint, hiddenLines, includeHiddenShapes) as any;
     }
 
+    /** Intersect every shape in this collection with `other` (mesh∩mesh boolean volumes,
+     *  curve∩mesh cuts, …), aggregating the results into a SmartShapeCollection. Like
+     *  Mesh.intersection(), this replaces in place: the original shapes are removed from
+     *  the scene and only the intersection results remain (added to the active layer). */
+    @sceneReplace intersections(others: any): SmartShapeCollection { return (this._toMeshCollection()?.intersections(others) ?? []) as any }
+
     alignByPoints(sourcePoints: any[], targetPoints: any[], withScale?: boolean): this
     {
         this._shapes.forEach(s => (s as any).alignByPoints?.(sourcePoints, targetPoints, withScale))
@@ -259,6 +265,13 @@ export class SmartShapeCollection extends ShapeCollection<AnySmartShape>
         return result
     }
 
+    /** Copy every shape and keep the result in a SmartShapeCollection (the base
+     *  meshup copy() returns a plain ShapeCollection, which would drop the Smart
+     *  wrapper and break chained ops like intersections()). Each SmartShape copy
+     *  is added to the active layer by SmartShape.copy(). */
+    // @ts-ignore — return type SmartShapeCollection narrows base ShapeCollection; scene-add via SmartShape.copy()
+    @toSmart override copy(): SmartShapeCollection { return super.copy() as any }
+
     reduce<T>(fn: (acc: T, s: AnySmartShape, i: number, arr: AnySmartShape[]) => T, initial: T): T
     {
         return this._shapes.reduce(fn, initial)
@@ -268,7 +281,8 @@ export class SmartShapeCollection extends ShapeCollection<AnySmartShape>
     {
         const groups = Array.from(this._groups.keys())
         const types = [...new Set(this._shapes.map(s => s.type))].join(',')
-        return `<SmartShapeCollection shapes="${this._shapes.length}"${groups.length > 0 ? ` groups="${groups.join(',')}"` : ''} types="${types}">`
+        const shapes = this._shapes.map(s => (s as any).toString?.() ?? String(s)).join(', ')
+        return `<SmartShapeCollection count="${this._shapes.length}"${groups.length > 0 ? ` groups="${groups.join(',')}"` : ''} types="${types}" shapes="${shapes}">`
     }
 
     every(fn: (s: AnySmartShape, i: number, arr: AnySmartShape[]) => boolean): boolean
@@ -339,7 +353,6 @@ export class SmartShapeCollection extends ShapeCollection<AnySmartShape>
     @toSmart extrude(amount?: number, direction?: any): SmartShapeCollection { return (this._toBrepCollection()?.extrude(amount, direction) ?? []) as any }
     @toSmart thicken(amount: number, direction?: any): SmartShapeCollection { return (this._toBrepCollection()?.thicken(amount, direction) ?? []) as any }
     @toSmart fillet(radius: number, at?: any): SmartShapeCollection { return (this._toBrepCollection()?.fillet(radius, at) ?? []) as any }
-    @toSmart intersections(others: any): SmartShapeCollection { return (this._toBrepCollection()?.intersections(others) ?? []) as any }
     @toSmart intersecting(other: any): SmartShapeCollection { return (this._toBrepCollection()?.intersecting(other) ?? []) as any }
    
 

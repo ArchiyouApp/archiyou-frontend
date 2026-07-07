@@ -1,10 +1,10 @@
 /**
- *  Make.ts 
- *    Submodule of Modeler. 
+ *  Make.ts
+ *    Submodule of Modeler.
  *    Contains static methods that make it easier:
  *      - to create more complex things (like a wall)
  *      - create things from the scene (like part lists)
- * 
+ *
  */
 
 import { ArchiyouModules } from '../types';
@@ -12,7 +12,7 @@ import type { Modeler } from './Modeler';
 import { SmartShapeConversion } from './types';
 import type { SmartShapeFace, SmartShapeSolid } from './SmartShapes';
 import { SmartShapeCollection } from './SmartShapeCollection';
-import { Table } from '../calc/Table'
+import { Table } from '../calc/Table';
 
 import { BinPacker } from '@archiyou/gdrr2bp-wasm/ts/BinPacker';
 import type { CuttingNode, Instance, Part } from '@archiyou/gdrr2bp-wasm/ts/BinPacker';
@@ -31,18 +31,21 @@ function loadSharedBinPacker(): Promise<BinPacker>
 {
     if (!_sharedBinPackerReady)
     {
-        _sharedBinPackerReady = new BinPacker().init().then(bp => { _sharedBinPacker = bp; return bp; });
+        _sharedBinPackerReady = new BinPacker().init().then(bp =>
+        {
+            _sharedBinPacker = bp;
+            return bp;
+        });
     }
     return _sharedBinPackerReady;
 }
 
 export type PackOptions = Static<typeof PackOptionsSchema>;
 
-
 export class Make
 {
     declare private _modeler: Modeler;
-    declare private _modules:ArchiyouModules;
+    declare private _modules: ArchiyouModules;
 
     constructor(modeler: Modeler)
     {
@@ -65,22 +68,22 @@ export class Make
     /** Make it easier / readable to use the archiyou modules */
     get archiyou(): ArchiyouModules
     {
-        if(!this._modules) throw new Error('Make: Archiyou modules not set. This should have been set by Modeler during initialization.');
+        if (!this._modules)
+            throw new Error(
+                'Make: Archiyou modules not set. This should have been set by Modeler during initialization.'
+            );
         return this._modules;
     }
 
     /** Get the Modeler module */
     get modeler(): Modeler
     {
-        const m = (this._modules) ? this._modules.modeler : this._modeler;
-        if(!m) throw new Error('Make: Modeler module not set. Use constructor(modeler) or setArchiyou() to set it.');
+        const m = this._modules ? this._modules.modeler : this._modeler;
+        if (!m)
+            throw new Error(
+                'Make: Modeler module not set. Use constructor(modeler) or setArchiyou() to set it.'
+            );
         return m;
-    }
-
-    /** Log a user-facing message via the archiyou console when available, else console.log. */
-    private _log(msg: string): void
-    {
-        if (this._modules) { this.archiyou.console.user(msg); } else { console.log('[wall]', msg); }
     }
 
     /** Resolves once the BinPacker WASM module is loaded and `pack()` can be called. */
@@ -91,75 +94,125 @@ export class Make
 
     //// MAIN METHODS ////
 
-      /** Make simple rectangular frame of width, height, depth and thickness at origin position
+    /** Make simple rectangular frame of width, height, depth and thickness at origin position
      *  prio sets what members have priority (default: horizontal)
      *  Frame is parallel to the front side
-    */   
-    public frame(width:number,height:number,depth:number,thickness:number,prio:'horizontal'|'vertical'='horizontal'):SmartShapeCollection
+     */
+    public frame(width: number, height: number, depth: number, thickness: number, prio: 'horizontal' | 'vertical' = 'horizontal'): SmartShapeCollection
     {
         // very basic input tests
-        if(typeof width !== 'number' || typeof height !== 'number' || typeof depth !== 'number' || typeof thickness !== 'number')
+        if (
+            typeof width !== 'number' ||
+            typeof height !== 'number' ||
+            typeof depth !== 'number' ||
+            typeof thickness !== 'number'
+        )
         {
-            throw new Error(`Make.frame(w,h,d,t,p): Please supply numbers for width, height, depth and thickness!`)
+            throw new Error(
+                `Make.frame(w,h,d,t,p): Please supply numbers for width, height, depth and thickness!`
+            );
         }
 
-        if(typeof prio !== 'string'){ prio = 'horizontal' }
+        if (typeof prio !== 'string')
+        {
+            prio = 'horizontal';
+        }
 
-        const horMemOffset = (prio === 'horizontal') ? [[0,0,0],[0,0,0]] : [[thickness,0,0],[-thickness,0,0]]; // [start,end], [start,end]
-        const vertMemOffset = (prio === 'horizontal') ? [[0,0,thickness],[0,0,-thickness]] : [[0,0,0],[0,0,0]]; 
+        const horMemOffset = (prio === 'horizontal') ? [[0, 0, 0], [0, 0, 0]] : [[thickness, 0, 0], [-thickness, 0, 0]]; // [start,end], [start,end]
+        const vertMemOffset = (prio === 'horizontal') ? [[0, 0, thickness], [0, 0, -thickness]] : [[0, 0, 0], [0, 0, 0]];
 
         const bottomMem = this.modeler.boxBetween(
-                                    this.modeler.point(0,0,0).move(horMemOffset[0]), 
-                                    this.modeler.point(0,0,0).move(width,depth,thickness).move(horMemOffset[1]))
-                                    .name('frameBottom')
+                                    this.modeler.point(0, 0, 0).move(horMemOffset[0]),
+                                    this.modeler.point(0, 0, 0).move(width, depth, thickness).move(horMemOffset[1]))
+                                    .name('frameBottom');
 
-        const topMem = bottomMem.copy().move(0,0,height-thickness).name('frameTop');
+        const topMem = bottomMem.copy().move(0, 0, height - thickness).name('frameTop');
         const leftMem = this.modeler.boxBetween(
-                            this.modeler.point(0,0,0).move(vertMemOffset[0]),
-                            this.modeler.point(0,0,0).move(thickness, depth, height).move(vertMemOffset[1])
-                        ).name('frameLeft')
+                            this.modeler.point(0, 0, 0).move(vertMemOffset[0]),
+                            this.modeler.point(0, 0, 0).move(thickness, depth, height).move(vertMemOffset[1])
+                        ).name('frameLeft');
 
-        const rightMem = leftMem.copy().move(width-thickness,0,0).name('frameRight');
-        
-        return this.modeler.collection(bottomMem,topMem,leftMem, rightMem).name('Frame')
+        const rightMem = leftMem.copy().move(width - thickness, 0, 0).name('frameRight');
+
+        return this.modeler.collection(bottomMem, topMem, leftMem, rightMem).name('Frame');
     }
 
-    /** Make an advanced wood frame for a wall 
+    /** Make an advanced wood frame for a wall
      *  starting from origin with centerline along x-axis
      *  returns ShapeCollection and puts messages inside console
-    */
-    public wall(width:number, height: number, depth?: number, studThickness?: number, grid?:number, openings: Array<WallOpening> = [] ): SmartShapeCollection
+     *
+     *  NOTE: Added sloped roof with optional ridge height and centerline [0-1]:
+     *    this will add a triangular top to the wall
+     */
+    public wall(width: number, height: number, depth?: number, studThickness?: number, grid?: number, ridge?: { height: number; center: number }, openings: Array<WallOpening> = []): SmartShapeCollection
     {
+        // SETTINGS
         const DEFAULT_GRID_DISTANCE = 610;
         const DEFAULT_STUD_THICKNESS = 38;
         const ENDING_STUDS_INSIDE = true;
         const OPENING_WIDTH_MIN = 100;
         const OPENING_HEIGHT_MIN = 100;
-    
+        const RIDGE_CENTER_MIN = 0.2; // max = 1 - RIDGE_CENTER_MIN
+        // if ridge.center is outside will default to 0 or 1
+
         grid = grid || DEFAULT_GRID_DISTANCE;
         studThickness = studThickness || DEFAULT_STUD_THICKNESS;
 
         // start wall collection
         const wall = this.modeler.collection().name('wall');
 
-        const OPENING_SNAP_POSITION_WITHIN_DISTANCE = studThickness*2; // kingstud + frame
+        const OPENING_SNAP_POSITION_WITHIN_DISTANCE = studThickness * 2; // kingstud + frame
         const MIN_OPENING_GAP = studThickness * 2; // minimum gap between openings for two king studs
 
-        // Sort and merge openings that are too close to leave room for king studs between them
+        // check if roof ridge is defined and valid
+        if (ridge)
+        {
+            if (typeof ridge.height !== 'number' || typeof ridge.center !== 'number')
+            {
+                console.warn(`Invalid ridge definition: ${JSON.stringify(ridge)}. Ignored.`);
+                ridge = undefined;
+            }
+            if (ridge.center < RIDGE_CENTER_MIN)
+            {
+                console.user(`wall(): ridge.center snapped to 0`);
+                ridge.center = 0;
+            }
+            else if (ridge.center > 1 - RIDGE_CENTER_MIN)
+            {
+                console.user(`wall(): ridge.center snapped to 1`);
+            }
+        }
+
+        // Make diagram of wall, basically a plane or one with a triangle
+        const wallDiagram = (
+            (ridge)
+                ? this.modeler.polygon([
+                        [0, 0, 0], // counterclockwise
+                        [width, 0, 0], 
+                        [width, 0, height],
+                        [width * (1-ridge.center), 0, height + ridge.height],
+                        [0, 0, height]
+                    ])
+                : this.modeler.planeBetween([0, 0, 0], [width, 0, height])
+        ).name('wallDiagram');
+
+        // Check, sort and merge openings that are too close to leave room for king studs between them
         openings = [...openings].sort((a, b) => a.left - b.left);
         const mergedOpenings: Array<WallOpening> = [];
         for (const o of openings)
         {
             const prev = mergedOpenings[mergedOpenings.length - 1];
-            if (prev && (o.left - (prev.left + prev.width)) < MIN_OPENING_GAP)
+            if (prev && o.left - (prev.left + prev.width) < MIN_OPENING_GAP)
             {
                 const mergedRight = Math.max(prev.left + prev.width, o.left + o.width);
-                const mergedSill  = Math.min(prev.sill, o.sill);
-                const mergedTop   = Math.max(prev.sill + prev.height, o.sill + o.height);
-                prev.width  = mergedRight - prev.left;
-                prev.sill   = mergedSill;
+                const mergedSill = Math.min(prev.sill, o.sill);
+                const mergedTop = Math.max(prev.sill + prev.height, o.sill + o.height);
+                prev.width = mergedRight - prev.left;
+                prev.sill = mergedSill;
                 prev.height = mergedTop - mergedSill;
-                this._log(`Openings too close (gap < ${MIN_OPENING_GAP}mm): merged into one`);
+                console.log(
+                    `Openings too close (gap < ${MIN_OPENING_GAP}mm): merged into one`
+                );
             }
             else
             {
@@ -168,153 +221,272 @@ export class Make
         }
         openings = mergedOpenings;
 
-        const openingDiagrams = this.modeler.collection().name("openingDiagrams");
+        const openingDiagrams = this.modeler.collection().name('openingDiagrams');
         const openingFlags = []; // flags per opening - register a snap of opening to wall frame (leaving out the window frame)
 
-        // Openings: basic input checks
-        openings.forEach( (o,i) => 
-            {
-                const curOpeningFlags = { snapTop: false, snapBottom: false, snapLeft: false, snapRight: false };
-                openingFlags.push(curOpeningFlags);
+        // Further tests
+        openings.forEach((o, i) =>
+        {
+            const curOpeningFlags = {
+                snapTop: false,
+                snapBottom: false,
+                snapLeft: false,
+                snapRight: false
+            };
+            openingFlags.push(curOpeningFlags);
 
-                if(typeof o.left === 'number' && o.left >= 0 && typeof o.sill === 'number' && typeof o.height === 'number' 
-                    && o.height >= OPENING_HEIGHT_MIN && typeof o.width === 'number' && o.width >= OPENING_WIDTH_MIN)
+            if (
+                typeof o.left === 'number' &&
+                o.left >= 0 &&
+                typeof o.sill === 'number' &&
+                typeof o.height === 'number' &&
+                o.height >= OPENING_HEIGHT_MIN &&
+                typeof o.width === 'number' &&
+                o.width >= OPENING_WIDTH_MIN
+            )
+            {
+                // Basic horizontal tests
+                if (o.left < studThickness)
                 {
-                    // Basic horizontal tests
-                    if(o.left < studThickness)
+                    console.user(
+                        `Opening #${i} snapped left to start stud at ${studThickness}`
+                    );
+                    // NOTE: keep width the same
+                    o.left = studThickness;
+                    curOpeningFlags.snapLeft = true;
+                }
+                // total width
+                if (o.left + o.width > width - 2 * studThickness)
+                {
+                    // First try to decrease left
+                    o.left = width - studThickness - o.width;
+                    curOpeningFlags.snapRight = true;
+                    if (o.left < studThickness)
                     {
-                        this._log(`Opening #${i} snapped left to start stud at ${studThickness}`);
-                        // NOTE: keep width the same
                         o.left = studThickness;
                         curOpeningFlags.snapLeft = true;
+                        o.width = width - 2 * studThickness;
+                        console.user(
+                            `Opening #${i} width decreased to ${o.width} to fit inside wall`
+                        );
                     }
-                    // total width
-                    if( o.left + o.width > width - 2*studThickness)
+                    else
                     {
-                        // First try to decrease left
-                        o.left = width - studThickness - o.width;
-                        curOpeningFlags.snapRight = true; 
-                        if(o.left < studThickness)
-                        {
-                            o.left = studThickness;
-                            curOpeningFlags.snapLeft = true;
-                            o.width = width - 2*studThickness;
-                            this._log(`Opening #${i} width decreased to ${o.width} to fit inside wall`);
-                        }
-                        else {
-                            this._log(`Opening #${i} left decreased to ${o.left} to fit width of ${o.width} inside wall`);
-                        }
+                        console.user(
+                            `Opening #${i} left decreased to ${o.left} to fit width of ${o.width} inside wall`
+                        );
                     }
-                    
-                    // Basic vertical tests
-                    if(o.sill < studThickness)
-                    { 
-                        o.sill = studThickness; 
-                        this._log(`Opening #${i} Snapped sill to minimum of ${studThickness}`);
+                }
+
+                // Basic vertical tests
+                if (o.sill < studThickness)
+                {
+                    o.sill = studThickness;
+                    console.log(
+                        `Opening #${i} Snapped sill to minimum of ${studThickness}`
+                    );
+                    curOpeningFlags.snapBottom = true;
+                }
+                // Vertical checks: combined height and sill - try to keep height over sill
+                if (o.sill + o.height > height - 2 * studThickness)
+                {
+                    let newSill = height - studThickness - o.height; // first lower sill if possible
+                    curOpeningFlags.snapTop = true;
+                    if (newSill < studThickness)
+                    {
                         curOpeningFlags.snapBottom = true;
-                    }
-                    // Vertical checks: combined height and sill - try to keep height over sill
-                    if(o.sill + o.height > height - 2*studThickness)
-                    {
-                        let newSill = height - studThickness - o.height; // first lower sill if possible
-                        curOpeningFlags.snapTop = true;
-                        if (newSill < studThickness )
-                        { 
-                            curOpeningFlags.snapBottom = true;
-                            let newHeight = o.height - newSill + studThickness;
-                            if(newHeight >  height - studThickness)
-                            { 
-                                newHeight = height - studThickness; // height starting from sill
-                                this._log(`Opening #${i} Snapped height to minimum of ${height - 2*studThickness}`);
-                            };
-                            o.height = newHeight;
-                            newSill = studThickness;
-                        }; 
-
-                        o.sill = newSill;
-                        this._log(`Opening #${i} Snapped sill to ${newSill} to fit opening in height`);
+                        let newHeight = o.height - newSill + studThickness;
+                        if (newHeight > height - studThickness)
+                        {
+                            newHeight = height - studThickness; // height starting from sill
+                            console.log(
+                                `Opening #${i} Snapped height to minimum of ${height - 2 * studThickness}`
+                            );
+                        }
+                        o.height = newHeight;
+                        newSill = studThickness;
                     }
 
-                    // Now make diagram Shape for opening
-                    openingDiagrams.add( 
-                        this.modeler.planeBetween(
-                            [o.left, 0, o.sill],
-                            [o.left+o.width, 0, o.sill+o.height]))
-                    
-                }
-                else {
-                    this._log(`Opening #${i} (width=${o.width} height=${o.height} left=${o.left} sill=${o.sill}) is not well defined! Skipped.`);
+                    o.sill = newSill;
+                    console.log(
+                        `Opening #${i} Snapped sill to ${newSill} to fit opening in height`
+                    );
                 }
 
+                // Now make diagram Shape for opening - this includes a roof part (if ridge is set)
+                openingDiagrams.add(
+                    this.modeler.planeBetween(
+                        [o.left, 0, o.sill],
+                        [o.left + o.width, 0, o.sill + o.height]
+                    )
+                );
             }
-        )
+            else
+            {
+                console.log(
+                    `Opening #${i} (width=${o.width} height=${o.height} left=${o.left} sill=${o.sill}) is not well defined! Skipped.`
+                );
+            }
+        });
 
         // vertical grid
-        const gridLines= this.modeler.collection().name('gridlines');
-        const numGridLines = Math.floor(width/grid) + 1;
-        const remainingWallWidth = width - (numGridLines -1) * grid;
-        const skipEndStud = (remainingWallWidth < studThickness) ? true : false;
+        const gridLines = this.modeler.collection().name('gridlines');
+        const numGridLines = Math.floor(width / grid) + 1;
+        const remainingWallWidth = width - (numGridLines - 1) * grid;
+        const skipEndStud = remainingWallWidth < studThickness ? true : false;
 
-        new Array(numGridLines).fill(null).
-            map( (e,i) => gridLines.add(
-                                this.modeler.line([0,0,0],[0,0,height]).move(grid*i).name(`gridline${i}`)
-                                ))
+        new Array(numGridLines).fill(null).map((e, i) =>
+            gridLines.add(
+                this.modeler
+                    .line([0, 0, 0], [0, 0, height + (ridge?.height || 0)])
+                    .move(grid * i)
+                    .name(`gridline${i}`)
+            )
+        );
 
-        const studHeight = height - studThickness*2;
+        let studHeight = height - studThickness * 2;
+        if (ridge)
+        {
+            studHeight += ridge.height; // TODO: correction for angle
+        }
 
         // top and bottom-plates
-        const bottomPlate = this.modeler.boxBetween([0,0,0],[width, depth, studThickness])
-                                .moveY(-depth/2).name('bottomplate');
-        
-        const topPlate = bottomPlate.copy().move(0,0,studHeight+studThickness).name('topplate');
-        const plates = this.modeler.collection(bottomPlate, topPlate);
+        const bottomPlate = this.modeler
+            .boxBetween([0, 0, 0], [width, depth, studThickness])
+            .moveY(-depth / 2)
+            .name('bottomplate');
+
+        // Top plates are more complex if ridge is defined
+        const topPlates = new SmartShapeCollection();
+        let roofLine; 
+        let roofLineInside; // used to cut of studs and insulation if ridge
+
+        // normal straight wall
+        if (!ridge)
+        {
+            topPlates.add(
+                bottomPlate
+                    .copy()
+                    .move(0, 0, studHeight + studThickness)
+                    .name('topplate')
+            );
+        }
+        else
+        {
+            if(ridge.center === 0 || ridge.center === 1)
+            {
+                roofLine = (ridge.center === 0) 
+                  ? this.modeler.line([0, 0, height],[width, 0, height + ridge.height]) // ridge is left
+                  : this.modeler.line( [0, 0, height + ridge.height],[width, 0, height]); // ridge is right
+
+                const roofAngleRad = Math.atan(ridge.height / width);
+                const ridgeThicknessHeight = studThickness / Math.cos(roofAngleRad);
+
+                const topPlate = roofLine.copy()
+                                  .extrude(ridgeThicknessHeight, [0, 0, -1])
+                                  .extrude(depth, [0,-1,0])
+                                  .moveY(depth / 2)
+                                  .name('topplate');
+                topPlates.add(topPlate);
+                
+                roofLineInside = roofLine.copy().moveZ(-ridgeThicknessHeight);
+            }
+            // two rooflines
+            else {
+                roofLine = this.modeler.polyline(
+                  [0, 0, height],
+                  [width * ridge.center, 0, height + ridge.height],
+                  [width, 0, height]
+                ).removeFromScene();
+
+                roofLineInside = roofLine.copy().offset(-studThickness)
+                          .extendTo(this.modeler.line([0,0,0],[0,0,height+ridge.height]).removeFromScene())
+                          .extendTo(this.modeler.line([width,0,0],[width,0,height+ridge.height]).removeFromScene())
+                          .removeFromScene(); // roofLineInside extended to wall sides left and right
+
+                const topPlateLeft = roofLine.segments().first()
+                                      .connect(roofLineInside.segments().first()).toPolygon()
+                                      .extrude(depth).moveY(-depth/2).name('topPlateLeft');
+                const topPlateRight = roofLine.segments().last()
+                                      .connect(roofLineInside.segments().last()).toPolygon()
+                                      .extrude(depth).moveY(-depth/2).name('topPlateRight');
+                topPlates.add(topPlateLeft, topPlateRight);
+            }
+        }
+
+        const plates = this.modeler.collection(bottomPlate, topPlates);
 
         // primary studs
         const primaryStuds = this.modeler.collection();
 
-        const stud = this.modeler.box(studThickness, depth, studHeight)
-                            .removeFromScene() as SmartShapeSolid; // this one is not to be shown 
+        const stud = this.modeler
+            .box(studThickness, depth, studHeight)
+            .moveZ(studHeight/2 + studThickness)
+            .removeFromScene() as SmartShapeSolid; // this one is not to be shown
 
-        gridLines.forEach((l,i,arr) => 
-        {    
-            const newStud = stud.copy()
+        gridLines.forEach((l, i, arr) =>
+        {
+            const newStud = stud
+                .copy()
                 .align(l.start(), 'bottom', 'center')
                 .moveZ(studThickness)
                 .name('stud' + i);
 
-            if(ENDING_STUDS_INSIDE)
+            if (ENDING_STUDS_INSIDE)
             {
-                if(i === 0){ newStud.move(studThickness/2) }
+                if (i === 0)
+                {
+                    newStud.move(studThickness / 2);
+                }
             }
-            primaryStuds.add(newStud)
-        })
+            primaryStuds.add(newStud);
+        });
 
         // Ending stud (see: skipEndStud above)
-        if(!skipEndStud)
+        if (!skipEndStud)
         {
             // Don't add end stud if there is no space between width and last grid line
             // Meaning the wall needs a filler stud
-            const endStud = stud.copy().move(width, 0, height/2) 
-            ENDING_STUDS_INSIDE ? endStud.move(-studThickness/2) : endStud;
-            primaryStuds.add(endStud.name('endstud'))
+            const endStud = stud.copy().move(width, 0);
+            ENDING_STUDS_INSIDE ? endStud.move(-studThickness / 2) : endStud;
+            primaryStuds.add(endStud.name('endstud'));
         }
 
         // Insulation
         let insulation = this.modeler.collection();
-        primaryStuds.forEach((stud,i) => 
+        primaryStuds.forEach((stud, i) =>
         {
-            if(i < primaryStuds.length - 1)
+            if (i < primaryStuds.length - 1)
             {
-                const nextStud = primaryStuds.at(i+1);
+                const nextStud = primaryStuds.at(i + 1);
                 insulation.add(
-                    this.modeler.boxBetween(
-                        stud.bbox().max(),
-                        nextStud.bbox().min()
-                    ).name('insulation' + i)
-                )
+                    this.modeler
+                        .boxBetween(stud.bbox().max(), nextStud.bbox().min())
+                        .name('insulation' + i)
+                );
             }
-        })
-        
+        });
+
+        // If ridge, cut studs and insulation
+        let wallRidgeContour; // keep for later to check if openings are within
+        if(ridge)
+        {
+            // make intersection volume
+            wallRidgeContour = roofLineInside.copy().connect(
+                  this.modeler.line([0,0,0],[width,0,0]).removeFromScene());
+
+            const wallRidgeContourSolid = wallRidgeContour.copy().toPolygon()
+                .extrude(depth*2).moveY(-depth) // make solid 2x bigger
+                .removeFromScene();
+
+            // do this in place, instead of Collection.intersections(...)
+            primaryStuds.forEach((shape) => 
+                shape.intersection(wallRidgeContourSolid));
+            insulation.forEach((shape) => 
+                shape.intersection(wallRidgeContourSolid));
+          
+        }
+
         // Openings: Validate openings and give feedback for user when needed
         const checkedOpenings = this.modeler.collection().hide();
         const removedStuds = this.modeler.collection().hide(); // primary studs that were removed
@@ -324,8 +496,14 @@ export class Make
         let openingFramesVerticals = this.modeler.collection(); // add resulting frames here
         const openingKingStuds = this.modeler.collection();
         const openingJackStuds = this.modeler.collection();
-        
-        openingDiagrams.forEach( (o,i) => 
+
+        // First check if openings are within ridge contour (if ridge is defined)
+        if(ridge)
+        {
+          // TODO
+        }
+
+        openingDiagrams.forEach((o, i) =>
         {
             // some flags in openingFlags[i]
             const curOpeningFlags = openingFlags[i];
@@ -335,238 +513,368 @@ export class Make
             let checkedOpening = o as SmartShapeFace;
 
             // continue if opening is valid
-            if(checkedOpening)
-            {   
+            if (checkedOpening)
+            {
                 // Horizontal checks: check position versus studs
                 // snap start position to match with nearest stud
                 if (curOpeningFlags.snapLeft)
                 {
                     // no left frame for opening - keep it like this
                 }
-                else {
+                else
+                {
                     const nearestStartGridLine = gridLines.nearest(openingStart);
-                    const d1 =  nearestStartGridLine.distance(openingStart)
-                    const snapTestWithinDistance = (nearestStartGridLine === gridLines.first()) ? OPENING_SNAP_POSITION_WITHIN_DISTANCE+studThickness : OPENING_SNAP_POSITION_WITHIN_DISTANCE
-                    if(d1 < snapTestWithinDistance) // If within distance snap to given offset aligned to primary stud centerline
+                    const d1 = nearestStartGridLine.distance(openingStart);
+                    const snapTestWithinDistance =
+                        nearestStartGridLine === gridLines.first()
+                            ? OPENING_SNAP_POSITION_WITHIN_DISTANCE + studThickness
+                            : OPENING_SNAP_POSITION_WITHIN_DISTANCE;
+                    if (
+                        d1 < snapTestWithinDistance
+                    ) // If within distance snap to given offset aligned to primary stud centerline
                     {
-                        const xOffset = (nearestStartGridLine === gridLines.first()) ? 2 : 1.5;
-                        const moveToX = nearestStartGridLine.center().x + studThickness * xOffset;
+                        const xOffset =
+                            nearestStartGridLine === gridLines.first() ? 2 : 1.5;
+                        const moveToX =
+                            nearestStartGridLine.center().x + studThickness * xOffset;
                         const openingW = checkedOpening.bbox().width();
                         checkedOpening = this.modeler.planeBetween(
                             checkedOpening.bbox().min().setX(moveToX),
-                            checkedOpening.bbox().max().setX(moveToX + openingW),
+                            checkedOpening
+                                .bbox()
+                                .max()
+                                .setX(moveToX + openingW)
                         ) as any;
-                        this._log(`Snapped Opening #${i} on a stud at centerline ${nearestStartGridLine.center().x} at distance ${d1}`);
+                        console.log(
+                            `Snapped Opening #${i} on a stud at centerline ${nearestStartGridLine.center().x} at distance ${d1}`
+                        );
                         // Check if the opening still fits
                         if (checkedOpening.bbox().maxX() > width - studThickness)
                         {
                             // Make it smaller to have it fit and snap to end of wall
-                            checkedOpening = this.modeler.planeBetween(checkedOpening.bbox().min(), checkedOpening.bbox().max().setX(width - studThickness))
+                            checkedOpening = this.modeler.planeBetween(
+                                checkedOpening.bbox().min(),
+                                checkedOpening
+                                    .bbox()
+                                    .max()
+                                    .setX(width - studThickness)
+                            );
                             curOpeningFlags.snapRight = true;
-                            this._log(`Opening #${i} was decreased in width to ${checkedOpening.bbox().width()} to fit the end of the wall!`);
-                        }   
+                            console.log(
+                                `Opening #${i} was decreased in width to ${checkedOpening.bbox().width()} to fit the end of the wall!`
+                            );
+                        }
                     }
                 }
                 // Snapping the width of an opening to maintain grid and avoid weird positioning
                 // But width of opening can not change from specified by parameters
-                const nextGridLine = gridLines.find( s => checkedOpening.bbox().max().x < s.center().x)
+                const nextGridLine = gridLines.find(
+                    s => checkedOpening.bbox().max().x < s.center().x
+                );
 
-                if(nextGridLine)
+                if (nextGridLine)
                 {
-                    if(curOpeningFlags.snapRight)
+                    if (curOpeningFlags.snapRight)
                     {
                         // snapped to right of wall. Do nothing
                     }
                     else
                     {
-                        // opening is too close to next primary stud to fit in king stud 
+                        // opening is too close to next primary stud to fit in king stud
                         // (but is not at same position for king stud to overlap primary one)
                         // we enlarge the opening to have king stud at position of primary stud
 
-                        const distanceToNextStud = checkedOpening.distance(nextGridLine) - 0.5 * studThickness;
-                        const checkDistance = (gridLines.last() === nextGridLine) ? 2.5*studThickness : 2*studThickness;
-                        if (distanceToNextStud > studThickness && distanceToNextStud < checkDistance )
+                        const distanceToNextStud =
+                            checkedOpening.distance(nextGridLine) - 0.5 * studThickness;
+                        const checkDistance =
+                            gridLines.last() === nextGridLine
+                                ? 2.5 * studThickness
+                                : 2 * studThickness;
+                        if (
+                            distanceToNextStud > studThickness &&
+                            distanceToNextStud < checkDistance
+                        )
                         {
-                            const newOpeningMax = checkedOpening.bbox().max().move(distanceToNextStud-studThickness);
-                            if (newOpeningMax.x > width - 2*studThickness) // enlarge is limited to right side of wall
-                            {   
-                                newOpeningMax.x = width - 2*studThickness;
+                            const newOpeningMax = checkedOpening
+                                .bbox()
+                                .max()
+                                .move(distanceToNextStud - studThickness);
+                            if (
+                                newOpeningMax.x >
+                                width - 2 * studThickness
+                            ) // enlarge is limited to right side of wall
+                            {
+                                newOpeningMax.x = width - 2 * studThickness;
                                 curOpeningFlags.snapRight = true; // right snap mode drops frame
-                                this._log(`Enlarged opening #${i} to fit to end of wall`);
+                                console.log(`Enlarged opening #${i} to fit to end of wall`);
                             }
-                            else {
-                                this._log(`Enlarged opening #${i} by ${distanceToNextStud-studThickness} units to fit to grid studs!`);
+                            else
+                            {
+                                console.log(
+                                    `Enlarged opening #${i} by ${distanceToNextStud - studThickness} units to fit to grid studs!`
+                                );
                             }
-                            checkedOpening = this.modeler.planeBetween(checkedOpening.bbox().min(), checkedOpening.bbox().max().move(distanceToNextStud-studThickness))
-                            
+                            checkedOpening = this.modeler.planeBetween(
+                                checkedOpening.bbox().min(),
+                                checkedOpening
+                                    .bbox()
+                                    .max()
+                                    .move(distanceToNextStud - studThickness)
+                            );
                         }
                         // opening is too close to next primary stud to fit jack and king stud in
                         // enlarge opening so jack studs align to grid line of next primary stud
                         // king stud of opening is then placed off-grid
-                        else if (distanceToNextStud > 0 && distanceToNextStud < studThickness  )
+                        else if (
+                            distanceToNextStud > 0 &&
+                            distanceToNextStud < studThickness
+                        )
                         {
                             checkedOpening = this.modeler.planeBetween(
-                                            checkedOpening.bbox().min(), 
-                                            checkedOpening.bbox().max().move(distanceToNextStud))
-                            this._log(`Enlarged opening #${i} by ${distanceToNextStud}mm. Now end jack stud aligns to grid`);
+                                checkedOpening.bbox().min(),
+                                checkedOpening.bbox().max().move(distanceToNextStud)
+                            );
+                            console.log(
+                                `Enlarged opening #${i} by ${distanceToNextStud}mm. Now end jack stud aligns to grid`
+                            );
                         }
-                        else {
+                        else
+                        {
                             // when opening is overlapping with primary stud (so no space for jack stud)
                             // enlarge opening so last cripple can be fitted in and aligns with grid
-                            const closeGridLine = gridLines.find( l => Math.abs(l.center().x - checkedOpening.bbox().max().x) < studThickness*0.5);
+                            const closeGridLine = gridLines.find(
+                                l =>
+                                    Math.abs(l.center().x - checkedOpening.bbox().max().x) <
+                                    studThickness * 0.5
+                            );
                             //closeGridLine.moved(0,0,100).color('red')
-                            if(closeGridLine)
+                            if (closeGridLine)
                             {
-                                const dx = Math.abs((closeGridLine.center().x + studThickness * 0.5) - checkedOpening.bbox().max().x);
-                                checkedOpening = this.modeler.planeBetween(checkedOpening.bbox().min(), checkedOpening.bbox().max().move(dx))
-                                this._log(`Enlarged opening #${i} by ${dx} units. Now last cripple aligns with grid`);
+                                const dx = Math.abs(
+                                    closeGridLine.center().x +
+                                        studThickness * 0.5 -
+                                        checkedOpening.bbox().max().x
+                                );
+                                checkedOpening = this.modeler.planeBetween(
+                                    checkedOpening.bbox().min(),
+                                    checkedOpening.bbox().max().move(dx)
+                                );
+                                console.log(
+                                    `Enlarged opening #${i} by ${dx} units. Now last cripple aligns with grid`
+                                );
                             }
                         }
                     }
                 }
-                
+
                 checkedOpenings.add(checkedOpening.name('opening' + i)); // keep track of final openings
 
                 // make opening surrounding frame
-                const openingTestBuffer = checkedOpening.copy()
-                                            .offset(studThickness-1) // a bit smaller to avoid accuracy problems
-                                            .extrude(depth*2)
-                                            .moveY(depth)
-                                            .removeFromScene(); // not part of scene
-                
-                primaryStuds.forEach( (stud,studIndex) => 
+                const openingTestBuffer = checkedOpening
+                    .copy()
+                    .offset(studThickness - 1) // a bit smaller to avoid accuracy problems
+                    .extrude(depth * 2)
+                    .moveY(depth)
+                    .removeFromScene(); // not part of scene
+
+                primaryStuds.forEach((stud, studIndex) =>
                 {
                     // evaluate overlapping studs to make cripples top and bottom
                     // don't cut first or last stud
-                    if(studIndex !== 0 && studIndex !== primaryStuds.length - 1 && stud.overlapPerc(openingTestBuffer) > 0.02) // use overlapPerc for robustness
+                    if (
+                        studIndex !== 0 &&
+                        studIndex !== primaryStuds.length - 1 &&
+                        stud.overlapPerc(openingTestBuffer) > 0.02
+                    ) // use overlapPerc for robustness
                     {
                         const splitStuds = this.modeler.collection(
-                            stud.copy().split(openingTestBuffer)); // force ShapeCollection
+                            stud.copy().split(openingTestBuffer)
+                        ); // force ShapeCollection
 
                         if (splitStuds.length >= 1)
                         {
                             // check if cripples top and bottom are made
-                            const bottomPieces = splitStuds.filter(s => s.center().z < checkedOpening.center().z);
-                            const topPieces    = splitStuds.filter(s => s.center().z > checkedOpening.center().z);
-                            if (bottomPieces.length > 0) crippleStudsBottom.add(bottomPieces.first().name('crippleBottom'));
-                            if (topPieces.length    > 0) crippleStudsTop.add(topPieces.first().name('crippleTop'));
-                            
+                            const bottomPieces = splitStuds.filter(
+                                s => s.center().z < checkedOpening.center().z
+                            );
+                            const topPieces = splitStuds.filter(
+                                s => s.center().z > checkedOpening.center().z
+                            );
+                            if (bottomPieces.length > 0)
+                                crippleStudsBottom.add(
+                                    bottomPieces.first().name('crippleBottom')
+                                );
+                            if (topPieces.length > 0)
+                                crippleStudsTop.add(topPieces.first().name('crippleTop'));
+
                             removedStuds.add(stud);
                         }
-                        else {
+                        else
+                        {
                             // remove primary stud that touches (but is not entirely cut to become cripples)
-                            removedStuds.add(stud) 
+                            removedStuds.add(stud);
                         }
                     }
                 });
-                
+
                 // make frame around opening
                 const openingBufferBbox = openingTestBuffer.bbox();
                 let openingFrame = this.frame(
-                                openingBufferBbox.width(),
-                                openingBufferBbox.height(),
-                                depth,
-                                studThickness,
-                                'horizontal'
-                            ).moveTo(openingTestBuffer.center());
+                    openingBufferBbox.width(),
+                    openingBufferBbox.height(),
+                    depth,
+                    studThickness,
+                    'horizontal'
+                ).moveTo(openingTestBuffer.center());
 
-                
-                
                 // Don't add frame left, top and bottom or right if opening was snapped
                 const includeFrameParts = [];
-                for (const [flag,val] of Object.entries(curOpeningFlags))
+                for (const [flag, val] of Object.entries(curOpeningFlags))
                 {
-                    const FLAG_FALSE_TO_PART = { snapLeft: 'frameLeft', snapRight: 'frameRight', snapBottom: 'frameBottom', snapTop: 'frameTop' }
-                    if( FLAG_FALSE_TO_PART[flag] && val === false)
+                    const FLAG_FALSE_TO_PART = {
+                        snapLeft: 'frameLeft',
+                        snapRight: 'frameRight',
+                        snapBottom: 'frameBottom',
+                        snapTop: 'frameTop'
+                    };
+                    if (FLAG_FALSE_TO_PART[flag] && val === false)
                     {
                         includeFrameParts.push(FLAG_FALSE_TO_PART[flag]);
                     }
                 }
 
-                openingFrame = this.modeler.collection(openingFrame.filter(s => includeFrameParts.includes(s.name())))
-                                    .removeFromScene(); 
-                
+                openingFrame = this.modeler
+                    .collection(
+                        openingFrame.filter(s => includeFrameParts.includes(s.name()))
+                    )
+                    .removeFromScene();
+
                 openingFramesHorizontals.add(
-                    openingFrame.filter(s => s.name() === 'frameTop' || s.name() === 'frameBottom'))
+                    openingFrame.filter(
+                        s => s.name() === 'frameTop' || s.name() === 'frameBottom'
+                    )
+                );
                 // subtract plates only from this opening's vertical frames before accumulating
                 // (doing it on the whole collection would re-subtract for frames from previous openings)
-                const curVerticals = openingFrame.filter(s => s.name() === 'frameLeft' || s.name() === 'frameRight')
+                const curVerticals = openingFrame.filter(
+                    s => s.name() === 'frameLeft' || s.name() === 'frameRight'
+                );
                 openingFramesVerticals.add(curVerticals.subtract(plates));
 
                 // make king and jack studs for current opening
                 const openingFrameBbox = openingFrame.bbox(); // avoid recalculating
-                const leftSnapOffset = (curOpeningFlags.snapLeft) ? studThickness : 0;
-                const rightSnapOffset = (curOpeningFlags.snapRight) ? studThickness : 0;
+                const leftSnapOffset = curOpeningFlags.snapLeft ? studThickness : 0;
+                const rightSnapOffset = curOpeningFlags.snapRight ? studThickness : 0;
 
                 // bottom left and right jack studs
-                if(!curOpeningFlags.snapBottom)
+                if (!curOpeningFlags.snapBottom)
                 {
-                    const openingJackLeftBottom = this.modeler.boxBetween(
-                                            openingFrameBbox.min(), 
-                                            [openingFrameBbox.min().x + studThickness,depth/2, studThickness]) 
-                                            .moveX(leftSnapOffset)
-                                            .name('openingJackLeftBottom');
+                    const openingJackLeftBottom = this.modeler
+                        .boxBetween(openingFrameBbox.min(), [
+                            openingFrameBbox.min().x + studThickness,
+                            depth / 2,
+                            studThickness
+                        ])
+                        .moveX(leftSnapOffset)
+                        .name('openingJackLeftBottom');
 
-                    const openingJackRightBottom = openingJackLeftBottom.copy().move(
-                                    openingBufferBbox.width()-studThickness-leftSnapOffset-rightSnapOffset)
-                                    .name('openingJackRightBottom');
+                    const openingJackRightBottom = openingJackLeftBottom
+                        .copy()
+                        .move(
+                            openingBufferBbox.width() -
+                                studThickness -
+                                leftSnapOffset -
+                                rightSnapOffset
+                        )
+                        .name('openingJackRightBottom');
 
-                    openingJackStuds.add(openingJackLeftBottom,openingJackRightBottom)
+                    openingJackStuds.add(openingJackLeftBottom, openingJackRightBottom);
                 }
 
                 // top left and right jack studs
-                if(!curOpeningFlags.snapTop)
+                if (!curOpeningFlags.snapTop)
                 {
-                    const openingJackLeftTop = this.modeler.boxBetween(openingFrameBbox.min()
-                                                .moveZ(openingFrameBbox.height()), 
-                                                [openingFrameBbox.min().x+studThickness,
-                                                    depth/2, height - studThickness]) 
-                                                .moveX(leftSnapOffset)
-                                                .name('openingJackLeftTop');
+                    const openingJackLeftTop = this.modeler
+                        .boxBetween(
+                            openingFrameBbox.min().moveZ(openingFrameBbox.height()),
+                            [
+                                openingFrameBbox.min().x + studThickness,
+                                depth / 2,
+                                height - studThickness
+                            ]
+                        )
+                        .moveX(leftSnapOffset)
+                        .name('openingJackLeftTop');
 
-                    const openingJackRightTop = openingJackLeftTop.copy()
-                                                .move(openingBufferBbox.width()-studThickness-leftSnapOffset-rightSnapOffset)
-                                                .name('openingJackRightTop');
+                    const openingJackRightTop = openingJackLeftTop
+                        .copy()
+                        .move(
+                            openingBufferBbox.width() -
+                                studThickness -
+                                leftSnapOffset -
+                                rightSnapOffset
+                        )
+                        .name('openingJackRightTop');
 
                     openingJackStuds.add(openingJackLeftTop, openingJackRightTop);
                 }
 
                 // King stud left
-                if(!curOpeningFlags.snapLeft)
+                if (!curOpeningFlags.snapLeft)
                 {
-                    const openingKingStudLeft = stud.copy().align(
-                                                this.modeler.vertex(openingFrameBbox.minX(), 0, studThickness),
-                                                'bottomrightcenter',
-                                                'center'
-                                            )
-                     // remove primary stud that overlaps king stud (when snapping is on this is cleanup automatically)
-                    const overlappingPrimaryStud = primaryStuds.filter(s => s.overlapPerc(openingKingStudLeft) > 0.02)
-                    if(overlappingPrimaryStud){ removedStuds.add(overlappingPrimaryStud); }
+                    const openingKingStudLeft = stud
+                        .copy()
+                        .align(
+                            this.modeler.vertex(openingFrameBbox.minX(), 0, studThickness),
+                            'bottomrightcenter',
+                            'center'
+                        );
+                    // remove primary stud that overlaps king stud (when snapping is on this is cleanup automatically)
+                    const overlappingPrimaryStud = primaryStuds.filter(
+                        s => s.overlapPerc(openingKingStudLeft) > 0.02
+                    );
+                    if (overlappingPrimaryStud)
+                    {
+                        removedStuds.add(overlappingPrimaryStud);
+                    }
                     openingKingStudLeft.name('openingKingStudLeft');
                     openingKingStuds.add(openingKingStudLeft);
                 }
-                else {
-                    // subtract horizontals with primary left stud
-                    openingFramesHorizontals.forEach(s => s.subtract(primaryStuds.first()));
-                }
-                
-                // King stud right
-                if(!curOpeningFlags.snapRight)
+                else
                 {
-                    let openingKingStudRight = stud.copy().align(
+                    // subtract horizontals with primary left stud
+                    openingFramesHorizontals.forEach(s =>
+                        s.subtract(primaryStuds.first())
+                    );
+                }
+
+                // King stud right
+                if (!curOpeningFlags.snapRight)
+                {
+                    let openingKingStudRight = stud
+                        .copy()
+                        .align(
                             this.modeler.vertex(openingFrameBbox.maxX(), 0, studThickness),
                             'bottomleftcenter',
                             'center'
-                        )
-                    const overlappingPrimaryStudRight = primaryStuds.filter(s => s.overlapPerc(openingKingStudRight) > 0.02)
-                    if(overlappingPrimaryStudRight){ removedStuds.add(overlappingPrimaryStudRight); }
+                        );
+                    const overlappingPrimaryStudRight = primaryStuds.filter(
+                        s => s.overlapPerc(openingKingStudRight) > 0.02
+                    );
+                    if (overlappingPrimaryStudRight)
+                    {
+                        removedStuds.add(overlappingPrimaryStudRight);
+                    }
 
                     openingKingStudRight.name('openingKingStudRight');
                     openingKingStuds.add(openingKingStudRight);
                 }
-                else {
+                else
+                {
                     // subtract horizontals with primary right stud
-                    openingFramesHorizontals.forEach(s => s.subtract(primaryStuds.last()))
+                    openingFramesHorizontals.forEach(s =>
+                        s.subtract(primaryStuds.last())
+                    );
                 }
 
                 openingFramesHorizontals.forEach(s => s.name('openingHorizontal')); // correct name after subtract
@@ -574,47 +882,65 @@ export class Make
 
                 // Clean insulation around frame
                 insulation = insulation.subtract(openingTestBuffer);
-                const leftSnapOffsetInsulation = (curOpeningFlags.snapLeft) ? studThickness : 0;
-                const rightSnapOffsetInsulation = (curOpeningFlags.snapRight) ? -studThickness : 0;
-                
-                insulation.subtract(
-                                // king/jack studs combination: left
-                                this.modeler.boxBetween(
-                                        [checkedOpening.bbox().min().x, depth/2*1.1, 0], // make it bigger along wall frame (there is no insulation there anyway)
-                                        [checkedOpening.bbox().min().x - 2*studThickness, -depth/2*1.1, height]
-                                    )
-                                    .moveX(leftSnapOffsetInsulation)
-                                    .removeFromScene()
-                            ).subtract(
-                                // right
-                                this.modeler.boxBetween(
-                                    [checkedOpening.bbox().max().x, depth/2*1.1, 0], 
-                                    [checkedOpening.bbox().max().x + 2*studThickness, -depth/2*1.1, height]
-                                )
-                                    .moveX(rightSnapOffsetInsulation)
-                                    .removeFromScene()
-                            );
-                        
-            }
-            
-        })
+                const leftSnapOffsetInsulation = curOpeningFlags.snapLeft
+                    ? studThickness
+                    : 0;
+                const rightSnapOffsetInsulation = curOpeningFlags.snapRight
+                    ? -studThickness
+                    : 0;
 
-        // organize and output 
+                insulation
+                    .subtract(
+                        // king/jack studs combination: left
+                        this.modeler
+                            .boxBetween(
+                                [checkedOpening.bbox().min().x, (depth / 2) * 1.1, 0], // make it bigger along wall frame (there is no insulation there anyway)
+                                [
+                                    checkedOpening.bbox().min().x - 2 * studThickness,
+                                    (-depth / 2) * 1.1,
+                                    height
+                                ]
+                            )
+                            .moveX(leftSnapOffsetInsulation)
+                            .removeFromScene()
+                    )
+                    .subtract(
+                        // right
+                        this.modeler
+                            .boxBetween(
+                                [checkedOpening.bbox().max().x, (depth / 2) * 1.1, 0],
+                                [
+                                    checkedOpening.bbox().max().x + 2 * studThickness,
+                                    (-depth / 2) * 1.1,
+                                    height
+                                ]
+                            )
+                            .moveX(rightSnapOffsetInsulation)
+                            .removeFromScene()
+                    );
+            }
+        });
+
+        // organize and output
         removedStuds.removeFromScene();
         primaryStuds.remove(removedStuds);
 
         return wall
-                .addGroup('diagram', gridLines.color('blue').dashed())
-                .addGroup('studs', primaryStuds.color('green'))
-                .addGroup('plates', plates.color('green'))
-                .addGroup('cripplesTop', crippleStudsTop.color('green'))
-                .addGroup('cripplesBottom', crippleStudsBottom.color('green'))
-                .addGroup('openingFramesHorizontals', openingFramesHorizontals.color('red'))
-                .addGroup('openingFramesVerticals', openingFramesVerticals.color('red'))
-                .addGroup('openingKingStuds', openingKingStuds.color('brown'))
-                .addGroup('openingJackStuds', openingJackStuds.color('brown'))
-                .addGroup('openingDiagrams', checkedOpenings.color('grey').hide())
-                .addGroup('insulation', insulation.color('#222'))
+            .addGroup('diagram', wallDiagram.hide())
+            .addGroup('gridlines', gridLines.color('blue').dashed())
+            .addGroup('studs', primaryStuds.color('green'))
+            .addGroup('plates', plates.color('green'))
+            .addGroup('cripplesTop', crippleStudsTop.color('green'))
+            .addGroup('cripplesBottom', crippleStudsBottom.color('green'))
+            .addGroup(
+                'openingFramesHorizontals',
+                openingFramesHorizontals.color('red')
+            )
+            .addGroup('openingFramesVerticals', openingFramesVerticals.color('red'))
+            .addGroup('openingKingStuds', openingKingStuds.color('brown'))
+            .addGroup('openingJackStuds', openingJackStuds.color('brown'))
+            .addGroup('openingDiagrams', checkedOpenings.color('grey').hide())
+            .addGroup('insulation', insulation.color('#222'));
     }
 
     /**
@@ -642,33 +968,49 @@ export class Make
             // left opt-in (null) as a hard cap for very large jobs.
             maxTime: null,
             maxIterations: 200,
-            rotation: true,
+            rotation: true
         };
 
         const opts = { ...DEFAULT_PACK_OPTIONS, ...options };
 
-        type ItemPlacement = { partIndex: number; x: number; y: number; length: number; height: number; };
+        type ItemPlacement = {
+            partIndex: number;
+            x: number;
+            y: number;
+            length: number;
+            height: number;
+        };
 
         function extractPlacements(node: CuttingNode, x: number, y: number, out: ItemPlacement[]): void
         {
             if (node.kind === 'item' && node.item !== undefined)
             {
-                out.push({ partIndex: node.item, x, y, length: node.length, height: node.height });
+                out.push({
+                    partIndex: node.item,
+                    x,
+                    y,
+                    length: node.length,
+                    height: node.height
+                });
                 return;
             }
             if (node.kind === 'structure')
             {
-                let cx = x, cy = y;
+                let cx = x,
+                    cy = y;
                 for (const child of node.children)
                 {
                     extractPlacements(child, cx, cy, out);
                     if (node.orientation === 'V') cx += child.length;
-                    else                          cy += child.height;
+                    else cy += child.height;
                 }
             }
         }
 
-        if (!this._binPacker) throw new Error('Make.pack(): BinPacker WASM not ready yet — call setArchiyou() and wait for the module to initialise before using pack().');
+        if (!this._binPacker)
+            throw new Error(
+                'Make.pack(): BinPacker WASM not ready yet — call setArchiyou() and wait for the module to initialise before using pack().'
+            );
         const bp = this._binPacker;
         const kerf = opts.kerf;
 
@@ -682,7 +1024,11 @@ export class Make
             if (typeof copy.layflat === 'function') copy.layflat();
             const bb = copy.bbox?.();
             if (!bb) return;
-            prepared.push({ shape: copy, fw: bb.width() as number, fh: bb.depth() as number });
+            prepared.push({
+                shape: copy,
+                fw: bb.width() as number,
+                fh: bb.depth() as number
+            });
         });
 
         if (prepared.length === 0) return this.modeler.collection();
@@ -706,19 +1052,26 @@ export class Make
             height: Math.round(g.fh + kerf),
             demand: g.indices.length,
             value: 1,
-            reference: gi,
+            reference: gi
         }));
 
         const instance: Instance = {
             name: 'pack',
-            sheets: [{ length: Math.round(opts.width), height: Math.round(opts.height), cost: 1, stock: null }],
-            parts,
+            sheets: [
+                {
+                    length: Math.round(opts.width),
+                    height: Math.round(opts.height),
+                    cost: 1,
+                    stock: null
+                }
+            ],
+            parts
         };
 
         const solution = bp.solve(instance, {
             rotationAllowed: opts.rotation,
             maxRunTime: opts.maxTime,
-            maxRRIterations: opts.maxIterations,
+            maxRRIterations: opts.maxIterations
         });
 
         const SHEET_MARGIN = 100;
@@ -733,7 +1086,11 @@ export class Make
             const groupShapes: any[] = [];
 
             // Sheet outline
-            const sheetRect = this.modeler.rect(sheet.length, sheet.height, [sheet.length / 2, sheet.height / 2, 0]);
+            const sheetRect = this.modeler.rect(sheet.length, sheet.height, [
+                sheet.length / 2,
+                sheet.height / 2,
+                0
+            ]);
             sheetRect.translate(offsetX, 0, 0);
             groupShapes.push(sheetRect);
 
@@ -752,14 +1109,22 @@ export class Make
                 const { shape, fw, fh } = prepared[idx];
 
                 // Determine whether the solver rotated this part (length/height swapped)
-                const fitsNormal  = Math.abs(pl.length - (fw + kerf)) < tol && Math.abs(pl.height - (fh + kerf)) < tol;
-                const fitsRotated = Math.abs(pl.length - (fh + kerf)) < tol && Math.abs(pl.height - (fw + kerf)) < tol;
+                const fitsNormal =
+                    Math.abs(pl.length - (fw + kerf)) < tol &&
+                    Math.abs(pl.height - (fh + kerf)) < tol;
+                const fitsRotated =
+                    Math.abs(pl.length - (fh + kerf)) < tol &&
+                    Math.abs(pl.height - (fw + kerf)) < tol;
                 if (!fitsNormal && fitsRotated) shape.rotateZ(90);
 
                 const bb = shape.bbox?.();
                 if (!bb) continue;
 
-                shape.translate(pl.x + halfKerf - bb.minX() + offsetX, pl.y + halfKerf - bb.minY(), 0);
+                shape.translate(
+                    pl.x + halfKerf - bb.minX() + offsetX,
+                    pl.y + halfKerf - bb.minY(),
+                    0
+                );
 
                 placedIndices.add(idx);
                 groupShapes.push(shape);
@@ -793,53 +1158,78 @@ export class Make
      *  For optimal information gathering:
      *   - organize shapes into groups (group name → part name)
      *   - name individual shapes (shape name → subpart name)
-    */
-    partList(shapes:SmartShapeCollection, name?:string):Table
+     */
+    partList(shapes: SmartShapeCollection, name?: string): Table
     {
-        const COLUMNS = ['part', 'subpart', 'type', 'section', 'length', 'quantity']; // TODO: label system, materials
+        const COLUMNS = [
+            'part',
+            'subpart',
+            'type',
+            'section',
+            'length',
+            'quantity'
+        ]; // TODO: label system, materials
 
-        if(!SmartShapeCollection.isShapeCollection(shapes) || shapes.length === 0)
+        if (
+            !SmartShapeCollection.isShapeCollection(shapes) ||
+            shapes.length === 0
+        )
         {
-            throw new Error(`Make::partList: Please supply a valid ShapeCollection of beam-like or plate-like shapes to generate a partlist!`)
+            throw new Error(
+                `Make::partList: Please supply a valid ShapeCollection of beam-like or plate-like shapes to generate a partlist!`
+            );
         }
 
-        const BEAM_RATIO = 2;  // length / width to count as a beam
+        const BEAM_RATIO = 2; // length / width to count as a beam
         const PLATE_RATIO = 10; // width / thickness to count as a plate
 
         /** Classify a single shape as beam/plate and extract its section + length from the OBB.
          *  Returns null when the shape is not a usable cuboid solid. */
-        const classify = (shape:any):{ type:'beam'|'plate', width:number, thickness:number, length:number } | null =>
+        const classify = (
+            shape: any
+        ): {
+            type: 'beam' | 'plate';
+            width: number;
+            thickness: number;
+            length: number;
+        } | null =>
         {
-            if(typeof shape?.obbox !== 'function') return null;
-            if(shape.isSolid?.() === false) return null; // only solids (mesh / brep), not curves
+            if (typeof shape?.obbox !== 'function') return null;
+            if (shape.isSolid?.() === false) return null; // only solids (mesh / brep), not curves
 
             const obb = shape.obbox();
-            if(!obb || obb.is3D?.() === false) return null;
+            if (!obb || obb.is3D?.() === false) return null;
 
             // sort dimensions ascending
-            const [thickness, width, length] = [obb.width(), obb.height(), obb.depth()].sort((a,b) => a - b);
-            if(thickness <= 0) return null;
+            const [thickness, width, length] = [
+                obb.width(),
+                obb.height(),
+                obb.depth()
+            ].sort((a, b) => a - b);
+            if (thickness <= 0) return null;
 
-            const isBeam  = (length / width) >= BEAM_RATIO;
-            const isPlate = (width / thickness) >= PLATE_RATIO;
-            if(!isBeam && !isPlate) return null; // cube-ish blocks are neither beam nor plate
+            const isBeam = length / width >= BEAM_RATIO;
+            const isPlate = width / thickness >= PLATE_RATIO;
+            if (!isBeam && !isPlate) return null; // cube-ish blocks are neither beam nor plate
 
             return { type: isBeam ? 'beam' : 'plate', width, thickness, length };
-        }
+        };
 
-        console.info(`Make::partList(shapes, name): Got ${shapes.length} shape(s) to make a part list with. Naming and grouping shapes improves the result.`);
+        console.info(
+            `Make::partList(shapes, name): Got ${shapes.length} shape(s) to make a part list with. Naming and grouping shapes improves the result.`
+        );
 
-        const partRowsAll:Array<Array<any>> = [];
+        const partRowsAll: Array<Array<any>> = [];
 
         shapes.forEachGroup((groupName, groupedShapes) =>
         {
-            groupedShapes.forEach((shape) =>
+            groupedShapes.forEach(shape =>
             {
-                if((shape as any).style?.visible === false) return; // skip hidden shapes
+                if ((shape as any).style?.visible === false) return; // skip hidden shapes
 
                 const dims = classify(shape);
-                if(!dims) return;
-``
+                if (!dims) return;
+                ``;
                 // part (0), subpart (1), type (2), section (3), length (4), quantity (5)
                 partRowsAll.push([
                     groupName,
@@ -847,39 +1237,48 @@ export class Make
                     dims.type,
                     `${Math.round(dims.width)}x${Math.round(dims.thickness)}`,
                     Math.round(dims.length),
-                    1,
+                    1
                 ]);
-            })
+            });
         });
 
         // Merge identical parts (same part, type, section & length); accumulate subpart names + quantity
-        const groupedPartRows:Record<string, Array<any>> = {};
-        const genId = (row:Array<any>) => `${row[0]}-${row[2]}-${row[3]}-${row[4]}`; // part, type, section, length
+        const groupedPartRows: Record<string, Array<any>> = {};
+        const genId = (row: Array<any>) =>
+            `${row[0]}-${row[2]}-${row[3]}-${row[4]}`; // part, type, section, length
 
         partRowsAll.forEach(row =>
         {
             const id = genId(row);
-            if(!groupedPartRows[id])
+            if (!groupedPartRows[id])
             {
                 groupedPartRows[id] = [...row];
             }
             else
             {
                 const subpart = row[1];
-                if(subpart && groupedPartRows[id][1].indexOf(subpart) === -1) // avoid repeating names
+                if (
+                    subpart &&
+                    groupedPartRows[id][1].indexOf(subpart) === -1
+                ) // avoid repeating names
                 {
-                    groupedPartRows[id][1] += groupedPartRows[id][1] ? `,${subpart}` : subpart;
+                    groupedPartRows[id][1] += groupedPartRows[id][1]
+                        ? `,${subpart}`
+                        : subpart;
                 }
                 groupedPartRows[id][5] += 1; // quantity
             }
-        })
+        });
 
         // After grouping flatten again into Array
         const groupedRows = Object.values(groupedPartRows) as Array<Array<any>>; // [ [row1], [row2], ...]
 
         // Make Calc table
-        const tableName = name
-            || ((shapes as any)._name && (shapes as any)._name !== 'collection' ? (shapes as any)._name : 'parts');
+        const tableName =
+            name ||
+            ((shapes as any)._name && (shapes as any)._name !== 'collection'
+                ? (shapes as any)._name
+                : 'parts');
 
         const table = this.archiyou.calc.table(
             tableName,
@@ -892,13 +1291,15 @@ export class Make
             {
                 subpart: 'total per section',
                 length: (_vals, rows) =>
-                    rows.reduce((sum, r) => sum + (Number(r.length) || 0) * (Number(r.quantity) || 0), 0),
+                    rows.reduce(
+                        (sum, r) =>
+                            sum + (Number(r.length) || 0) * (Number(r.quantity) || 0),
+                        0
+                    )
             },
-            { groupBy: ['type', 'section'] }, // type & section columns auto-filled per subtotal row
+            { groupBy: ['type', 'section'] } // type & section columns auto-filled per subtotal row
         );
 
         return table;
     }
-
-
 }

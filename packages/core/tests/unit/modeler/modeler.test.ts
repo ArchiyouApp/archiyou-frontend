@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 
 import { Modeler } from '../../../src/modeler/Modeler'
-import { SmartMeshCurve, SmartMesh, SmartBrepEdge, SmartBrepSolid } from '../../../src/modeler/SmartShapes';
+import { SmartMeshCurve, SmartMesh, SmartMeshPolygon, SmartBrepEdge, SmartBrepSolid } from '../../../src/modeler/SmartShapes';
 import { SmartShapeCollection } from '../../../src/modeler/SmartShapeCollection';
 import { ShapeCollection } from 'meshup/src/ShapeCollection';
 import { Mesh } from 'meshup/src/Mesh';
@@ -35,6 +35,16 @@ describe('Modeler', async () =>
         expect(line.type).toBe('Curve'); // main native type
         expect(line.subtype()).toBe('Line');
         expect(line.length()).toBe(10);
+    });
+
+    it('SmartMeshCurve.vertices() returns smart vertices with SmartShape methods', async () =>
+    {
+        const line = modeler.line([0,0], [10,0]);
+        const vs = line.vertices();
+        expect(vs.length).toBe(2);
+        // wrapped as smart vertices → SmartShape API (label, dim, material) is available
+        expect(typeof (vs.first() as any).label).toBe('function');
+        expect(typeof (vs.first() as any).material).toBe('function');
     });
 
 
@@ -371,6 +381,31 @@ describe('Modeler — mesh mode methods', () =>
         expect(poly).toBeInstanceOf(SmartMeshCurve);
         expect(poly.type).toBe('Curve');
         expect(poly.subtype()).toBe('Polyline');
+    });
+
+    it('SmartMeshCurve.segments() returns a SmartShapeCollection of SmartMeshCurve', async () =>
+    {
+        const poly = m.polyline([0, 0], [10, 0], [10, 10]);
+        const segs = poly.segments();
+        expect(segs).toBeInstanceOf(SmartShapeCollection);
+        expect(segs.length).toBe(2);
+        segs.forEach((s: any) => expect(s).toBeInstanceOf(SmartMeshCurve));
+        // edges() is an alias — same smart wrapping
+        expect(poly.edges().first()).toBeInstanceOf(SmartMeshCurve);
+    });
+
+    it('polygon() accepts an array of points', () =>
+    {
+        const p = m.polygon([[0, 0], [10, 0], [10, 10]]);
+        expect(p).toBeInstanceOf(SmartMeshPolygon);
+        expect(p.type).toBe('Polygon');
+    });
+
+    it('polygon() accepts flat args like polyline()', () =>
+    {
+        const p = m.polygon([0, 0], [10, 0], [10, 10]);
+        expect(p).toBeInstanceOf(SmartMeshPolygon);
+        expect(p.type).toBe('Polygon');
     });
 
     it('rect()', () =>

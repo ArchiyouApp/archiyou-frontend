@@ -19,6 +19,8 @@ export const RegisterRequestSchema = Type.Object({
 export type RegisterRequest = Static<typeof RegisterRequestSchema>;
 
 export const LoginRequestSchema = Type.Object({
+  // Login identifier: an email address OR a username handle. Kept named `email`
+  // for backward compatibility with the editor client.
   email: Type.String({ minLength: 3 }),
   password: Type.String({ minLength: 1 }),
 });

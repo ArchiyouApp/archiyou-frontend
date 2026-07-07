@@ -19,6 +19,7 @@
     "test:dimensions" : "vitest run tests/unit/annotator/dimensions.test.ts",
     "test:labels" : "vitest run tests/unit/annotator/labels.test.ts",
     "test:runner" : "vitest run tests/unit/runner/",
+    "test:materials" : "vitest run tests/unit/materials/",
     "test:runner:components" : "vitest run tests/unit/runner/runner.component.test.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

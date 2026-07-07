@@ -19,6 +19,8 @@ import {
   updateScriptMetadata,
   updateScriptMeta,
   isScriptNameTaken,
+  scriptUnitSystem,
+  setScriptUnitSystem,
 } from '@archiyou/editor/src/state/workspace';
 
 import type { ScriptMetadata } from '@archiyou/editor/src/state/workspace';
@@ -36,10 +38,11 @@ const FIELD_HELP: Record<string, string> = {
   description: 'A one- or two-sentence summary shown in listings and search results.',
   details:     'Full documentation: purpose, usage instructions, parameter notes and any technical background.',
   tags:        'Searchable keywords. Only predefined tags are allowed to keep the catalogue consistent.',
+  units:       'The main unit system for this script. Metric works in millimetres (mm); Imperial works in inches (in). It sets the default unit for parameters and how sizes and dimensions are shown. The configurator lets end-users view either system.',
 };
 
-@customElement('editor-file-manager')
-export class EditorFileManager extends SignalWatcher(LitElement)
+@customElement('editor-file-info')
+export class EditorFileInfo extends SignalWatcher(LitElement)
 {
 
   // ── 1. Render ──────────────────────────────────────────────────────────────
@@ -75,6 +78,21 @@ export class EditorFileManager extends SignalWatcher(LitElement)
                 class="script-name"
                 @dblclick=${(e: Event) => { e.stopPropagation(); this._startNameEdit(displayName); }}
               >${displayName}</span>
+
+              ${userState.get().anonymous
+                ? html`
+                    <span
+                      id=${`fm-not-signed-in-${this._uid}`}
+                      class="fm-warning"
+                      @click=${(e: Event) => e.stopPropagation()}
+                    >
+                      <wa-icon library="lucide" name="triangle-alert"></wa-icon>
+                    </span>
+                    <wa-tooltip for=${`fm-not-signed-in-${this._uid}`} placement="bottom">
+                      Not signed in. Saving is local only.
+                    </wa-tooltip>`
+                : nothing}
+
               <button
                 class="edit-name-btn"
                 title="Rename script"
@@ -87,19 +105,13 @@ export class EditorFileManager extends SignalWatcher(LitElement)
 
         <span class="spacer"></span>
 
-        ${userState.get().anonymous
-          ? html`
-              <span
-                id=${`fm-not-signed-in-${this._uid}`}
-                class="fm-warning"
-                @click=${(e: Event) => e.stopPropagation()}
-              >
-                <wa-icon library="lucide" name="triangle-alert"></wa-icon>
-              </span>
-              <wa-tooltip for=${`fm-not-signed-in-${this._uid}`} placement="bottom">
-                Not signed in. Saving is local only.
-              </wa-tooltip>`
-          : nothing}
+        <div class="unit-quick" @click=${(e: Event) => e.stopPropagation()}
+            title="Script units — Metric (mm) / Imperial (in)">
+          <span class=${scriptUnitSystem.get() === 'metric' ? 'on' : ''}
+              @click=${() => setScriptUnitSystem('metric')}>metric</span>
+          <span class=${scriptUnitSystem.get() === 'imperial' ? 'on' : ''}
+              @click=${() => setScriptUnitSystem('imperial')}>imperial</span>
+        </div>
 
         <wa-icon library="lucide" name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
       </div>
@@ -145,6 +157,8 @@ export class EditorFileManager extends SignalWatcher(LitElement)
               disabled
             />
           `)}
+
+          ${this._renderField('units', this._renderUnitToggle())}
 
           ${this._renderField('description', html`
             <div class="editor-wrap">
@@ -236,6 +250,31 @@ export class EditorFileManager extends SignalWatcher(LitElement)
                 </span>
               `)}
         </div>
+      </div>
+    `;
+  }
+
+  /** Metric / Imperial segmented control — sets the script's main unit system.
+   *  Always shows exactly one option as active. */
+  private _renderUnitToggle()
+  {
+    const sys = scriptUnitSystem.get();
+    return html`
+      <div class="unit-seg" role="group" @click=${(e: Event) => e.stopPropagation()}>
+        <button
+          class=${`seg-btn ${sys === 'metric' ? 'active' : ''}`}
+          @click=${() => setScriptUnitSystem('metric')}
+        >
+          <wa-icon library="lucide" name="ruler"></wa-icon>
+          Metric <span class="seg-hint">mm</span>
+        </button>
+        <button
+          class=${`seg-btn ${sys === 'imperial' ? 'active' : ''}`}
+          @click=${() => setScriptUnitSystem('imperial')}
+        >
+          <wa-icon library="lucide" name="ruler"></wa-icon>
+          Imperial <span class="seg-hint">in</span>
+        </button>
       </div>
     `;
   }
@@ -587,6 +626,34 @@ export class EditorFileManager extends SignalWatcher(LitElement)
 
     .spacer { flex: 1; }
 
+    /* ── Quick mm/in unit switch (header) ── */
+    .unit-quick
+    {
+      display: inline-flex;
+      align-items: stretch;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm, 3px);
+      overflow: hidden;
+      font-size: var(--text-xs);
+      font-family: var(--font-sans);
+      flex-shrink: 0;
+    }
+
+    .unit-quick span
+    {
+      padding: 1px 8px;
+      color: var(--color-text-muted, #888);
+      background: var(--color-bg-elevated);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .unit-quick span.on
+    {
+      color: var(--color-bg);
+      background: var(--color-secondary);
+    }
+
     /* Not-signed-in warning (saving is local-only) */
     .fm-warning
     {
@@ -653,6 +720,48 @@ export class EditorFileManager extends SignalWatcher(LitElement)
       color: var(--color-text-muted);
       opacity: 0.5;
       cursor: default;
+    }
+
+    /* ── Unit-system segmented control ── */
+
+    .unit-seg
+    {
+      display: inline-flex;
+      align-items: stretch;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm, 4px);
+      overflow: hidden;
+      align-self: flex-start;
+    }
+
+    .seg-btn
+    {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: var(--space-xs) var(--space-md);
+      border: none;
+      background: var(--color-bg);
+      color: var(--color-text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--text-sm);
+      cursor: pointer;
+    }
+
+    .seg-btn + .seg-btn { border-left: 1px solid var(--color-border); }
+
+    .seg-btn:hover { background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg)); }
+
+    .seg-btn.active
+    {
+      background: var(--color-primary);
+      color: var(--color-bg);
+    }
+
+    .seg-hint
+    {
+      font-size: var(--text-xs);
+      opacity: 0.7;
     }
 
     /* ── Text input ── */
@@ -835,6 +944,6 @@ declare global
 {
   interface HTMLElementTagNameMap
   {
-    'editor-file-manager': EditorFileManager;
+    'editor-file-info': EditorFileInfo;
   }
 }

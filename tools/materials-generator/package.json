@@ -1,0 +1,19 @@
+{
+  "name": "materials-generator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone AI generator for the archiyou materials database + textures (Google Gemini for both data and images).",
+  "scripts": {
+    "generate:data": "tsx generate-data.ts",
+    "generate:textures": "tsx generate-textures.ts",
+    "materials:crosscheck": "tsx crosscheck.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^1.30.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

@@ -69,9 +69,12 @@ export class UserService {
     return row;
   }
 
-  /** Verify email/password. Throws UserError('invalid_credentials') on failure. */
-  async login(email: string, password: string): Promise<UserRow> {
-    const user = this.findByEmail(email);
+  /** Verify credentials, resolving the identifier as an email OR a username
+   *  handle (mirrors the legacy backend's email-or-username login). Throws
+   *  UserError('invalid_credentials') on failure. */
+  async login(identifier: string, password: string): Promise<UserRow> {
+    const id = identifier.trim();
+    const user = this.findByEmail(id) ?? this.findByUsername(id);
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
       throw new UserError('invalid_credentials', 'Invalid email or password');
     }

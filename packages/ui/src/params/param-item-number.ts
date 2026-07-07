@@ -421,11 +421,19 @@ export class ParamItemNumber extends SignalWatcher(LitElement)
 
         .frac-hint
         {
-            flex-shrink: 0;
-            font-family: var(--font-mono, monospace);
-            font-size:   var(--text-xs);
-            color:       var(--color-text-muted, #888);
-            white-space: nowrap;
+            /* Fixed width so the fractional-inch text (e.g. 15/16" vs 1 15/16")
+               doesn't change the row layout — otherwise the increment button
+               visibly "jumps" while dragging the slider. Monospace + ch keeps it
+               tight yet scale-safe; overflow guards very large values. */
+            flex-shrink:   0;
+            box-sizing:    border-box;
+            width:         9ch;
+            text-align:    center;
+            overflow:      hidden;
+            font-family:   var(--font-mono, monospace);
+            font-size:     var(--text-xs);
+            color:         var(--color-text-muted, #888);
+            white-space:   nowrap;
         }
     `;
 }

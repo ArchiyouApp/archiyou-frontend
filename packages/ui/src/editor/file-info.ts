@@ -651,7 +651,7 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
     .unit-quick span.on
     {
       color: var(--color-bg);
-      background: var(--color-secondary);
+      background: var(--color-gray-dark);
     }
 
     /* Not-signed-in warning (saving is local-only) */

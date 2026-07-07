@@ -23,7 +23,7 @@ export class PageLogin extends LitElement
     return html`
       <div class="card">
         <div class="logo">
-          <img src="img/ay_logo_white.png" alt="Archiyou" />
+          <img src="img/archiyou_logo_header.png" alt="Archiyou" />
         </div>
 
         <h1>${isRegister ? msg('Create your account') : msg('Welcome back')}</h1>
@@ -37,13 +37,13 @@ export class PageLogin extends LitElement
                    </wa-input>`
             : null}
 
-          <wa-input class="field" type=${isRegister ? 'email' : 'text'} required
+          <wa-input class="field" type=${isRegister ? 'email' : 'text'}
                  placeholder=${isRegister ? msg('Email') : msg('Email or username')}
                  .value=${this._email} @input=${(e: Event) => (this._email = (e.target as HTMLInputElement).value)}>
             <wa-icon slot="start" library="lucide" name=${isRegister ? 'mail' : 'at-sign'}></wa-icon>
           </wa-input>
 
-          <wa-input class="field" type="password" required minlength=${isRegister ? '8' : '1'}
+          <wa-input class="field" type="password"
                  placeholder=${msg('Password')}
                  .value=${this._password} @input=${(e: Event) => (this._password = (e.target as HTMLInputElement).value)}>
             <wa-icon slot="start" library="lucide" name="lock"></wa-icon>
@@ -60,8 +60,7 @@ export class PageLogin extends LitElement
 
         <div class="divider"><span>${msg('or')}</span></div>
 
-        <wa-button variant="neutral" class="google" @click=${this._handleGoogle}>
-          <wa-icon slot="start" library="lucide" name="chrome"></wa-icon>
+        <wa-button variant="neutral" appearance="outlined" class="google" @click=${this._handleGoogle}>
           ${msg('Continue with Google')}
         </wa-button>
 
@@ -144,17 +143,18 @@ export class PageLogin extends LitElement
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
     }
 
-    /* Header logo on a brand-colored badge so the white logo reads on grey. */
+    /* The header logo is dark-on-transparent, so keep it on a white plate — it
+       stays legible on the card in both light and dark themes. */
     .logo {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: var(--color-secondary, #180c2d);
+      background: #ffffff;
       border-radius: var(--radius-lg, 12px);
-      padding: 14px 22px;
+      padding: 10px 18px;
       margin-bottom: var(--space-lg, 16px);
     }
-    .logo img { height: 34px; display: block; }
+    .logo img { height: 40px; display: block; }
 
     h1 {
       font-family: var(--font-display, var(--font-sans, sans-serif));

@@ -31,6 +31,8 @@ import { executing, executionResult } from '@archiyou/editor/src/state/workspace
 
 const lightTheme = EditorView.theme({}, { dark: false });
 const themeCompartment = new Compartment();
+// Toggles editability without rebuilding the editor (read-only shared scripts).
+const editableCompartment = new Compartment();
 
 // ── Error-line highlight ──────────────────────────────────────────────────────
 /** Effect: set a 1-indexed line number, 'all' for every line, or null to clear. */
@@ -117,6 +119,9 @@ export class CodeBox extends SignalWatcher(LitElement)
 
   // ── 2. Properties ──
   @property({ type: String }) code = '';
+  /** When true the document is read-only (e.g. a foreign shared script). Run
+   *  stays available; only editing is blocked. */
+  @property({ type: Boolean }) readonly = false;
 
   // ── 3. Lifecycle ──
   override firstUpdated()
@@ -201,6 +206,7 @@ export class CodeBox extends SignalWatcher(LitElement)
             },
           ]),
           themeCompartment.of(this._currentTheme()),
+          editableCompartment.of(this._editableExtension()),
           EditorView.updateListener.of(update =>
           {
             if (update.docChanged)
@@ -230,6 +236,13 @@ export class CodeBox extends SignalWatcher(LitElement)
 
   override updated(changed: Map<string, unknown>)
   {
+    if (changed.has('readonly') && this._view)
+    {
+      this._view.dispatch({
+        effects: editableCompartment.reconfigure(this._editableExtension()),
+      });
+    }
+
     if (changed.has('code') && this._view && !this._skipNextUpdate)
     {
       const current = this._view.state.doc.toString();
@@ -265,6 +278,15 @@ export class CodeBox extends SignalWatcher(LitElement)
   private _skipNextUpdate = false;
   private _lastAppliedResult: ReturnType<typeof executionResult.get> | undefined = undefined;
   private _darkMQ = window.matchMedia('(prefers-color-scheme: dark)');
+
+  /** Editability extensions derived from the `readonly` property. */
+  private _editableExtension()
+  {
+    return [
+      EditorView.editable.of(!this.readonly),
+      EditorState.readOnly.of(this.readonly),
+    ];
+  }
 
   private _currentTheme()
   {

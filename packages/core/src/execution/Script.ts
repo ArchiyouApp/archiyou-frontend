@@ -8,9 +8,10 @@
 import { Check, Errors } from 'typebox/value'
 import semver from 'semver'; // for version validation
 
-import type { ScriptData, ScriptParamData, ScriptPublished, ScriptMeta } from './types';
+import type { ScriptData, ScriptParamData, ScriptMeta } from './types';
 import { ScriptParam } from './ScriptParam';
-import { ScriptSchema, ScriptPublishedSchema, ScriptPublishedData } from './schemas'
+import { ScriptSchema, ScriptPublishedSchema } from './schemas'
+import type { ScriptPublishedData } from './types';
 import { hash, uuid4, dataToModuleString } from '../utils' // utils
 
 export class Script 

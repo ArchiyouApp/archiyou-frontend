@@ -1,22 +1,16 @@
 /**
  * execution/schemas.ts
- * TypeBox schemas for Script and ScriptParam validation.
+ * TypeBox schemas for ScriptParam validation.
  *      Import these into classes that need structural validation.
+ *      The Script-level schema (ScriptSchema/ScriptPublishedSchema/…) lives in
+ *      packages/core/src/ScriptSchema.ts and imports the param helpers below.
  */
 
-import semver from 'semver'
 import { Type } from 'typebox'
 
 import { ScriptParamType } from './types'
 
 //// PARAMS ////
-
-// @ts-ignore TS2589: TypeBox Refine causes excessively deep type instantiation
-const SemverSchema = Type.Refine(
-    Type.String(),
-    (value): value is string => semver.valid(semver.coerce(value)) !== null,
-    'Expected a valid semver version'
-)
 
 export const ScriptParamSchema = Type.Object(
 {
@@ -38,54 +32,6 @@ export const ScriptParamSchema = Type.Object(
     _behaviours:              Type.Optional(Type.Record(Type.String(), Type.String())),
 })
 
-const ParamRecordSchema = Type.Record(Type.String(), ScriptParamSchema)
-const ParamPresetsSchema = Type.Record(Type.String(), ParamRecordSchema)
-
-//// SCRIPT ////
-
-/** Published part of script */
-export const ScriptPublishedSchema = Type.Object({
-    public:      Type.Optional(Type.Boolean()), // if shown up in lists
-    version:     SemverSchema, // semver version string, e.g. "1.0.0"
-    url:         Type.Optional(Type.String()),
-    library:  Type.Optional(Type.String()), // library url
-    
-    title:      Type.Optional(Type.String()),
-    description: Type.Optional(Type.String()),
-
-    // overrides main params/presets 
-    params:      Type.Optional(ParamRecordSchema),
-    presets:     Type.Optional(Type.Array(Type.String())),
-})
-
-/**
- *  Defines the schema for a Script
- *   See Script.ts for how the Script works
- */
-export const ScriptSchema = Type.Object(
-{
-    id:          Type.Optional(Type.String()),
-    fileId:      Type.Optional(Type.String()), // groups scripts version under one file: created for first script version
-    created:     Type.Optional(Type.Union([Type.String(), Type.Null()])),
-    updated:     Type.Optional(Type.Union([Type.String(), Type.Null()])),
-    
-    name:        Type.Optional(Type.String()),
-    author:      Type.Optional(Type.String()),
-
-    description: Type.Optional(Type.String()),
-    details:     Type.Optional(Type.String()),
-    tags:        Type.Optional(Type.Array(Type.String())),
-
-    code:        Type.String(),
-
-    // params are record { <<name>> : ScriptParam }
-    params:      Type.Optional(ParamRecordSchema),
-    presets:     Type.Optional(ParamPresetsSchema),
-
-    // null or published as
-    published:   Type.Optional(Type.Union([Type.Null(), ScriptPublishedSchema])),
-
-    // Main unit system of the script (metric shows mm, imperial shows inches).
-    // Presentation preference — does not rescale geometry. Default 'metric'.
-    units:       Type.Optional(Type.Union([Type.Literal('metric'), Type.Literal('imperial')])),
-})
+// Param record + preset helpers — exported for ScriptSchema.ts to reuse.
+export const ParamRecordSchema = Type.Record(Type.String(), ScriptParamSchema)
+export const ParamPresetsSchema = Type.Record(Type.String(), ParamRecordSchema)

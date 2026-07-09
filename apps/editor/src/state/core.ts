@@ -14,7 +14,7 @@
 
 import { signal, computed } from '@lit-labs/signals';
 
-import { Script } from '@archiyou/core/src/execution/Script';
+import { Script } from '@archiyou/core/src/Script';
 import type { RunnerScriptExecutionResult } from '@archiyou/core/src/runner/types';
 import { uuid4 } from '@archiyou/core/src/utils';
 
@@ -114,6 +114,8 @@ export function saveActive(): void
     const script = editorScript.get();
     if (!script) return;
     localStorage.setItem(SCRIPT_STORAGE_KEY, JSON.stringify(script.toData()));
+    // Never mirror a foreign (read-only) script back to our own account.
+    if (_scriptIsForeign(script)) return;
     // Mirror to the server (debounced + no-op when anonymous).
     syncSaveActive(script);
   }
@@ -157,9 +159,12 @@ export const userState = computed<UserState>(() => {
 const _initialScripts = _loadPersistedScripts();
 const _initialActive  = _loadPersistedScript();
 {
+  // Keep the "active is represented in the collection" invariant — but not for a
+  // foreign (read-only) script restored as active, which must stay out of "My
+  // Scripts".
   const idx = _initialScripts.findIndex(s => s.fileId === _initialActive.fileId);
   if (idx >= 0) _initialScripts[idx] = _initialActive;
-  else          _initialScripts.push(_initialActive);
+  else if (!_scriptIsForeign(_initialActive)) _initialScripts.push(_initialActive);
 }
 
 // `equals: () => false` — every `.set()` notifies, even when the script
@@ -184,6 +189,31 @@ export const core = computed<WorkspaceCoreState>(() => ({
 /** The currently active script. */
 export const selectedScript = computed(() => editorScript.get());
 
+//// EDITOR MODE (read / edit) ////
+
+/** True when `s` belongs to someone else — a shared script opened from the
+ *  library. Such scripts are read-only: they must be forked before editing and
+ *  are never mirrored back to the signed-in user's account. Before auth
+ *  resolves (`me` still null) a script that carries both an author and shared
+ *  metadata is treated as foreign so we never leak edits upstream. */
+function _scriptIsForeign(s: Script | null): boolean
+{
+  if (!s) return false;
+  const me = currentUser.get()?.id ?? null;
+  if (s.author && me && s.author !== me) return true;
+  if (s.author && !me && !!s.shared) return true;
+  return false;
+}
+
+/** 'read' for a foreign shared script, 'edit' otherwise. Reactive: recomputes
+ *  when the active script or the signed-in user changes. */
+export const editorMode = computed<'read' | 'edit'>(() =>
+  _scriptIsForeign(editorScript.get()) ? 'read' : 'edit',
+);
+
+/** Convenience flag for components/guards. */
+export const isReadOnly = computed<boolean>(() => editorMode.get() === 'read');
+
 //// MUTATIONS ////
 
 /** Trigger reactivity after mutating the active script in place. */
@@ -207,10 +237,13 @@ function _upsertScript(s: Script): void
   else          list.push(s);
 }
 
-/** Archive the given script into the collection (no-op for null). */
+/** Archive the given script into the collection (no-op for null). Foreign
+ *  (read-only) scripts are never archived — they must not appear in "My
+ *  Scripts" nor be synced to the user's account. */
 function _archiveScript(s: Script | null): void
 {
   if (!s) return;
+  if (_scriptIsForeign(s)) return;
   _upsertScript(s);
   bumpScripts();
 }
@@ -300,6 +333,55 @@ export function openScript(fileId: string): Script | null
   saveActive();
   saveCollection();
   return target;
+}
+
+/** Open a shared script fetched from the library as the active script. If it
+ *  belongs to another user it opens read-only (see editorMode); it is not added
+ *  to "My Scripts" and never synced. Returns the opened Script or null. */
+export function openSharedScript(data: Record<string, any>): Script | null
+{
+  const script = Script.fromData(data);
+  if (!script) return null;
+
+  _archiveScript(editorScript.get());   // ensure current (if editable) is in the list
+  editorScript.set(script);
+  saveActive();                         // local persistence only — sync is skipped for foreign
+  return script;
+}
+
+/** Fork the active script into a new, editable script owned by the current user.
+ *  Copies the code/params/metadata under a fresh fileId+id, clears sharing/
+ *  publishing/version, and selects it. The name is kept as-is (uniqueness is by
+ *  author namespace). Returns the forked Script or null. */
+export function forkScript(): Script | null
+{
+  const source = editorScript.get();
+  if (!source) return null;
+
+  const data = source.toData() as Record<string, any>;
+  const me = currentUser.get()?.id;
+
+  const fork = Script.fromData({
+    ...data,
+    id:        uuid4(),
+    fileId:    uuid4(),
+    author:    me,           // owned by the forking user (undefined when anonymous)
+    version:   null,         // a fork starts unversioned
+    shared:    null,         // not shared
+    published: null,         // not published
+    created:   null,
+    updated:   null,
+  });
+  if (!fork) return null;
+
+  _archiveScript(source);    // no-op if the source was foreign/read-only
+  _upsertScript(fork);
+  editorScript.set(fork);
+  bumpScripts();
+  saveActive();
+  saveCollection();
+  syncCreate(fork);
+  return fork;
 }
 
 /** Remove a script from the collection by fileId. If it was the active one,

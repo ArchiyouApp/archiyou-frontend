@@ -21,6 +21,8 @@ import {
   isScriptNameTaken,
   scriptUnitSystem,
   setScriptUnitSystem,
+  isReadOnly,
+  forkScript,
 } from '@archiyou/editor/src/state/workspace';
 
 import type { ScriptMetadata } from '@archiyou/editor/src/state/workspace';
@@ -57,12 +59,13 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
     else if (this._snapshot === null) this._snapshot = structuredClone(this._draft);
     const script = editorScript.get();
     const displayName = script?.name ?? 'untitled';
+    const readOnly = isReadOnly.get();
 
     return html`
       <div class="header" @click=${this._toggleCollapse}>
         <wa-icon library="lucide" name="file"></wa-icon>
 
-        ${this._editingName
+        ${this._editingName && !readOnly
           ? html`
               <input
                 id=${`fm-name-header-${this._uid}`}
@@ -76,34 +79,62 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
           : html`
               <span
                 class="script-name"
-                @dblclick=${(e: Event) => { e.stopPropagation(); this._startNameEdit(displayName); }}
+                title=${displayName}
+                @dblclick=${(e: Event) => { if (readOnly) return; e.stopPropagation(); this._startNameEdit(displayName); }}
               >${displayName}</span>
 
-              ${userState.get().anonymous
+              ${readOnly
                 ? html`
                     <span
-                      id=${`fm-not-signed-in-${this._uid}`}
-                      class="fm-warning"
+                      id=${`fm-readonly-${this._uid}`}
+                      class="fm-readonly"
                       @click=${(e: Event) => e.stopPropagation()}
                     >
-                      <wa-icon library="lucide" name="triangle-alert"></wa-icon>
+                      <wa-icon library="lucide" name="lock"></wa-icon>
+                      read-only
                     </span>
-                    <wa-tooltip for=${`fm-not-signed-in-${this._uid}`} placement="bottom">
-                      Not signed in. Saving is local only.
+                    <wa-tooltip for=${`fm-readonly-${this._uid}`} placement="bottom">
+                      This is a shared script${script?.author ? ` by ${script.author}` : ''}. Fork it to make your own editable copy.
                     </wa-tooltip>`
-                : nothing}
+                : html`
+                    ${userState.get().anonymous
+                      ? html`
+                          <span
+                            id=${`fm-not-signed-in-${this._uid}`}
+                            class="fm-warning"
+                            @click=${(e: Event) => e.stopPropagation()}
+                          >
+                            <wa-icon library="lucide" name="triangle-alert"></wa-icon>
+                          </span>
+                          <wa-tooltip for=${`fm-not-signed-in-${this._uid}`} placement="bottom">
+                            Not signed in. Saving is local only.
+                          </wa-tooltip>`
+                      : nothing}
 
-              <button
-                class="edit-name-btn"
-                title="Rename script"
-                id="edit-name-btn"
-                @click=${(e: Event) => { e.stopPropagation(); this._startNameEdit(displayName); }}
-              >
-                <wa-icon library="lucide" name="pencil"></wa-icon>
-              </button>`
+                    <button
+                      class="edit-name-btn"
+                      title="Rename script"
+                      id="edit-name-btn"
+                      @click=${(e: Event) => { e.stopPropagation(); this._startNameEdit(displayName); }}
+                    >
+                      <wa-icon library="lucide" name="pencil"></wa-icon>
+                    </button>`}
+              `
         }
 
         <span class="spacer"></span>
+
+        ${readOnly
+          ? html`
+              <button
+                class="fork-btn"
+                title="Fork to an editable copy"
+                @click=${(e: Event) => { e.stopPropagation(); this._handleFork(); }}
+              >
+                <wa-icon library="lucide" name="git-fork"></wa-icon>
+                Fork
+              </button>`
+          : nothing}
 
         <div class="unit-quick" @click=${(e: Event) => e.stopPropagation()}
             title="Script units — Metric (mm) / Imperial (in)">
@@ -133,7 +164,7 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
   private _renderBody()
   {
     const script  = editorScript.get();
-    const version = script?.published?.version ?? '—';
+    const version = script?.version ?? '—';
 
     return html`
       <div class="body">
@@ -403,7 +434,7 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
     const script = editorScript.get();
     return {
       projectName:    script?.name ?? '',
-      version:        script?.published?.version ?? '',
+      version:        script?.version ?? '',
       description:    script?.description ?? '',
       projectDetails: script?.details ?? '',
       categories:     [...(script?.tags ?? [])],
@@ -499,8 +530,20 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
     setFileManagerCollapsed(true);
   }
 
+  /** Fork the read-only shared script into an editable copy owned by the user. */
+  private _handleFork()
+  {
+    const fork = forkScript();
+    if (fork)
+    {
+      // The fork became active (edit mode); surface it so the editor can re-run.
+      this.dispatchEvent(new CustomEvent('script-forked', { bubbles: true, composed: true }));
+    }
+  }
+
   private _handleSave()
   {
+    if (isReadOnly.get()) return;   // read-only shared scripts cannot be saved
     const script = editorScript.get();
     if (!script) return;
 
@@ -653,6 +696,44 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
       color: var(--color-bg);
       background: var(--color-gray-dark);
     }
+
+    /* Read-only badge (foreign shared script) */
+    .fm-readonly
+    {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 1px 8px;
+      border-radius: var(--radius-sm, 4px);
+      background: color-mix(in srgb, var(--color-warning, #d97706) 16%, transparent);
+      color: var(--color-warning, #d97706);
+      font-size: var(--text-xs);
+      font-weight: 500;
+      white-space: nowrap;
+      cursor: help;
+      flex-shrink: 0;
+    }
+
+    /* Fork button (read-only header) */
+    .fork-btn
+    {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border: 1px solid var(--color-primary);
+      border-radius: var(--radius-sm, 4px);
+      background: var(--color-primary);
+      color: var(--color-white, #fff);
+      font-family: var(--font-sans);
+      font-size: var(--text-xs);
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .fork-btn:hover { opacity: 0.88; }
 
     /* Not-signed-in warning (saving is local-only) */
     .fm-warning

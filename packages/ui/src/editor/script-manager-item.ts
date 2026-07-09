@@ -3,13 +3,18 @@ import { customElement, property, state } from 'lit/decorators.js';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import type { Script } from '@archiyou/core/src/execution/Script';
+import type { Script } from '@archiyou/core/src/Script';
 
 @customElement('script-manager-item')
 export class ScriptManagerItem extends LitElement
 {
   @property({ attribute: false }) script!: Script;
   @property({ type: Boolean, reflect: true }) selected = false;
+  /** Hide owner-only actions (delete) — used for foreign shared scripts. */
+  @property({ type: Boolean }) readonly = false;
+
+  /** Optional author line shown for shared scripts. */
+  @property({ type: String }) author = '';
 
   @state() private _confirmingDelete = false;
 
@@ -31,12 +36,14 @@ export class ScriptManagerItem extends LitElement
       </span>
 
       <span class="info">
-        <span class="name">${name}</span>
+        <span class="name">${name}${this.author ? html`<span class="author"> · ${this.author}</span>` : ''}</span>
         <span class="meta">${loc} lines · created ${created} · updated ${updated}</span>
       </span>
 
       <span class="actions" @click=${(e: Event) => e.stopPropagation()}>
-        ${this._confirmingDelete
+        ${this.readonly
+          ? ''
+          : this._confirmingDelete
           ? html`
               <span class="confirm-delete">
                 <span class="confirm-label">Delete?</span>
@@ -163,6 +170,11 @@ export class ScriptManagerItem extends LitElement
     .meta {
       font-size: var(--text-xs);
       color: var(--color-text-muted, var(--color-gray-dark, #666));
+    }
+
+    .author {
+      font-weight: 400;
+      color: var(--color-text-muted, #666);
     }
 
     .actions {

@@ -1,0 +1,26 @@
+{
+  # Global options
+  auto_https on
+}
+
+# Combined Archiyou server (editor backend at /api + published library + /execute at root).
+# Replace the hostname with your domain.
+api.archiyou.com {
+    reverse_proxy api:4000
+    encode gzip
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}
+
+# Optional: serve a built configurator app as a static site.
+# Mount its dist to /html (see docker-compose.prod.yml).
+configure.archiyou.com {
+    root * /html
+    file_server
+    try_files {path} /index.html
+}

@@ -1,0 +1,96 @@
+# Production stack for the combined Archiyou server.
+#   caddy   — TLS reverse proxy (auto HTTPS) → api
+#   redis   — queue backend (password-protected; set REDIS_PASW in .env)
+#   api     — combined API (/api editor backend + / library + /execute)
+#   worker  — BullMQ execution worker
+#
+# Run:  pnpm --filter @archiyou/server docker:prod
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy/data:/data
+      - ./caddy/config:/config
+      # optional: mount a built configurator app to serve as static site
+      - ./configurator-app/dist:/html
+    depends_on:
+      - api
+    networks:
+      - archiyou-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: archiyou-redis
+    volumes:
+      - redis_data:/data
+    env_file: .env
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASW}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - archiyou-network
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/server/Dockerfile
+    container_name: archiyou-api
+    expose:
+      - "4000"
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASW}
+      - DATABASE_FILE=./data/archiyou.db
+      - LIBRARY_PATH=./data/cache
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - server_data:/repo/apps/server/data
+    restart: unless-stopped
+    networks:
+      - archiyou-network
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: apps/server/Dockerfile
+    container_name: archiyou-worker
+    command: pnpm worker
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASW}
+      - WORKER_ID=worker
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - archiyou-network
+
+volumes:
+  redis_data:
+    driver: local
+  server_data:
+    driver: local
+
+networks:
+  archiyou-network:
+    driver: bridge

@@ -5,7 +5,7 @@ import JSON5 from 'json5';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
-import { Script } from '@archiyou/core/src/execution/Script';
+import { Script } from '@archiyou/core/src/Script';
 import type { ScriptData } from '@archiyou/core/src/execution/types';
 import { OVERLAY_MENU_WIDTH, OVERLAY_MENU_HEIGHT } from '@archiyou/editor/src/settings';
 

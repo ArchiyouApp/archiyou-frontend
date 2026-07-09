@@ -19,6 +19,16 @@ export const routes: Route[] = [
     component: 'page-callback',
     action: async () => { await import('../../pages/callback.js'); },
   },
+  {
+    path: '/forgot-password',
+    component: 'page-forgot-password',
+    action: async () => { await import('../../pages/forgot-password.js'); },
+  },
+  {
+    path: '/reset-password',
+    component: 'page-reset-password',
+    action: async () => { await import('../../pages/reset-password.js'); },
+  },
 
   // --- App (with nav-bar layout) ---
   {

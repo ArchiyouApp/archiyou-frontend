@@ -49,6 +49,12 @@ export class PageLogin extends LitElement
             <wa-icon slot="start" library="lucide" name="lock"></wa-icon>
           </wa-input>
 
+          ${!isRegister
+            ? html`<button type="button" class="forgot" @click=${() => Router.go('/forgot-password')}>
+                     ${msg('Forgot password?')}
+                   </button>`
+            : null}
+
           ${this._error ? html`<div class="error">${this._error}</div>` : null}
 
           <wa-button variant="brand" size="large" type="submit" ?loading=${this._loading} class="submit"
@@ -187,6 +193,20 @@ export class PageLogin extends LitElement
       font-size: var(--text-sm, 0.85rem);
       text-align: center;
       margin: calc(-1 * var(--space-xs, 4px)) 0 0;
+    }
+
+    /* "Forgot password?" — right-aligned text link just under the password field. */
+    .forgot {
+      align-self: flex-end;
+      margin: calc(-1 * var(--space-sm, 8px)) 0 0;
+      padding: 0;
+      background: none;
+      border: none;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.8rem;
+      text-decoration: underline;
     }
 
     .submit { width: 100%; }

@@ -6,7 +6,7 @@
  *  NOTE: We try to keep compatibility with both libraries as much as possible
  */
 
-import { Script } from '../execution/Script';
+import { Script } from '../Script';
 
 import semver from 'semver';
 
@@ -19,7 +19,7 @@ export class LibraryConnector
                 all: '/search' // all scripts
             },
         v2: {
-            all: '/scripts' // all scripts
+            all: '/scripts/published' // all published scripts (server flattened its API onto /scripts/*)
         }
     }
     //// END SETTINGS ////
@@ -145,7 +145,7 @@ export class LibraryConnector
         // Group scripts by name and find the latest version
         const latestScripts = Object.values(
             scripts.reduce((acc, script) => {
-                if (!acc[script.name] || semver.gt(script?.published?.version, acc[script.name].published.version))
+                if (!acc[script.name] || semver.gt(script?.version, acc[script.name].version))
                 {
                     acc[script.name] = script; // Keep the script with the latest version
                 }
@@ -164,7 +164,7 @@ export class LibraryConnector
         const script = scripts.find(s =>
                             s.author.toLowerCase() === author.toLowerCase()
                             && s.name.toLowerCase() === name.toLowerCase()
-                            && (!version || s.published.version === version));
+                            && (!version || s.version === version));
 
         return script || null;
     }
@@ -185,7 +185,8 @@ export class LibraryConnector
                             .filter(s =>
                                 s.author.toLowerCase() === author.toLowerCase()
                                 && s.name.toLowerCase() === name.toLowerCase())
-                            .map(s => s.published.version);
+                            .map(s => s.version)
+                            .filter((v): v is string => v !== null);
         return versions;
     }
 
@@ -207,7 +208,7 @@ export class LibraryConnector
             latestScripts.forEach((script) =>
             {
                 const numberOfVersions = scripts.filter(s => s.name === script.name).length;
-                console.log(`* Script: ${script.name} [v${script.published.version} of ${numberOfVersions} versions]`);
+                console.log(`* Script: ${script.name} [v${script.version} of ${numberOfVersions} versions]`);
             });
         }
     }

@@ -1,5 +1,5 @@
 import type { Runner } from './Runner'
-import { Script } from '../execution/Script';
+import { Script } from '../Script';
 import { ScriptOutputManager } from '../execution/ScriptOutputManager';
 import { ScriptOutputPath } from '../execution/ScriptOutputPath';
 

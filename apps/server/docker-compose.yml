@@ -1,0 +1,79 @@
+# Development stack for the combined Archiyou server.
+#   redis   — queue backend for server-side execution
+#   api     — combined API (/api editor backend + / library + /execute); runs DB migrations on boot
+#   worker  — BullMQ execution worker (runs the archiyou-core Runner)
+#
+# Build context is the monorepo root (../..) so the @archiyou/core workspace dep resolves.
+# Run:  pnpm --filter @archiyou/server docker:dev   (or: docker compose up)
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: archiyou-redis
+    ports:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - archiyou-network
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/server/Dockerfile
+    container_name: archiyou-api
+    ports:
+      - "4000:4000"
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_FILE=./data/archiyou.db
+      - LIBRARY_PATH=./data/cache
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      # SQLite DB + execution result cache persist here.
+      - server_data:/repo/apps/server/data
+    restart: unless-stopped
+    networks:
+      - archiyou-network
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: apps/server/Dockerfile
+    container_name: archiyou-worker
+    command: pnpm worker
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - WORKER_ID=worker
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - archiyou-network
+
+volumes:
+  redis_data:
+    driver: local
+  server_data:
+    driver: local
+
+networks:
+  archiyou-network:
+    driver: bridge

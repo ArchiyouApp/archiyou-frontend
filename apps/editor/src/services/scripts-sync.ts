@@ -3,9 +3,13 @@
  * user is signed in. Anonymous users are unaffected (every export is a no-op
  * without a token), so the existing localStorage-only flow keeps working.
  *
- * Strategy (Phase 1): the server is the per-user store of record.
- *  - On sign-in / app load: `pullUserScripts()` merges the user's server
- *    scripts into the local collection.
+ * Strategy: the server is the per-user store of record.
+ *  - On sign-in / app load: `pullUserScripts()` reconciles the local collection
+ *    with the server per file (fileId), last-write-wins by `updated`: a local
+ *    script that is newer than (or absent from) the server is pushed up; an
+ *    equal/newer server copy is adopted locally. This lets a user work offline
+ *    (anonymous or disconnected) for a while and then sign in without losing
+ *    their newer local edits.
  *  - On local mutation: `syncCreate` / `syncSaveActive` (debounced) /
  *    `syncDelete` push changes up. A fileId not yet known to the server is
  *    POSTed (create); a known one is PUT (new version).
@@ -15,12 +19,12 @@
  * and Vite resolve without issue.
  */
 
-import { Script } from '@archiyou/core/src/execution/Script';
+import { Script } from '@archiyou/core/src/Script';
 import type { ScriptData } from '@archiyou/core/src/execution/types';
 
 import { api, ApiError } from './api.js';
 import { authService } from './auth-service.js';
-import { scripts, bumpScripts, saveCollection } from '../state/core.js';
+import { scripts, editorScript, bumpScripts, saveCollection } from '../state/core.js';
 
 /** fileIds we know exist on the server (so we choose PUT vs POST correctly). */
 const serverFileIds = new Set<string>();
@@ -33,38 +37,104 @@ function authed(): boolean {
   return authService.isAuthenticated();
 }
 
-/** Pull the signed-in user's scripts and merge them into the local collection. */
+/** The signed-in user's handle (== PublicUser.id == script author), needed to
+ *  build the `/scripts/{user}/…` paths. Undefined when not signed in. */
+function handle(): string | undefined {
+  return authService.getUser()?.id ?? undefined;
+}
+
+/** Reconcile the signed-in user's local collection with the server, per file,
+ *  last-write-wins by `updated`: a local script that is newer than (or missing
+ *  from) the server is pushed up; an equal/newer server copy is adopted locally.
+ *  This lets a user work offline and then sign in without losing their newer
+ *  local edits. Foreign (read-only) scripts owned by another user are skipped. */
 export async function pullUserScripts(): Promise<void> {
   if (!authed()) return;
+  const user = handle();
+  if (!user) return;
+
   let remote: ScriptData[];
   try {
-    remote = await api.get<ScriptData[]>('/scripts');
+    remote = await api.get<ScriptData[]>(`/scripts/${user}`);
   } catch (err) {
     console.warn('scripts-sync: pull failed', err);
     return;
   }
 
-  const list = scripts.get();
+  // Index the server's latest-per-file by fileId.
+  const remoteById = new Map<string, ScriptData>();
   for (const data of remote) {
     if (!data.fileId) continue;
     serverFileIds.add(data.fileId);
-    const script = Script.fromData(data);
-    if (!script) continue;
-    const idx = list.findIndex((s) => s.fileId === script.fileId);
-    if (idx >= 0) list[idx] = script; // server wins for non-active twins
-    else list.push(script);
+    remoteById.set(data.fileId, data);
   }
+
+  const list = scripts.get();
+  const active = editorScript.get();
+  const seenLocal = new Set<string>();
+  const toPush: Script[] = [];
+
+  // Reconcile each local script against its server twin.
+  for (let i = 0; i < list.length; i++) {
+    const local = list[i];
+    const fileId = local.fileId;
+    if (!fileId) continue;
+    seenLocal.add(fileId);
+
+    // Never sync a foreign (read-only) shared script owned by someone else.
+    if (local.author && local.author !== user) continue;
+
+    const remoteData = remoteById.get(fileId);
+    if (!remoteData) {
+      // Absent server-side (offline-authored or never synced) → create it.
+      toPush.push(local);
+      continue;
+    }
+
+    const localMs  = local.updated?.getTime() ?? 0;
+    const remoteMs = remoteData.updated ? new Date(remoteData.updated).getTime() : 0;
+
+    if (localMs > remoteMs) {
+      // Newer locally (e.g. edited offline) → push our version up.
+      toPush.push(local);
+    } else {
+      // Server is newer or equal → adopt the server copy.
+      const merged = Script.fromData(remoteData);
+      if (merged) {
+        list[i] = merged;
+        // Keep the open script's instance in sync when it is this file.
+        if (active && active.fileId === fileId && active !== merged) {
+          editorScript.set(merged);
+        }
+      }
+    }
+  }
+
+  // Server files we don't have locally → add them.
+  for (const [fileId, data] of remoteById) {
+    if (seenLocal.has(fileId)) continue;
+    const script = Script.fromData(data);
+    if (script) list.push(script);
+  }
+
   bumpScripts();
   saveCollection();
+
+  // Push newer/absent local scripts up. syncSaveNow chooses PUT (known fileId)
+  // vs POST (create) — remote fileIds were registered above, so twins PUT.
+  for (const script of toPush) {
+    await syncSaveNow(script);
+  }
 }
 
 /** Push a brand-new script to the server (POST). */
 export async function syncCreate(script: Script): Promise<void> {
   if (!authed()) return;
+  const user = handle();
   const data = script.toData();
-  if (!data.fileId) return;
+  if (!user || !data.fileId) return;
   try {
-    await api.post<ScriptData>('/scripts', data);
+    await api.post<ScriptData>(`/scripts/${user}`, data);
     serverFileIds.add(data.fileId);
   } catch (err) {
     // A 409-ish "already exists" just means we should PUT instead.
@@ -94,23 +164,24 @@ export function syncSaveActive(script: Script): void {
 }
 
 /** Immediate save: PUT if the file is known server-side, else POST (create). */
-async function syncSaveNow(script: Script): Promise<void> {
+export async function syncSaveNow(script: Script): Promise<void> {
   if (!authed()) return;
+  const user = handle();
   const data = script.toData();
   const fileId = data.fileId;
-  if (!fileId) return;
+  if (!user || !fileId) return;
   try {
     if (serverFileIds.has(fileId)) {
-      await api.put<ScriptData>(`/scripts/${fileId}`, data);
+      await api.put<ScriptData>(`/scripts/${user}/${fileId}`, data);
     } else {
-      await api.post<ScriptData>('/scripts', data);
+      await api.post<ScriptData>(`/scripts/${user}`, data);
       serverFileIds.add(fileId);
     }
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
       // Server lost the file; recreate it.
       serverFileIds.delete(fileId);
-      try { await api.post<ScriptData>('/scripts', data); serverFileIds.add(fileId); }
+      try { await api.post<ScriptData>(`/scripts/${user}`, data); serverFileIds.add(fileId); }
       catch (e) { console.warn('scripts-sync: recreate failed', e); }
     } else {
       console.warn('scripts-sync: save failed', err);
@@ -121,10 +192,12 @@ async function syncSaveNow(script: Script): Promise<void> {
 /** Delete a file server-side. */
 export async function syncDelete(fileId: string): Promise<void> {
   if (!authed() || !fileId) return;
+  const user = handle();
+  if (!user) return;
   const timer = saveTimers.get(fileId);
   if (timer) { clearTimeout(timer); saveTimers.delete(fileId); }
   try {
-    await api.delete(`/scripts/${fileId}`);
+    await api.delete(`/scripts/${user}/${fileId}`);
   } catch (err) {
     if (!(err instanceof ApiError && err.status === 404)) {
       console.warn('scripts-sync: delete failed', err);

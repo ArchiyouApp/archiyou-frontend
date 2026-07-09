@@ -13,7 +13,7 @@
 import { signal } from '@lit-labs/signals';
 import type { AuthResponse, PublicUser } from '@archiyou/types';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '';
 const TOKEN_KEY = 'archiyou:auth:token';
 
 let _token: string | null = null;
@@ -57,6 +57,29 @@ export const authService = {
   async register(email: string, password: string, name?: string): Promise<PublicUser> {
     const { token, user } = await post('/auth/register', { email, password, name });
     setToken(token);
+    currentUser.set(user);
+    return user;
+  },
+
+  /** Request a password-reset email. The server always answers 200 (it never
+   *  reveals whether the account exists), so this resolves for any valid input. */
+  async forgotPassword(email: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      let message = `Request failed (${res.status})`;
+      try { const b = await res.json(); if (b?.error) message = b.error; } catch { /* ignore */ }
+      throw new Error(message);
+    }
+  },
+
+  /** Complete a password reset with the emailed token; signs the user straight in. */
+  async resetPassword(token: string, password: string): Promise<PublicUser> {
+    const { token: jwt, user } = await post('/auth/reset-password', { token, password });
+    setToken(jwt);
     currentUser.set(user);
     return user;
   },

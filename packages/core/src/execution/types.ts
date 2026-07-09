@@ -2,12 +2,13 @@ import type { ModelUnits } from "../modeler/types";
 import type { ComputedFooterRow } from "../calc/types";
 import { type Static } from 'typebox';
 
-import { ScriptParamSchema, ScriptPublishedSchema, ScriptSchema } from './schemas';
+import { ScriptParamSchema } from './schemas';
 
 //// SCRIPT ////
 
-export type ScriptPublishedData  = Static<typeof ScriptPublishedSchema>
-export type ScriptData     = Static<typeof ScriptSchema>
+// The Script-level schema/types now live in packages/core/src/ScriptSchema.ts.
+// Re-exported here so existing `execution/types` consumers keep working.
+export type { ScriptData, ScriptPublishedData, ScriptSharedData as ScriptShared } from '../ScriptSchema'
 
 export type ScriptOutputCategory = 'model'|'metrics'|'tables'|'docs'
 export type ScriptOutputFormatInternal = 'internal'; // basics

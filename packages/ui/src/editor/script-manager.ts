@@ -6,10 +6,16 @@ import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@awesome.me/webawesome/dist/components/dropdown/dropdown.js';
 import '@awesome.me/webawesome/dist/components/dropdown-item/dropdown-item.js';
 
+import { Script } from '@archiyou/core/src/Script';
+import type { ScriptData } from '@archiyou/core/src/execution/types';
+
 import { scripts, editorScript } from '@archiyou/editor/src/state/workspace';
+import { fetchPublicShared, fetchSharedWithMe } from '@archiyou/editor/src/services/sharing';
 import { OVERLAY_MENU_WIDTH, OVERLAY_MENU_HEIGHT } from '@archiyou/editor/src/settings';
 
 import './script-manager-item.js';
+
+type ManagerTab = 'mine' | 'public' | 'shared-with-me';
 
 @customElement('script-manager')
 export class ScriptManager extends SignalWatcher(LitElement)
@@ -19,25 +25,27 @@ export class ScriptManager extends SignalWatcher(LitElement)
   @state() private _selectedFileId: string | null = null;
   @state() private _sortBy: 'name' | 'date-updated' | 'date-created' = 'date-updated';
   @state() private _filter = '';
+  @state() private _tab: ManagerTab = 'mine';
+
+  // Lazily-loaded shared libraries (fetched on first tab visit).
+  @state() private _publicShared: Script[] | null = null;
+  @state() private _sharedWithMe: Script[] | null = null;
+  @state() private _loadingShared = false;
+  /** fileId → ScriptData for the shared lists, to resolve a selection to its
+   *  full payload (shared scripts aren't in the local collection). */
+  private _sharedById = new Map<string, ScriptData>();
+
+  private static readonly TABS: { id: ManagerTab; label: string }[] = [
+    { id: 'mine',           label: 'My Scripts' },
+    { id: 'public',         label: 'Public Shared' },
+    { id: 'shared-with-me', label: 'Shared with me' },
+  ];
 
   // ── Render ──
 
   override render()
   {
     if (!this.open) return nothing;
-
-    // Exclude the currently-active script — opening it would be a no-op.
-    const activeFileId = editorScript.get()?.fileId ?? null;
-    const unsorted = scripts.get().filter(s => s.fileId !== activeFileId);
-    const filterLc = this._filter.toLowerCase();
-    const filtered = filterLc
-      ? unsorted.filter(s => (s.name ?? '').toLowerCase().includes(filterLc))
-      : unsorted;
-    const list = this._sortBy === 'name'
-      ? [...filtered].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
-      : this._sortBy === 'date-created'
-        ? [...filtered].sort((a, b) => (b.created?.getTime() ?? 0) - (a.created?.getTime() ?? 0))
-        : [...filtered].sort((a, b) => (b.updated?.getTime() ?? 0) - (a.updated?.getTime() ?? 0));
 
     return html`
       <div class="backdrop" @click=${this._cancel}></div>
@@ -57,37 +65,22 @@ export class ScriptManager extends SignalWatcher(LitElement)
               @input=${(e: InputEvent) => { this._onFilterInput((e.target as HTMLInputElement).value); }}
             />
           </div>
-          <wa-dropdown
-            class="sort-dropdown"
-            placement="bottom-end"
-            hoist
-            @wa-select=${(e: CustomEvent) => { this._sortBy = (e.detail.item as { value: string }).value as 'name' | 'date-updated' | 'date-created'; }}
-          >
-            <button slot="trigger" class="sort-btn" title="Sort scripts">
-              <wa-icon library="lucide" name="arrow-up-down"></wa-icon>
-              <span>${this._sortBy === 'name' ? 'Name' : this._sortBy === 'date-created' ? 'Date created' : 'Date updated'}</span>
-              <wa-icon library="lucide" name="chevron-down"></wa-icon>
-            </button>
-            <wa-dropdown-item value="date-updated" ?checked=${this._sortBy === 'date-updated'}>Date updated</wa-dropdown-item>
-            <wa-dropdown-item value="date-created" ?checked=${this._sortBy === 'date-created'}>Date created</wa-dropdown-item>
-            <wa-dropdown-item value="name" ?checked=${this._sortBy === 'name'}>Name</wa-dropdown-item>
-          </wa-dropdown>
+          ${this._tab === 'mine' ? this._renderSort() : nothing}
           <button class="close-btn" @click=${this._cancel}>
             <wa-icon library="lucide" name="x"></wa-icon>
           </button>
         </div>
 
+        <div class="tabs">
+          ${ScriptManager.TABS.map(t => html`
+            <button
+              class=${`tab ${this._tab === t.id ? 'active' : ''}`}
+              @click=${() => this._selectTab(t.id)}
+            >${t.label}</button>`)}
+        </div>
+
         <div class="dialog-body">
-          ${list.length === 0
-            ? html`<div class="empty">No other scripts yet.</div>`
-            : list.map(s => html`
-                <script-manager-item
-                  .script=${s}
-                  ?selected=${this._selectedFileId === s.fileId}
-                  @script-item-select=${this._onSelect}
-                  @script-delete=${this._onDelete}
-                ></script-manager-item>`)
-          }
+          ${this._renderList()}
         </div>
 
         <div class="dialog-footer">
@@ -102,6 +95,85 @@ export class ScriptManager extends SignalWatcher(LitElement)
     `;
   }
 
+  private _renderSort()
+  {
+    return html`
+      <wa-dropdown
+        class="sort-dropdown"
+        placement="bottom-end"
+        hoist
+        @wa-select=${(e: CustomEvent) => { this._sortBy = (e.detail.item as { value: string }).value as 'name' | 'date-updated' | 'date-created'; }}
+      >
+        <button slot="trigger" class="sort-btn" title="Sort scripts">
+          <wa-icon library="lucide" name="arrow-up-down"></wa-icon>
+          <span>${this._sortBy === 'name' ? 'Name' : this._sortBy === 'date-created' ? 'Date created' : 'Date updated'}</span>
+          <wa-icon library="lucide" name="chevron-down"></wa-icon>
+        </button>
+        <wa-dropdown-item value="date-updated" ?checked=${this._sortBy === 'date-updated'}>Date updated</wa-dropdown-item>
+        <wa-dropdown-item value="date-created" ?checked=${this._sortBy === 'date-created'}>Date created</wa-dropdown-item>
+        <wa-dropdown-item value="name" ?checked=${this._sortBy === 'name'}>Name</wa-dropdown-item>
+      </wa-dropdown>`;
+  }
+
+  private _renderList()
+  {
+    if (this._tab === 'mine') return this._renderMine();
+
+    if (this._loadingShared) return html`<div class="empty">Loading…</div>`;
+
+    const source = this._tab === 'public' ? this._publicShared : this._sharedWithMe;
+    if (source === null) return html`<div class="empty">Loading…</div>`;
+
+    const filtered = this._applyFilter(source);
+    if (filtered.length === 0)
+    {
+      return html`<div class="empty">${this._tab === 'public'
+        ? 'No public shared scripts yet.'
+        : 'No scripts shared with you yet.'}</div>`;
+    }
+
+    return filtered.map(s => html`
+      <script-manager-item
+        .script=${s}
+        readonly
+        author=${s.author ?? ''}
+        ?selected=${this._selectedFileId === s.fileId}
+        @script-item-select=${this._onSelect}
+      ></script-manager-item>`);
+  }
+
+  private _renderMine()
+  {
+    // Exclude the currently-active script — opening it would be a no-op.
+    const activeFileId = editorScript.get()?.fileId ?? null;
+    const unsorted = scripts.get().filter(s => s.fileId !== activeFileId);
+    const filtered = this._applyFilter(unsorted);
+    const list = this._sortBy === 'name'
+      ? [...filtered].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+      : this._sortBy === 'date-created'
+        ? [...filtered].sort((a, b) => (b.created?.getTime() ?? 0) - (a.created?.getTime() ?? 0))
+        : [...filtered].sort((a, b) => (b.updated?.getTime() ?? 0) - (a.updated?.getTime() ?? 0));
+
+    if (list.length === 0) return html`<div class="empty">No other scripts yet.</div>`;
+
+    return list.map(s => html`
+      <script-manager-item
+        .script=${s}
+        ?selected=${this._selectedFileId === s.fileId}
+        @script-item-select=${this._onSelect}
+        @script-delete=${this._onDelete}
+      ></script-manager-item>`);
+  }
+
+  private _applyFilter(list: Script[]): Script[]
+  {
+    const filterLc = this._filter.toLowerCase();
+    return filterLc
+      ? list.filter(s => (s.name ?? '').toLowerCase().includes(filterLc)
+          || (s.author ?? '').toLowerCase().includes(filterLc))
+      : list;
+  }
+
   // ── Lifecycle ──
 
   override updated(changed: Map<string, unknown>)
@@ -112,21 +184,61 @@ export class ScriptManager extends SignalWatcher(LitElement)
       // and we shouldn't preselect something the user didn't ask for.
       this._selectedFileId = null;
       this._filter = '';
+      this._tab = 'mine';
+      // Drop cached shared lists so re-opening reflects fresh server state.
+      this._publicShared = null;
+      this._sharedWithMe = null;
     }
   }
 
   // ── Behaviour ──
 
+  private _selectTab(tab: ManagerTab)
+  {
+    if (tab === this._tab) return;
+    this._tab = tab;
+    this._selectedFileId = null;
+    if (tab === 'public' && this._publicShared === null) void this._loadShared('public');
+    if (tab === 'shared-with-me' && this._sharedWithMe === null) void this._loadShared('shared-with-me');
+  }
+
+  /** Fetch a shared library, hydrate Script instances, and index by fileId. */
+  private async _loadShared(tab: 'public' | 'shared-with-me')
+  {
+    this._loadingShared = true;
+    try {
+      const data = tab === 'public' ? await fetchPublicShared() : await fetchSharedWithMe();
+      const list: Script[] = [];
+      for (const d of data)
+      {
+        if (d.fileId) this._sharedById.set(d.fileId, d);
+        const s = Script.fromData(d);
+        if (s) list.push(s);
+      }
+      if (tab === 'public') this._publicShared = list;
+      else                  this._sharedWithMe = list;
+    } catch (err) {
+      console.warn('script-manager: failed to load shared scripts', err);
+      if (tab === 'public') this._publicShared = [];
+      else                  this._sharedWithMe = [];
+    } finally {
+      this._loadingShared = false;
+    }
+  }
+
   private _onFilterInput(value: string)
   {
     this._filter = value;
+    // A filter change may hide the selected row — clear it if so.
     if (this._selectedFileId)
     {
       const filterLc = value.toLowerCase();
-      const activeFileId = editorScript.get()?.fileId ?? null;
-      const visible = scripts.get()
-        .filter(s => s.fileId !== activeFileId)
-        .filter(s => !filterLc || (s.name ?? '').toLowerCase().includes(filterLc));
+      const pool = this._tab === 'mine'
+        ? scripts.get()
+        : (this._tab === 'public' ? this._publicShared : this._sharedWithMe) ?? [];
+      const visible = pool.filter(s =>
+        !filterLc || (s.name ?? '').toLowerCase().includes(filterLc)
+          || (s.author ?? '').toLowerCase().includes(filterLc));
       if (!visible.some(s => s.fileId === this._selectedFileId))
       {
         this._selectedFileId = null;
@@ -150,6 +262,20 @@ export class ScriptManager extends SignalWatcher(LitElement)
   private _open()
   {
     if (this._selectedFileId === null) return;
+
+    // Shared tabs open a foreign (read-only) script from its full payload.
+    if (this._tab !== 'mine')
+    {
+      const data = this._sharedById.get(this._selectedFileId);
+      if (!data) return;
+      this.dispatchEvent(new CustomEvent<ScriptData>('script-manager-open-shared', {
+        detail: data,
+        bubbles: true,
+        composed: true,
+      }));
+      return;
+    }
+
     this.dispatchEvent(new CustomEvent<string>('script-manager-open', {
       detail: this._selectedFileId,
       bubbles: true,
@@ -296,6 +422,36 @@ export class ScriptManager extends SignalWatcher(LitElement)
     .search-input::placeholder {
       color: var(--color-text-muted);
       opacity: 0.7;
+    }
+
+    /* ── Tabs ── */
+
+    .tabs {
+      display: flex;
+      gap: 2px;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--color-border);
+      flex-shrink: 0;
+    }
+
+    .tab {
+      padding: 8px 12px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+
+    .tab:hover { color: var(--color-text); }
+
+    .tab.active {
+      color: var(--color-primary);
+      border-bottom-color: var(--color-primary);
+      font-weight: 500;
     }
 
     /* ── Body ── */

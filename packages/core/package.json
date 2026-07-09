@@ -5,6 +5,10 @@
   "main": "dist/archiyou-core.cjs.js",
   "module": "dist/archiyou-core.es.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./src/*": "./src/*"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -45,6 +49,7 @@
     "@noble/hashes": "^2.0.1",
     "acorn": "^8.16.0",
     "acorn-globals": "^7.0.1",
+    "comlink": "^4.4.2",
     "fast-xml-parser": "^5.5.11",
     "json-schema": "^0.4.0",
     "jspdf": "^4.2.1",

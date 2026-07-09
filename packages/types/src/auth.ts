@@ -26,6 +26,20 @@ export const LoginRequestSchema = Type.Object({
 });
 export type LoginRequest = Static<typeof LoginRequestSchema>;
 
+/** Request a password-reset email. Always answered with 200 (no account enumeration). */
+export const ForgotPasswordRequestSchema = Type.Object({
+  email: Type.String({ minLength: 3 }),
+});
+export type ForgotPasswordRequest = Static<typeof ForgotPasswordRequestSchema>;
+
+/** Complete a reset with the emailed token + a new password. Returns an AuthResponse
+ *  (the user is signed straight in). */
+export const ResetPasswordRequestSchema = Type.Object({
+  token: Type.String({ minLength: 1 }),
+  password: Type.String({ minLength: 8, maxLength: 200 }),
+});
+export type ResetPasswordRequest = Static<typeof ResetPasswordRequestSchema>;
+
 //// RESPONSES ////
 
 /** The safe, client-facing view of a user (never includes passwordHash). */
@@ -49,4 +63,12 @@ export interface AuthTokenClaims {
   sub: string; // user id
   email: string | null;
   name: string | null;
+}
+
+/** JWT payload for a password-reset link — a distinct, short-lived token kind.
+ *  `pfp` fingerprints the password hash at issue time so the link is single-use. */
+export interface ResetTokenClaims {
+  sub: string;      // user id
+  type: 'reset';
+  pfp: string;      // fingerprint of the password hash at issue time
 }

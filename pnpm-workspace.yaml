@@ -3,7 +3,7 @@ packages:
   - 'packages/*'
 
 overrides:
-  # dedupe ioredis so bullmq and @archiyou/publish share one copy (avoids type clashes)
+  # dedupe ioredis so bullmq and @archiyou/server share one copy (avoids type clashes)
   ioredis: ^5.11.1
 
 allowBuilds:

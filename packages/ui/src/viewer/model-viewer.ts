@@ -25,6 +25,7 @@ import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR, VIEWER_BACKGR
   VIEWER_SCENE_SIZE, VIEWER_GRID_CELLS_PER_SCENE,
   VIEWER_GIZMO_AXIS_LENGTH, VIEWER_GIZMO_COLOR_X, VIEWER_GIZMO_COLOR_Y,
   VIEWER_GIZMO_COLOR_Z, VIEWER_GIZMO_COLOR_ORIGIN, VIEWER_GIZMO_LABEL_SIZE,
+  VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE, VIEWER_GIZMO_RECALC_INCREMENT,
   VIEWER_MODEL_COORDSYSTEM, VIEWER_HANDLE_RANGE_LINE_COLOR, VIEWER_HANDLE_RANGE_LINE_WIDTH,
   VIEWER_LIGHT_POSITION } from '@archiyou/editor/src/settings';
 import { THEME_CHANGE_EVENT } from '@archiyou/editor/src/styles/dark-theme.js';
@@ -222,6 +223,14 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._loadGlbOutput(glbOutput);
     }
 
+    // GLB supplied imperatively via load() (standalone), flushed once the
+    // renderer exists. Edges + annotations render from the GLB's own extras.
+    if (this._directGlbOutput && this._directGlbOutput !== this._lastGlbOutput && this._renderer)
+    {
+      this._lastGlbOutput = this._directGlbOutput;
+      this._loadGlbOutput(this._directGlbOutput);
+    }
+
     // Metric/Imperial switch flipped → re-format existing dimension labels
     // in place (no 3D rebuild needed; geometry is unit-agnostic).
     if (this._pendingUnitSystem !== this._lastUnitSystem)
@@ -244,6 +253,45 @@ export class ModelViewer extends SignalWatcher(LitElement)
     {
       this._lastAppliedSelectedPath = this._pendingSelectedPath;
       this._applySelectionHighlight(this._pendingSelectedPath);
+    }
+  }
+
+  /**
+   * Load a standalone GLB into the viewer, imperatively.
+   *
+   * Use this for standalone / headless setups (no editor signal store): feed it
+   * the GLB produced by the kernel, e.g.
+   *
+   * ```ts
+   * const glb = await worker.execute('box(100,100,100)', { outputs: ['default/model/glb'] });
+   * document.querySelector('model-viewer').load(glb);
+   * ```
+   *
+   * CAD hard edges and dimension/label annotations render from the GLB's own
+   * glTF extensions/extras — no execution-result state is required. Interactive
+   * editing features (drag handles, click-selection, scenegraph toggles) still
+   * require the editor's signal wiring and are inert here.
+   *
+   * @param glb GLB bytes as an `ArrayBuffer`/`Uint8Array`, or a full
+   *            `ScriptOutputData` (as returned in a result's `outputs`).
+   */
+  load(glb: ArrayBuffer | Uint8Array | ScriptOutputData): void
+  {
+    const entry: ScriptOutputData = (glb && typeof glb === 'object' && 'output' in glb)
+      ? glb as ScriptOutputData
+      : { output: glb } as ScriptOutputData;
+
+    this._directGlbOutput = entry;
+
+    if (this._renderer)
+    {
+      this._lastGlbOutput = entry;
+      this._loadGlbOutput(entry);
+    }
+    else
+    {
+      // Renderer not ready yet — flush in updated() once _initRenderer has run.
+      this.requestUpdate();
     }
   }
 
@@ -284,6 +332,10 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _appliedGridSecondary?: number;
   private _appliedGridPrimaryEvery?: number;
   private _gizmoGroup?: THREE.Group;
+  /** Scene size (largest bbox dimension) at the last gizmo-scale recalc, and the
+   *  scale currently applied. `_gizmoScale === 0` means "not yet computed". */
+  private _gizmoSceneSize = 0;
+  private _gizmoScale = 0;
   private _roomEnvTexture?: THREE.Texture;
 
   // Model / animation
@@ -307,6 +359,10 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _projV = new THREE.Vector3(); // reused for world→screen projection
   private _lastGlbOutput?: ScriptOutputData;
   private _pendingGlbOutput?: ScriptOutputData;
+  /** GLB fed imperatively via load() (standalone use, no editor signals). Kept
+   *  separate from _pendingGlbOutput because render() recomputes that from the
+   *  executionResult signal each cycle and would clobber a direct load. */
+  private _directGlbOutput?: ScriptOutputData;
   private _hasFramedCamera = false;
   private _pendingResetCount     = 0;
   private _lastHandledResetCount = 0;
@@ -789,6 +845,43 @@ export class ModelViewer extends SignalWatcher(LitElement)
     const center = box.getCenter(new THREE.Vector3());
     this._groundMesh.position.set(center.x, center.y, -zOffset);
     this._groundShadowMesh.position.set(center.x, center.y, -zOffset + shadowOffset);
+  }
+
+  /** Scale the origin gizmo (axis/origin) to the scene so it stays readable on
+   *  large models. To avoid the gizmo jumping around while a parametric model
+   *  changes by small amounts, the scale is only recomputed when the scene size
+   *  (largest bbox dimension) has moved by more than VIEWER_GIZMO_RECALC_INCREMENT
+   *  since the last recalc. See the settings for the scale-factor formula
+   *  (calibrated for a scene size of 100 → factor 1). */
+  private _updateGizmoScale()
+  {
+    if (!this._gizmoGroup) return;
+
+    // Scene size = largest dimension of the current model's bounding box.
+    let sceneSize = 0;
+    if (this._currentModel)
+    {
+      const box = new THREE.Box3().setFromObject(this._currentModel);
+      if (!box.isEmpty())
+      {
+        const s = box.getSize(new THREE.Vector3());
+        sceneSize = Math.max(s.x, s.y, s.z);
+      }
+    }
+
+    // Skip small changes — only recompute past the increment (always compute the
+    // first time, when the scale has not been established yet).
+    const uninitialized = this._gizmoScale === 0;
+    if (!uninitialized && Math.abs(sceneSize - this._gizmoSceneSize) < VIEWER_GIZMO_RECALC_INCREMENT)
+    {
+      return;
+    }
+
+    this._gizmoSceneSize = sceneSize;
+    // Calibrated so scene 100 → 1; clamped to 1 so smaller scenes keep the base size.
+    const scaleFactor = Math.max(1, sceneSize * VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE);
+    this._gizmoScale = scaleFactor;
+    this._gizmoGroup.scale.setScalar(scaleFactor);
   }
 
   private _updateSpotlightForModel()
@@ -1627,6 +1720,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._updateGrid();
     this._updateGroundPlane();
     this._updateSpotlightForModel();
+    this._updateGizmoScale();
 
     this._updateCameraRangesForObject(model);
 

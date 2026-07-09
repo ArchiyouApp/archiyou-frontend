@@ -3,11 +3,12 @@
  * session token; `payload` is what we sign.
  */
 import '@fastify/jwt';
-import type { AuthTokenClaims } from '@archiyou/types';
+import type { AuthTokenClaims, ResetTokenClaims } from '@archiyou/types';
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
-    payload: AuthTokenClaims;
+    // We sign two kinds of tokens: the session token and the password-reset token.
+    payload: AuthTokenClaims | ResetTokenClaims;
     user: AuthTokenClaims;
   }
 }

@@ -341,8 +341,11 @@ export class CodeParser
 
             return script;
         }
-        else 
+        else
         { // script is not in cache
+            // NOTE: config is currently unwired (see Runner.ts `new CodeParser(code, {}, …)`), so this
+            // shared-import fetch is dormant. When wired, set API_URL_SHARED_SCRIPT_NAME_AND_TAG to
+            // 'scripts/shared' to match the server route GET /scripts/shared/{user}/{name}:{version}.
             let url = `${this.config.API_URL}/${this.config.API_URL_SHARED_SCRIPT_NAME_AND_TAG}/${importStatement.userName}/${importStatement.name}:${importStatement.versionTag || 'latest'}`
 
             try

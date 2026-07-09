@@ -27,9 +27,10 @@ import '@archiyou/ui/editor/tools/console-tool.js';
 import '@archiyou/ui/editor/file-info.js';
 import '@archiyou/ui/editor/script-manager.js';
 import '@archiyou/ui/editor/script-importer.js';
+import '@archiyou/ui/editor/share-script-menu.js';
 import type { ToolDef } from '@archiyou/ui/editor/toolbar.js';
 
-import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, deleteScriptById, importScriptFromData, selectedPath, scriptUnitSystem, ensureScriptUnitSystem } from '../state/workspace';
+import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, openSharedScript, deleteScriptById, importScriptFromData, isReadOnly, selectedPath, scriptUnitSystem, ensureScriptUnitSystem } from '../state/workspace';
 import { registerScheduleExecution, triggerResetCamera } from '../state/viewer';
 import { RunnerScriptExecutionRequest } from '@archiyou/core/src/runner/types';
 import type { ScriptData, ScriptParamData } from '@archiyou/core/src/execution/types';
@@ -70,11 +71,12 @@ export class PageEditor extends SignalWatcher(LitElement)
             slot="divider" variant="solid" name="grip-lines-vertical"></wa-icon>
         ${pm ? this._renderPluginLeftPanel(pm) : html`
         <div class="left-panel" slot="start">
-          <editor-file-info></editor-file-info>
+          <editor-file-info @script-forked=${this._handleScriptForked}></editor-file-info>
           <presets-menu></presets-menu>
           <param-menu @param-value-change=${() => this._scheduleParamExecute()}></param-menu>
           <editor-code-box
               .code=${editorScript.get()?.code ?? ''}
+              ?readonly=${isReadOnly.get()}
             @change=${this._handleCodeChange}
             @execute=${this._handleExecute}
           ></editor-code-box>
@@ -101,9 +103,15 @@ export class PageEditor extends SignalWatcher(LitElement)
       <script-manager
         ?open=${this._showScriptManager}
         @script-manager-open=${this._handleScriptManagerOpen}
+        @script-manager-open-shared=${this._handleScriptManagerOpenShared}
         @script-manager-cancel=${this._handleScriptManagerCancel}
         @script-delete=${this._handleScriptDelete}
       ></script-manager>
+      <share-script-menu
+        ?open=${this._showShareMenu}
+        @share-script-done=${this._handleShareDone}
+        @share-script-cancel=${this._handleShareCancel}
+      ></share-script-menu>
       <script-importer
         ?open=${this._showScriptImporter}
         @script-importer-cancel=${this._handleScriptImporterCancel}
@@ -119,6 +127,7 @@ export class PageEditor extends SignalWatcher(LitElement)
   @state() private _activeTools: ToolDef[] = [];
   @state() private _showScriptManager = false;
   @state() private _showScriptImporter = false;
+  @state() private _showShareMenu = false;
 
   // Plugin mode (isolated session; personal scripts untouched)
   @state() private _pluginSchema: ScriptParamData[] | null = null;
@@ -390,6 +399,12 @@ export class PageEditor extends SignalWatcher(LitElement)
       return;
     }
 
+    if (value === 'share')
+    {
+      this._showShareMenu = true;
+      return;
+    }
+
     if (value === 'export-script-data')
     {
       this._exportScriptDataAsJs();
@@ -597,9 +612,35 @@ export class PageEditor extends SignalWatcher(LitElement)
     this._handleExecute();
   }
 
+  private _handleScriptManagerOpenShared(e: CustomEvent<ScriptData>)
+  {
+    openSharedScript(e.detail as unknown as Record<string, any>);
+    this._showScriptManager = false;
+    triggerResetCamera();
+    // Run the opened (read-only) shared script so the viewer reflects it.
+    this._handleExecute();
+  }
+
   private _handleScriptManagerCancel()
   {
     this._showScriptManager = false;
+  }
+
+  private _handleShareDone()
+  {
+    this._showShareMenu = false;
+  }
+
+  private _handleShareCancel()
+  {
+    this._showShareMenu = false;
+  }
+
+  /** A read-only script was forked into an editable copy — re-run it. */
+  private _handleScriptForked()
+  {
+    triggerResetCamera();
+    this._handleExecute();
   }
 
   private _handleScriptImporterCancel()

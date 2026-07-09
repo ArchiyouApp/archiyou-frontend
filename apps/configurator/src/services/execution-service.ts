@@ -6,13 +6,16 @@
  * can import this without knowing anything about Comlink or the worker lifecycle.
  *
  * The underlying worker is created lazily on the first call and re-used for
- * every subsequent call — same guarantee as the old `loadArchiyouCore()` helper,
- * which this replaces as the public API.
+ * every subsequent call — the shared `RunnerWorker` from `@archiyou/core` owns
+ * the worker lifecycle.
  */
 
-import { ArchiyouCoreLoadError, loadArchiyouCore } from '../archiyou-core-loader';
+import { RunnerWorker, ArchiyouCoreLoadError } from '@archiyou/core';
 import type { RunnerScriptExecutionRequest, RunnerScriptExecutionResult } from '@archiyou/core/src/runner/types';
 import type { ConsoleMessage } from '@archiyou/core/src/console/types';
+
+// Shared, lazily-initialised worker for the configurator app.
+const worker = new RunnerWorker();
 
 function formatUnknownError(error: unknown): string
 {
@@ -82,8 +85,8 @@ export async function runScript(request: RunnerScriptExecutionRequest): Promise<
 {
   try
   {
-    const worker = await loadArchiyouCore();
-    return await worker.execute(request);
+    // The viewer needs the full result (scenegraph/annotations/handles), so use run().
+    return await worker.run(request);
   }
   catch (error)
   {
@@ -99,5 +102,5 @@ export async function runScript(request: RunnerScriptExecutionRequest): Promise<
  */
 export async function warmupWorker(): Promise<void>
 {
-  await loadArchiyouCore();
+  await worker.init();
 }

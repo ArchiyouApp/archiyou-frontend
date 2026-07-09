@@ -14,7 +14,7 @@
 
 import { signal, computed } from '@lit-labs/signals';
 
-import { Script } from '@archiyou/core/src/execution/Script';
+import { Script } from '@archiyou/core/src/Script';
 import type { RunnerScriptExecutionResult } from '@archiyou/core/src/runner/types';
 import { uuid4 } from '@archiyou/core/src/utils';
 

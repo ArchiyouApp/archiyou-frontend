@@ -1,0 +1,10 @@
+# The build context is the monorepo root; keep the image small + reproducible.
+**/node_modules
+**/dist
+**/.turbo
+**/data
+**/*.log
+**/.env
+**/.git
+.git
+caddy

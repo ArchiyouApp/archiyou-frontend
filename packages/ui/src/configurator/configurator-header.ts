@@ -13,7 +13,7 @@ export class ConfiguratorHeader extends SignalWatcher(LitElement)
     const script = editorScript.get();
     const name    = script?.published?.title ?? script?.name ?? 'Untitled';
     const author  = script?.author ?? '—';
-    const version = script?.published?.version ?? '—';
+    const version = script?.version ?? '—';
 
     return html`
       <div class="header">

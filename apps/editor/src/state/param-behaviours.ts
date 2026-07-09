@@ -18,7 +18,7 @@
  * definition change.
  */
 
-import type { Script } from '@archiyou/core/src/execution/Script';
+import type { Script } from '@archiyou/core/src/Script';
 import type { ScriptParam } from '@archiyou/core/src/execution/ScriptParam';
 import type { ManagedBehavioursData, ParamBehaviourTarget, ParamBehaviourFn } from '@archiyou/core/src/execution/types';
 import { paramValue } from './types';

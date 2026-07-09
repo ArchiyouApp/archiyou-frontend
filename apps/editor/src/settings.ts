@@ -88,12 +88,20 @@ export const VIEWER_GRID_CELLS_PER_SCENE = 500;
 export const VIEWER_LIGHT_POSITION: [number, number, number] = [1000, -1000, 1000];
 
 // Origin UCS / navigation gizmo
-export const VIEWER_GIZMO_AXIS_LENGTH    = 300;    // positive-arm length, world units (base scale)
+export const VIEWER_GIZMO_AXIS_LENGTH    = 20;    // positive-arm length, world units (base scale)
 export const VIEWER_GIZMO_COLOR_X        = 0xFF0000; // red   (+X)
 export const VIEWER_GIZMO_COLOR_Y        = 0x00FF00; // green (+Y)
 export const VIEWER_GIZMO_COLOR_Z        = 0x0000FF; // blue  (+Z)
 export const VIEWER_GIZMO_COLOR_ORIGIN   = 0xFFFFFF; // origin sphere at (0,0,0)
-export const VIEWER_GIZMO_LABEL_SIZE     = 100;   // world units
+export const VIEWER_GIZMO_LABEL_SIZE     = 10;   // world units
+
+// Gizmo auto-scaling: scaleFactor = sceneSize * VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE
+// (sceneSize = largest bbox dimension). Calibrated for scene 100 → factor 1
+// (scene 1000 → 10×). Clamped to a minimum of 1.
+export const VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE = 0.01;
+// Only recompute the gizmo scale when the scene size changed by more than this
+// (world units) since the last recalc, so small parametric tweaks don't resize it.
+export const VIEWER_GIZMO_RECALC_INCREMENT = 250;
 
 // Interaction handles
 export const VIEWER_HANDLE_DEFAULT_ICON   = 'move';

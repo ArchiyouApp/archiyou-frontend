@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { Script } from '../../../src/execution/Script'
+import { Script } from '../../../src/Script'
 import { ScriptParam } from '../../../src/execution/ScriptParam'
 
 describe('Execution Script Schemas', () =>
@@ -74,13 +74,48 @@ describe('Execution Script Schemas', () =>
         expect((script as Script).published?.params?.CONFIG.schema).toBeDefined()
     })
 
-    it('rejects invalid semver versions in published scripts', () =>
+    it('rejects an invalid top-level semver version', () =>
     {
         const script = Script.fromData({
-            name:   'demo',
-            author: 'tester',
+            name:    'demo',
+            author:  'tester',
+            code:    'box(1,1,1)',
+            version: 'not-a-version',
+        })
+
+        expect(script).toBeNull()
+    })
+
+    it('round-trips a top-level version and shared metadata', () =>
+    {
+        const script = Script.fromData({
+            name:    'demo',
+            author:  'tester',
+            code:    'box(1,1,1)',
+            version: '1.2.3',
+            shared:  {
+                created:     new Date().toISOString(),
+                description: 'a shared script',
+                onlyUsers:   ['user-1', 'user-2'],
+                dev:         true,
+                licence:     'CC-BY-4.0',
+            },
+        })
+
+        expect(script).toBeTruthy()
+        const data = (script as Script).toData()
+        expect(data.version).toBe('1.2.3')
+        expect(data.shared?.licence).toBe('CC-BY-4.0')
+        expect(data.shared?.onlyUsers).toEqual(['user-1', 'user-2'])
+        // version is null when omitted (working script)
+        expect(Script.fromData({ code: 'box()' })?.toData().version).toBeNull()
+    })
+
+    it('rejects an invalid CC licence in shared metadata', () =>
+    {
+        const script = Script.fromData({
             code:   'box(1,1,1)',
-            published: { version: 'not-a-version' },
+            shared: { created: new Date().toISOString(), licence: 'MIT' as any },
         })
 
         expect(script).toBeNull()

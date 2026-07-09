@@ -6,7 +6,7 @@
  */
 
 import bcrypt from 'bcryptjs';
-import { eq } from 'drizzle-orm';
+import { and, eq, like, ne, or, sql } from 'drizzle-orm';
 
 import { uuid4 } from '@archiyou/core/src/utils';
 import type { PublicUser } from '@archiyou/types';
@@ -18,7 +18,10 @@ import { config } from '../config';
 const BCRYPT_ROUNDS = 10;
 
 export class UserError extends Error {
-  constructor(public readonly code: 'email_taken' | 'invalid_credentials', message: string) {
+  constructor(
+    public readonly code: 'email_taken' | 'invalid_credentials' | 'invalid_token',
+    message: string,
+  ) {
     super(message);
   }
 }
@@ -35,6 +38,33 @@ export class UserService {
 
   findByUsername(username: string): UserRow | undefined {
     return db.select().from(users).where(eq(users.username, username.toLowerCase())).get();
+  }
+
+  findById(id: string): UserRow | undefined {
+    return db.select().from(users).where(eq(users.id, id)).get();
+  }
+
+  /** Search accounts by handle / email / name (case-insensitive substring),
+   *  excluding `excludeUsername` (the caller). Returns client-safe views. */
+  search(query: string, excludeUsername: string, limit = 10): PublicUser[] {
+    const q = `%${query.trim().toLowerCase()}%`;
+    if (query.trim().length === 0) return [];
+    const rows = db
+      .select()
+      .from(users)
+      .where(
+        and(
+          ne(users.username, excludeUsername.toLowerCase()),
+          or(
+            like(users.username, q),
+            like(sql`lower(${users.email})`, q),
+            like(sql`lower(${users.name})`, q),
+          ),
+        ),
+      )
+      .limit(limit)
+      .all();
+    return rows.map(toPublicUser);
   }
 
   /** Turn an email/name into a unique lowercase handle. */
@@ -79,6 +109,13 @@ export class UserService {
       throw new UserError('invalid_credentials', 'Invalid email or password');
     }
     return user;
+  }
+
+  /** Set (overwrite) a user's password. Used by the password-reset flow. Changing
+   *  the hash also invalidates any outstanding reset links (see routes/auth.ts). */
+  async setPassword(userId: string, newPassword: string): Promise<void> {
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    db.update(users).set({ passwordHash }).where(eq(users.id, userId)).run();
   }
 
   /** Ensure the .env test user exists (idempotent — runs on boot). */

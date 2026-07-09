@@ -32,7 +32,7 @@ import { RunnerComponentImporter } from './RunnerComponentImporter'; // helper f
 
 
 // Execution
-import { Script } from '../execution/Script'; // Script class for handling script data and params
+import { Script } from '../Script'; // Script class for handling script data and params
 import { ScriptParam } from '../execution/ScriptParam'; 
 import { ScriptOutputManager } from '../execution/ScriptOutputManager'; 
 import type { ScriptOutputFormat, ScriptOutputFormatModel, ScriptStatement, ScriptStatementResult, ScriptParamData, ScriptData, ScriptMeta } from '../execution/types'; // Script output format types

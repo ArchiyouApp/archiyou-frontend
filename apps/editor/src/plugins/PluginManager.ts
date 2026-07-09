@@ -7,7 +7,7 @@
  * `archiyou` bridge (param menu ↔ execution) lives in <plugin-part-frame>.
  */
 
-import { Script } from '@archiyou/core/src/execution/Script';
+import { Script } from '@archiyou/core/src/Script';
 import type {
   RunnerScriptExecutionRequest,
   RunnerScriptExecutionResult,

@@ -8,7 +8,7 @@
  * `default`, `_value`).
  */
 
-import type { Script } from '@archiyou/core/src/execution/Script';
+import type { Script } from '@archiyou/core/src/Script';
 import type { RunnerScriptExecutionResult } from '@archiyou/core/src/runner/types';
 
 // ── Canonical param re-exports ────────────────────────────────────────────────

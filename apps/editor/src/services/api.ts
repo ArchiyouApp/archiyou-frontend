@@ -2,13 +2,13 @@
  * Central API handler.
  *
  * - Auto-injects Bearer token from authService
- * - Base URL from VITE_API_BASE_URL env var (defaults to '/api')
+ * - Base URL from VITE_API_BASE_URL env var (defaults to '' — the server API is at the root)
  * - Throws ApiError on non-2xx responses
  */
 
 import { authService } from './auth-service.js';
 
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api';
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '';
 
 export class ApiError extends Error {
   constructor(

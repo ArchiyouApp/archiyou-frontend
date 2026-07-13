@@ -38,12 +38,35 @@ describe('scene-decorator smoke', () =>
         expect(inScene(p)).toBe(true)
     })
 
-    it('@sceneAdd: mesh.select wraps faces into SmartShapeCollection in scene', () =>
+    it('@sceneAdd: mesh.select wraps multiple matches into a SmartShapeCollection in scene', () =>
     {
         const box = m.box(40, 40, 40) as any
-        const sel = box.select('F||top')
+        const sel = box.select('E||top') // 4 top-face edges
         expect(sel).toBeInstanceOf(SmartShapeCollection)
+        expect(sel.length).toBe(4)
         sel.toArray().forEach((s: any) => expect(s.isShapeClass?.()).toBe(true))
+    })
+
+    it('@sceneAdd: mesh.select collapses a single match to a Smart shape (checkSingle)', () =>
+    {
+        const box = m.box(40, 40, 40) as any
+        const sel = box.select('F||top') // one top face → single SmartMeshPolygon
+        expect(sel).not.toBeInstanceOf(SmartShapeCollection)
+        expect(sel.isShapeClass?.()).toBe(true)
+    })
+
+    it('@sceneAdd: curve.select wraps greedy matches as Smart shapes', () =>
+    {
+        const rect = m.rect(100, 100) as any
+        // 'V||left' underspecifies a vertex → both left corners → SmartShapeCollection
+        const verts = rect.select('V||left')
+        expect(verts).toBeInstanceOf(SmartShapeCollection)
+        expect(verts.length).toBe(2)
+        verts.toArray().forEach((v: any) => expect(v.constructor.name).toBe('SmartMeshVertex'))
+        // 'E||front' matches exactly one edge → collapsed to a single SmartMeshCurve
+        const edge = rect.select('E||front')
+        expect(edge).not.toBeInstanceOf(SmartShapeCollection)
+        expect(edge.constructor.name).toBe('SmartMeshCurve')
     })
 
     it('@sceneLayer: mesh.elevation puts curves on elevation layer, keeps original', () =>
@@ -72,5 +95,37 @@ describe('scene-decorator smoke', () =>
         const g = await (m as any).toGLTF()
         expect(typeof g).toBe('string')
         expect(g.length).toBeGreaterThan(100)
+    })
+
+    it('@sceneUpdate: plane.cutoff mutates in place, keeps largest piece, no scene pollution', () =>
+    {
+        const pl = m.plane(100, 100) as any   // centred: x,y ∈ [-50, 50]
+        expect(pl.area()).toBeCloseTo(10000, 0)
+        const before = m.all().length
+
+        pl.cutoff('x', 30)                     // largest piece: x ∈ [-50, 30] → 80 x 100
+
+        expect(pl.area()).toBeCloseTo(8000, 0)
+        expect(inScene(pl)).toBe(true)         // same object, still in scene
+        // cutoff internally splits, but the intermediate pieces must NOT leak into the scene
+        expect(m.all().length).toBe(before)
+    })
+
+    it('@sceneUpdate: plane.cutoff(smallest=true) keeps the smallest piece', () =>
+    {
+        const pl = m.plane(100, 100) as any
+        pl.cutoff('x', 30, true)               // smallest piece: x ∈ [30, 50] → 20 x 100
+        expect(pl.area()).toBeCloseTo(2000, 0)
+    })
+
+    it('@sceneUpdate: plane.cutoffBy mutates in place without scene pollution', () =>
+    {
+        const pl = m.plane(100, 100) as any
+        const before = m.all().length
+        pl.cutoffBy(m.line([30, -60, 0], [30, 60, 0]))
+        // line() adds a curve to the scene; cutoffBy itself must add nothing more.
+        expect(pl.area()).toBeCloseTo(8000, 0)
+        expect(inScene(pl)).toBe(true)
+        expect(m.all().length).toBe(before + 1) // only the cutter line, not split pieces
     })
 })

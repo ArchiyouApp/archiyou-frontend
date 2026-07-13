@@ -11,7 +11,7 @@ import { formatDimensionValue } from './gltf-annotations.js';
 import { scheduleExecution, resetCameraCounter } from '@archiyou/editor/src/state/viewer';
 import type { ScriptOutputData } from '@archiyou/core/src/execution/types.js';
 import type { SmartSceneNodeData } from '@archiyou/core/src/modeler/types.js';
-import { applyEdgeExtensions } from './gltf-edge-extensions.js';
+import { applyEdgeExtensions, applyPointStyles } from './gltf-edge-extensions.js';
 import { applyAnnotations } from './gltf-annotations.js';
 import type { HtmlLabelDef } from './gltf-annotations.js';
 import './viewer-labels-overlay.js';
@@ -569,49 +569,30 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
   private _zoomIn = () =>
   {
-    if (this._isOrtho && this._orthoCamera)
-    {
-      const factor = 0.8;
-      this._orthoCamera.left   *= factor;
-      this._orthoCamera.right  *= factor;
-      this._orthoCamera.top    *= factor;
-      this._orthoCamera.bottom *= factor;
-      this._orthoCamera.updateProjectionMatrix();
-    }
-    else
-    {
-      const dir = this._camera.position.clone().sub(this._controls.target);
-      const dist = dir.length();
-      const newDist = Math.max(this._controls.minDistance, dist * 0.8);
-      this._camera.position.copy(
-        this._controls.target.clone().add(dir.normalize().multiplyScalar(newDist)),
-      );
-      this._controls.update();
-    }
+    // OrbitControls always drives the perspective camera (single source of
+    // truth); the ortho camera mirrors it. Dolly the perspective camera and
+    // let the per-frame mirror rebuild the ortho frustum from the new distance.
+    const dir = this._camera.position.clone().sub(this._controls.target);
+    const dist = dir.length();
+    const newDist = Math.max(this._controls.minDistance, dist * 0.8);
+    this._camera.position.copy(
+      this._controls.target.clone().add(dir.normalize().multiplyScalar(newDist)),
+    );
+    this._controls.update();
+    if (this._isOrtho) this._buildOrthoFromPersp();
     this._dirty = true;
   };
 
   private _zoomOut = () =>
   {
-    if (this._isOrtho && this._orthoCamera)
-    {
-      const factor = 1.25;
-      this._orthoCamera.left   *= factor;
-      this._orthoCamera.right  *= factor;
-      this._orthoCamera.top    *= factor;
-      this._orthoCamera.bottom *= factor;
-      this._orthoCamera.updateProjectionMatrix();
-    }
-    else
-    {
-      const dir = this._camera.position.clone().sub(this._controls.target);
-      const dist = dir.length();
-      const newDist = Math.min(this._controls.maxDistance, dist * 1.25);
-      this._camera.position.copy(
-        this._controls.target.clone().add(dir.normalize().multiplyScalar(newDist)),
-      );
-      this._controls.update();
-    }
+    const dir = this._camera.position.clone().sub(this._controls.target);
+    const dist = dir.length();
+    const newDist = Math.min(this._controls.maxDistance, dist * 1.25);
+    this._camera.position.copy(
+      this._controls.target.clone().add(dir.normalize().multiplyScalar(newDist)),
+    );
+    this._controls.update();
+    if (this._isOrtho) this._buildOrthoFromPersp();
     this._dirty = true;
   };
 
@@ -650,7 +631,6 @@ export class ModelViewer extends SignalWatcher(LitElement)
     if (this._isOrtho)
     {
       this._buildOrthoFromPersp();
-      this._controls.object = this._orthoCamera!;
     }
   }
 
@@ -738,6 +718,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._renderer.setAnimationLoop(() =>
       {
         if (this._controls.update()) this._dirty = true;
+        if (this._isOrtho) this._buildOrthoFromPersp();
         this._renderer.render(this._scene, this._isOrtho ? this._orthoCamera! : this._camera);
       });
 
@@ -783,20 +764,17 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
   private _toggleProjection = () =>
   {
+    // OrbitControls stays bound to the perspective camera in both modes. In
+    // ortho mode we simply render through a mirrored orthographic camera that
+    // is kept in sync each frame, so the viewpoint never jumps on toggle and
+    // orbiting/zooming behaves identically to perspective mode.
     if (!this._isOrtho)
     {
       this._buildOrthoFromPersp();
-      this._controls.object = this._orthoCamera!;
-      this._controls.update();
       this._isOrtho = true;
     }
     else
     {
-      this._camera.position.copy(this._orthoCamera!.position);
-      this._camera.quaternion.copy(this._orthoCamera!.quaternion);
-      this._camera.updateProjectionMatrix();
-      this._controls.object = this._camera;
-      this._controls.update();
       this._isOrtho = false;
     }
     this._dirty = true;
@@ -1747,6 +1725,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // Render CAD hard edges from custom GLTF extensions
     await applyEdgeExtensions(gltf, model);
 
+    // Style CAD points (size / circle-square shape) from custom GLTF extensions
+    applyPointStyles(model);
+
     // Render annotations: prefer the live execution result; fall back to GLB
     // extras for standalone .glb loads. Dimensions become 3D arrows + HTML
     // overlay value text; labels become HTML overlay elements.
@@ -2004,8 +1985,6 @@ export class ModelViewer extends SignalWatcher(LitElement)
     if (this._isOrtho)
     {
       this._buildOrthoFromPersp();
-      this._controls.object = this._orthoCamera!;
-      this._controls.update();
     }
   }
 
@@ -2073,6 +2052,10 @@ export class ModelViewer extends SignalWatcher(LitElement)
     }
 
     if (this._controls.update()) this._dirty = true;
+
+    // Keep the orthographic camera mirrored to the perspective camera that
+    // OrbitControls actually drives, so orbit/pan/zoom stay in sync in ortho.
+    if (this._isOrtho) this._buildOrthoFromPersp();
 
     if (this._dirty)
     {

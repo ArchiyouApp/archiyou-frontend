@@ -24,6 +24,7 @@ import type { AnySmartShape } from './SmartShapes'
 import { toSmart, sceneAdd, sceneReplace, sceneLayer } from './SmartSceneDecorators'
 import type { SmartSceneNode } from './SmartSceneNode'
 import type { Modeler } from './Modeler'
+import { buildDXF, type toDXFOptions } from './DXFExporter'
 
 export class SmartShapeCollection extends ShapeCollection<AnySmartShape>
 {
@@ -124,7 +125,11 @@ export class SmartShapeCollection extends ShapeCollection<AnySmartShape>
      //// SCENE MANAGEMENT FOR MESH AND BREP ////
 
     /** Name this collection. For scene-backed collections this names the backing
-    *  layer node (individual shape nodes keep their own names). Returns this. */
+    *  layer node (individual shape nodes keep their own names). Returns this.
+    *
+    *  Collections are auto-named after the variable they are assigned to (while
+    *  still holding the default `'collection'` name), so `parts = collection(...)`
+    *  is named `'parts'`. Calling `.name(...)` explicitly overrides that. */
     name(value: string): this
     {
         this._name = value
@@ -370,5 +375,28 @@ export class SmartShapeCollection extends ShapeCollection<AnySmartShape>
     {
         if (this._layer) return this._layer.toGLTF(up)
         return super.toGLTF(up)
+    }
+
+    /** Export the 2D shapes in this collection (and their linked dimension lines)
+     *  to a DXF string. Non-2D shapes are skipped. Returns null when the
+     *  collection has no 2D-on-XY geometry. */
+    toDXF(options: toDXFOptions = {}): string | null
+    {
+        return buildDXF(
+            this._shapes,
+            this._collectAnnotations(this._shapes),
+            { units: this._modeler?.units?.(), ...options },
+        )
+    }
+
+    /** Global dimension annotations linked to any of `shapes`, merged with this
+     *  collection's own annotations (deduplicated). */
+    private _collectAnnotations(shapes: Array<any>): Array<any>
+    {
+        const global = this._modeler?.modules?.annotator?.getAnnotations?.() ?? []
+        const set = new Set(shapes)
+        const linked = global.filter((a: any) => set.has(a?.linkedTo) || set.has(a?.targetShape))
+        const local = Array.isArray(this.annotations) ? this.annotations : []
+        return [...new Set([...linked, ...local])]
     }
 }

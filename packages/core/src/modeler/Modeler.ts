@@ -50,6 +50,7 @@ import {
 } from "./SmartShapes";
 
 import { SmartSceneNode } from "./SmartSceneNode";
+import { buildDXF, type toDXFOptions } from "./DXFExporter";
 
 // Meshup namespace — imported as value (for instanceof) and type
 import * as meshup from 'meshup/src/index'
@@ -303,14 +304,20 @@ export class Modeler
     }
 
 
-    /** Creates a Vertex */
+    /** Creates a Vertex and adds it to the scene. In mesh mode this returns a
+     *  SmartMeshVertex so that .color()/.name()/etc. work and the point is
+     *  actually exported to the GLB. */
     @validate(PointLikeSchema)
-    vertex(xp?:PointLike, y?:number, z?:number): Vertex
+    vertex(xp?:PointLike, y?:number, z?:number): SmartMeshVertex | Vertex
     {
-        return (this.mode() === 'mesh')
-            ? new meshup.Vertex(meshup.Point.from(xp, y, z)) as meshup.Vertex // TODO: fix better
-            : new brep.Vertex(xp as brep.PointLike, y, z) as brep.Vertex
-        // TODO: add to scene
+        if (this.mode() === 'mesh')
+        {
+            const shape = SmartMeshVertex.from(this, new meshup.Vertex(meshup.Point.from(xp, y, z)) as meshup.Vertex)
+            this.addToScene(shape);
+            return shape;
+        }
+        // brep mode: no Smart wrapper yet, returned raw (not added to scene)
+        return new brep.Vertex(xp as brep.PointLike, y, z) as brep.Vertex
     }
 
 
@@ -424,7 +431,7 @@ export class Modeler
     }
 
     /** Creates a planar surface */
-    plane(...args: any[]): SmartMesh | SmartBrepFace
+    plane(...args: any[]): SmartMeshPolygon | SmartBrepFace
     {
         if (this.mode() === 'mesh')
         {
@@ -435,13 +442,15 @@ export class Modeler
                 normal = [0, 0, 1],
             ] = args as [number?, number?, PointLike?, PointLike?]
 
-            const baseMesh = meshup.Curve.Rect(width, depth, [0, 0, 0]).toMesh()
-            if (!baseMesh)
+            // A plane is a flat surface, so build it as a Polygon (not a solid Mesh): flat shapes
+            // are cut in 2D (see SmartMeshPolygon.cutoff), whereas Mesh.cutoff needs a solid.
+            const basePolygon = meshup.Curve.Rect(width, depth, [0, 0, 0]).toPolygon()
+            if (!basePolygon)
             {
                 throw new Error('plane(): failed to create mesh plane surface.')
             }
 
-            const shape = SmartMesh.from(this, baseMesh as meshup.Mesh)
+            const shape = SmartMeshPolygon.from(this, basePolygon as meshup.Polygon)
             const normalVector = new meshup.Vector(normal)
             if (normalVector.length() === 0)
             {
@@ -684,6 +693,17 @@ export class Modeler
     toSVG(): string
     {
         return this.scene().toSVG()
+    }
+
+    /** Export the whole scene's 2D shapes (and all dimension annotations) to a DXF
+     *  string. Non-2D shapes are skipped. Returns null when the scene has no
+     *  2D-on-XY geometry. This is the scene-level entry used by the Runner's
+     *  `dxf` model output. */
+    toDXF(options?: toDXFOptions): string | null
+    {
+        const shapes = this.scene().shapes().toArray()
+        const annotations = this._modules?.annotator?.getAnnotations?.() ?? []
+        return buildDXF(shapes as any, annotations, { units: this.units(), ...(options ?? {}) })
     }
 
     /** Build the ArchiyouStateData payload (scenegraph + annotations + managedHandles) used by

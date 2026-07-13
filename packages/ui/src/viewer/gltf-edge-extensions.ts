@@ -33,6 +33,63 @@ export async function applyEdgeExtensions(gltf: GLTF, root: THREE.Object3D): Pro
     _applyNativeLineStyles(root);
 }
 
+/**
+ * Post-process a Three.js GLTF scene to style CAD points stored in native GLTF
+ * POINTS primitives carrying the AY_materials_point_style material extension
+ * (size in px, circle/square shape).
+ *
+ * Three.js GLTFLoader creates a THREE.Points with a THREE.PointsMaterial for POINTS
+ * primitives and forwards unknown material extensions to material.userData.gltfExtensions.
+ */
+export function applyPointStyles(root: THREE.Object3D): void
+{
+    root.traverse((node) =>
+    {
+        if (!(node as THREE.Points).isPoints) return;
+        const points = node as THREE.Points;
+
+        const material = Array.isArray(points.material) ? points.material[0] : points.material;
+        if (!(material instanceof THREE.PointsMaterial)) return;
+
+        const ext = material.userData?.gltfExtensions?.['AY_materials_point_style'] as
+            { size?: number; shape?: 'circle' | 'square' } | undefined;
+
+        const size: number = ext?.size ?? 5;
+        const shape: 'circle' | 'square' = ext?.shape ?? 'circle';
+
+        // Constant screen-space pixel size (do not shrink/grow with distance).
+        material.size = size;
+        material.sizeAttenuation = false;
+
+        if (shape === 'circle')
+        {
+            material.map = _circlePointTexture();
+            material.alphaTest = 0.5;
+            material.transparent = material.transparent || (material.opacity ?? 1) < 1;
+        }
+        material.needsUpdate = true;
+    });
+}
+
+let _circleTex: THREE.CanvasTexture | null = null;
+
+/** Cached circular sprite so POINTS render round instead of the default square splat. */
+function _circlePointTexture(): THREE.CanvasTexture
+{
+    if (_circleTex) return _circleTex;
+    const S = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = S;
+    const ctx = canvas.getContext('2d')!;
+    ctx.beginPath();
+    ctx.arc(S / 2, S / 2, S / 2 - 1, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    _circleTex = new THREE.CanvasTexture(canvas);
+    _circleTex.needsUpdate = true;
+    return _circleTex;
+}
+
 async function _attachEdgeLines(
     mesh: THREE.Mesh,
     ext: { visibility: number; material?: number },

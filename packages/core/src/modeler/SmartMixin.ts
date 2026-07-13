@@ -153,7 +153,14 @@ export function withSmartShape<T extends Constructor>(Base: T)
             return this
         }
 
-        /** Get or set the shape name while keeping any scene node label in sync. */
+        /** Get or set the shape name while keeping any scene node label in sync.
+         *
+         *  Shapes are auto-named after the variable they are assigned to, so
+         *  `myTopBox = box(100,100,100)` already carries the name `'myTopBox'`
+         *  (see the scope Proxy `set` trap in Runner.createScope()). Calling
+         *  `.name('foo')` explicitly overrides that automatic name; because the
+         *  auto-namer only fills in shapes that are still unnamed, an explicit
+         *  name always wins. */
         name(): string | undefined
         name(value: string): this
         name(value?: string): this | string | undefined
@@ -179,6 +186,9 @@ export function withSmartShape<T extends Constructor>(Base: T)
             }
 
             if (this._node) this._node.name = value
+            // An explicit / auto-assigned name is authoritative: clear the
+            // "inherited from copy()" flag so the auto-namer won't override it.
+            ;(this as any)._nameInherited = false
             return this
         }
 
@@ -257,11 +267,35 @@ export function withSmartShape<T extends Constructor>(Base: T)
             kernelCopy._conversionLog = []
             kernelCopy._material = this._material
             kernelCopy._suppressSceneAdd = suppressSceneAdd
+            // The kernel copy carries the source's name. Mark it as inherited so
+            // that when the copy is assigned to a fresh variable the auto-namer
+            // (Runner scope Proxy) renames it after that variable, e.g.
+            // `rafterRight = rafterLeft.copy().mirrorX(0)` becomes 'rafterRight'.
+            kernelCopy._nameInherited = true
             if (this._modeler && !suppressSceneAdd)
             {
                 this._modeler.addToScene(kernelCopy)
             }
             return kernelCopy as this
+        }
+
+        /** copy() without automatic scene registration. Used by kernel operations
+         *  (e.g. meshup Curve.intersect) that need throwaway working copies which must
+         *  never appear in the smart scene. The returned copy also carries the
+         *  suppression flag, so any further copies it spawns stay out of the scene too. */
+        _copy(): this
+        {
+            const prev = Boolean((this as any)._suppressSceneAdd)
+            ;(this as any)._suppressSceneAdd = true
+            try
+            {
+                return this.copy()
+            }
+            finally
+            {
+                if (prev) (this as any)._suppressSceneAdd = true
+                else delete (this as any)._suppressSceneAdd
+            }
         }
 
         toString(): string

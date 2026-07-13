@@ -110,6 +110,18 @@ export class SmartMeshCurve extends withSmartShape(meshup.Curve)
         return super.edges() as any
     }
 
+    /** Select sub-shapes from this curve using a selector string (e.g. 'V||left').
+     *  The raw meshup result is wrapped as Smart* shapes, added to the scene, and
+     *  returned as a SmartShapeCollection — or a single Smart shape when the selector
+     *  matched exactly one (meshup's Curve.select collapses single results via checkSingle). */
+    @sceneAdd
+    // @ts-ignore — return type narrows base; mixin prevents override check
+    override select(what: string): SmartShapeCollection | AnySmartShape
+    {
+        // @ts-ignore — super.select() exists on the meshup.Curve kernel base at runtime
+        return (super.select(what) ?? []) as any
+    }
+
     override replicate(
         num: number,
         transform: (curve: meshup.Curve, index: number, prev: meshup.Curve | undefined) => meshup.Curve,
@@ -169,6 +181,17 @@ export class SmartMeshCurve extends withSmartShape(meshup.Curve)
     override toFace(tolerance?: number): SmartMeshPolygon | undefined
     {
         return super.toFace(tolerance) as any
+    }
+
+    /** Loft a ruled surface/solid through this curve and one or more other curves.
+     *  The original profile Curve is removed from the scene and the resulting surface
+     *  (a SmartMeshPolygon for a flat quad between two straight lines, otherwise a
+     *  SmartMesh) is added to the active layer. Returns null when the loft fails. */
+    @sceneReplace
+    // @ts-ignore — return type narrows base Mesh|Polygon; TypeScript mixin inference prevents override check
+    override loft(others: meshup.Curve | meshup.Curve[], solid: boolean = true): SmartMeshPolygon | SmartMesh | null
+    {
+        return super.loft(others, solid) as any
     }
 
     /** Offset this curve in place without letting meshup's temporary working
@@ -466,11 +489,12 @@ export class SmartMesh extends withSmartShape(meshup.Mesh)
     }
 
     /** Select sub-shapes from this mesh using a selector string (e.g. 'E||top').
-     *  The raw meshup result is wrapped as Smart* shapes, added to the scene,
-     *  and returned as a SmartShapeCollection. */
+     *  The raw meshup result is wrapped as Smart* shapes, added to the scene, and
+     *  returned as a SmartShapeCollection — or a single Smart shape when the selector
+     *  matched exactly one (meshup's Mesh.select collapses single results via checkSingle). */
     @sceneAdd
-    // @ts-ignore — return type SmartShapeCollection narrows base; mixin prevents override check
-    override select(what: string): SmartShapeCollection
+    // @ts-ignore — return type narrows base; mixin prevents override check
+    override select(what: string): SmartShapeCollection | AnySmartShape
     {
         return (super.select(what) ?? []) as any
     }
@@ -576,6 +600,26 @@ export class SmartMeshPolygon extends withSmartShape(meshup.Polygon)
     override split(other: meshup.Curve | meshup.Polygon, gap?: number): SmartShapeCollection | null
     {
         return super.split(other, gap) as any
+    }
+
+    /** Cut this polygon (in 2D) by a Curve or Polygon and keep one resulting piece.
+     *  Mutates this polygon in place — same object, same scene node — so the existing scene
+     *  shape is updated. See meshup Polygon.cutoffBy() for the piece-selection rules. */
+    @sceneUpdate
+    // @ts-ignore — return type narrows base; mixin inference prevents override check
+    override cutoffBy(other: meshup.Curve | meshup.Polygon, keepSmallest?: boolean): this
+    {
+        return super.cutoffBy(other, keepSmallest) as any
+    }
+
+    /** Cut off this polygon (in 2D) with an axis-aligned plane and keep one piece.
+     *  Mutates this polygon in place — same object, same scene node — so the existing scene
+     *  shape is updated. See meshup Polygon.cutoff() for the piece-selection rules. */
+    @sceneUpdate
+    // @ts-ignore — return type narrows base; mixin inference prevents override check
+    override cutoff(at: Axis, coord?: number, smallest?: boolean): this
+    {
+        return super.cutoff(at, coord, smallest) as any
     }
 }
 

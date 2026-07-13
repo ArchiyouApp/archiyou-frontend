@@ -12,6 +12,7 @@ import { SceneNode } from 'meshup/src/index';
 import type { StyleData } from 'meshup/src/Style';
 import { isAnySmartShape, type AnySmartShape } from './SmartShapes';
 import { SmartShapeCollection } from './SmartShapeCollection';
+import { buildDXF, type toDXFOptions } from './DXFExporter';
 import type { SmartSceneNodeData } from './types';
 
 /** Plain-object serialisation of a SmartSceneNode subtree.
@@ -162,6 +163,19 @@ export class SmartSceneNode extends SceneNode<any>
             path += `/${encodeURIComponent(names[idx] ?? chain[i].name)}`;
         }
         return path;
+    }
+
+    /** Export this subtree's 2D shapes (and their linked dimension lines) to DXF.
+     *  Non-2D shapes are skipped; returns null when the subtree has no 2D-on-XY
+     *  geometry. */
+    toDXF(options: toDXFOptions = {}): string | null
+    {
+        const shapes = this.shapes().toArray();
+        const modeler = (shapes[0] as any)?._modeler;
+        const global = modeler?.modules?.annotator?.getAnnotations?.() ?? [];
+        const set = new Set(shapes);
+        const annotations = global.filter((a: any) => set.has(a?.linkedTo) || set.has(a?.targetShape));
+        return buildDXF(shapes as any, annotations, { units: modeler?.units?.(), ...options });
     }
 
     toData(renameRoot: boolean = false): SmartSceneNodeData

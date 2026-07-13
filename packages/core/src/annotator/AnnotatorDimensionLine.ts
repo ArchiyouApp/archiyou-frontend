@@ -837,22 +837,10 @@ export class DimensionLine extends BaseAnnotation
         lineEndArr[1] = -lineEndArr[1];
         lineMidArr[1] = -lineMidArr[1];
 
-        const v = (typeof this.value === 'string') ? parseFloat(this.value) : this.value;
         // Convert the raw value (in this.units, the model unit) into the active
         // display system with an auto-picked unit + fractional inches. Always
         // labelled so the value is unambiguous when metric/imperial is toggled.
-        const system = this._archiyou?.modeler?.unitSystem?.();
-        const src = this.units;
-        let dimText:string;
-        if (system && src && (src as string) in MM_PER_UNIT && typeof v === 'number')
-        {
-            dimText = formatLength(toMM(v, src), system, { withUnit: true });
-        }
-        else
-        {
-            dimText = ((this.round) ? roundTo(v, this.roundDecimals) : this.value).toString();
-            if (this.showUnits) dimText += this.units;
-        }
+        const dimText = this._formatValueText();
 
         return `<g class="dimensionline">
                 ${this._makeSvgLinePath(lineStartArr,lineEndArr)}
@@ -941,17 +929,46 @@ export class DimensionLine extends BaseAnnotation
     }
     // NOTE: do very little styling here to be able to easily style with CSS. Only stroke-width is good to set (default is 1, 0.5 sets it apart from Shapes)
 
-    /** Export Annotation to DXF aligned dimension line */
-    // TODO AFTER REFACTOR
-    /*
-    toDXF(dxf:DxfBlock):this
+    /** Formatted value text — shared by toSVG() and toDXF().
+     *  Uses the active unit system (metric/imperial) when available, else falls
+     *  back to the rounded raw value with optional unit suffix. */
+    _formatValueText():string
     {
-        dxf.addAlignedDim(
-            point3d(this.targetStart.x, this.targetStart.y, 0), 
-            point3d(this.targetEnd.x, this.targetEnd.y, 0),
-            { offset: this.offsetLength as number }
+        const v = (typeof this.value === 'string') ? parseFloat(this.value) : this.value;
+        const system = this._archiyou?.modeler?.unitSystem?.();
+        const src = this.units;
+        if (system && src && (src as string) in MM_PER_UNIT && typeof v === 'number')
+        {
+            return formatLength(toMM(v, src), system, { withUnit: true });
+        }
+        let text = ((this.round) ? roundTo(v, this.roundDecimals) : this.value).toString();
+        if (this.showUnits) text += this.units;
+        return text;
+    }
+
+    /** Export this dimension line as a real ALIGNED DXF dimension.
+     *  Delegates the DXF encoding (DIMENSION entity + baked *D block) to the
+     *  DXFDocument; this method only supplies the geometry + value text.
+     *  See DXFExporter.DXFDocument.addAlignedDim(). */
+    toDXF(doc:any /* DXFDocument */, layer:string='dimensions'):this
+    {
+        const dimStart = this._calculatePoint('start');
+        const dimEnd = this._calculatePoint('end');
+        const textPos = {
+            x: (dimStart.x + dimEnd.x) / 2,
+            y: (dimStart.y + dimEnd.y) / 2,
+            z: 0,
+        };
+
+        doc.addAlignedDim(
+            { x: this.targetStart.x, y: this.targetStart.y, z: 0 }, // extension origin 1
+            { x: this.targetEnd.x, y: this.targetEnd.y, z: 0 },     // extension origin 2
+            { x: dimStart.x, y: dimStart.y, z: 0 },                 // dim-line endpoint 1
+            { x: dimEnd.x, y: dimEnd.y, z: 0 },                     // dim-line endpoint 2
+            textPos,
+            this._formatValueText(),
+            layer,
         );
         return this;
     }
-    */
 }

@@ -48,6 +48,7 @@ import { Db } from '../calc/Db';
 // Archiyou modules
 import { Console } from '../console/Console';
 import { Modeler } from '../modeler/Modeler';
+import { isAnySmartShape } from '../modeler/SmartShapes';
 import { Annotator } from '../annotator/Annotator';
 import { Interactor } from '../interaction/Interactor';
 import { Calc } from '../calc/Calc';
@@ -146,8 +147,31 @@ export class Runner
         {
             has: () => true, // Allows access to any variable (avoids ReferenceError) - this enabled users to omit var/let/const
             get: (target, key) => target[key], // Retrieves values from scope
-            set: (target, key, value) => 
+            set: (target, key, value) =>
             {
+                // Auto-name shapes/collections after the variable they are assigned to.
+                // e.g. `myTopBox = box(10,10,10)` behaves like `.name('myTopBox')`.
+                // Only names when still unnamed, so explicit .name(...) and earlier
+                // names always win. Skip internal scope fields (_scope, _archiyou, …).
+                if (typeof key === 'string' && !key.startsWith('_'))
+                {
+                    try {
+                        if (isAnySmartShape(value) && (!(value as any).name() || (value as any)._nameInherited === true))
+                        {
+                            // Unnamed shapes are named after their variable; so are
+                            // fresh copies, which inherit the source's name — e.g.
+                            // `rafterRight = rafterLeft.copy()` becomes 'rafterRight'.
+                            // (name() clears _nameInherited, so explicit names and
+                            // plain re-assignment `second = first` keep the first name.)
+                            (value as any).name(key);
+                        }
+                        else if ((value as any)?.isShapeCollection?.() === true && (value as any)._name === 'collection')
+                        {
+                            (value as any).name(key);
+                        }
+                    } catch { /* never let naming break assignment */ }
+                }
+
                 // Give warning about using functions (see above)
                 if(typeof value === 'function')
                 {
@@ -1625,8 +1649,8 @@ ${e.message === '***** CODE ****\nUnexpected end of input' ? code : ''}
                     }
                     break;
 
-                case 'dxf': // 2D DXF export
-                    outp = (scope.exporter as any).exportToDXF();
+                case 'dxf': // 2D DXF export (via the new Modeler pipeline)
+                    outp = scope.modeler.toDXF(outputPath?.formatOptions as any);
                     if(outp)
                     {
                         outputs.push({

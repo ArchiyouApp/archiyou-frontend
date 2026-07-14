@@ -74,10 +74,22 @@ export const DIMENSION_ARROW_LENGTH     = 30;     // arrowhead cone length in mo
 export const DIMENSION_ARROW_RADIUS     = 10;    // arrowhead cone base radius in model units
 
 
-// 3D viewer helpers use a fixed scene size for now.
-// This is the total grid / ground-plane size in world units.
+// 3D viewer helpers. VIEWER_SCENE_SIZE is the ground-plane size in world units.
 export const VIEWER_SCENE_SIZE = 5000;
-export const VIEWER_GRID_CELLS_PER_SCENE = 500;
+
+// Grid auto-sizing (stepped, like the origin gizmo). The grid spans
+// VIEWER_GRID_SIZE_FACTOR_FROM_SCENE × the largest model dimension, floored at
+// VIEWER_GRID_MIN_SIZE and capped at VIEWER_GRID_MAX_SIZE. The cell size is then
+// snapped to a "nice" step (1/2/5/10…) so the grid always holds roughly
+// VIEWER_GRID_TARGET_CELLS cells across, whatever the scale.
+export const VIEWER_GRID_SIZE_FACTOR_FROM_SCENE = 4;
+export const VIEWER_GRID_MIN_SIZE   = 200;
+export const VIEWER_GRID_MAX_SIZE   = 100000;
+export const VIEWER_GRID_TARGET_CELLS = 40;
+// Only rebuild the grid geometry when the scene size moved by more than this
+// fraction of the current grid size since the last rebuild, so small parametric
+// tweaks don't churn the geometry (mirrors VIEWER_GIZMO_RECALC_INCREMENT).
+export const VIEWER_GRID_RECALC_FRACTION = 0.2;
 
 // Key directional light for shadow casting.
 // VIEWER_LIGHT_POSITION defines the direction and distance from the scene centre

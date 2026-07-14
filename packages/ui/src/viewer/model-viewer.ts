@@ -22,7 +22,9 @@ import type { ManagedHandlesData } from '@archiyou/core/src/interaction/types.js
 import './viewer-handles-overlay.js';
 import type { ViewerHandlesOverlay, HandleOverlay, HandleOverlayPos, HandleDragEventDetail } from './viewer-handles-overlay.js';
 import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR, VIEWER_BACKGROUND_COLOR_DARK,
-  VIEWER_SCENE_SIZE, VIEWER_GRID_CELLS_PER_SCENE,
+  VIEWER_SCENE_SIZE,
+  VIEWER_GRID_SIZE_FACTOR_FROM_SCENE, VIEWER_GRID_MIN_SIZE, VIEWER_GRID_MAX_SIZE,
+  VIEWER_GRID_TARGET_CELLS, VIEWER_GRID_RECALC_FRACTION,
   VIEWER_GIZMO_AXIS_LENGTH, VIEWER_GIZMO_COLOR_X, VIEWER_GIZMO_COLOR_Y,
   VIEWER_GIZMO_COLOR_Z, VIEWER_GIZMO_COLOR_ORIGIN, VIEWER_GIZMO_LABEL_SIZE,
   VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE, VIEWER_GIZMO_RECALC_INCREMENT,
@@ -112,6 +114,21 @@ function _niceGridStep(rawStep: number): number
   if (norm < 3.5) return 2 * power;
   if (norm < 7.5) return 5 * power;
   return 10 * power;
+}
+
+/** Derive a stepped grid size + division count from the current scene size.
+ *  The extent scales with the model (clamped to a min/max); the cell size snaps
+ *  to a "nice" step so the grid keeps ~VIEWER_GRID_TARGET_CELLS cells at any scale. */
+function _computeGridParams(sceneSize: number): { size: number; divisions: number }
+{
+  const extent = Math.min(
+    VIEWER_GRID_MAX_SIZE,
+    Math.max(VIEWER_GRID_MIN_SIZE, sceneSize * VIEWER_GRID_SIZE_FACTOR_FROM_SCENE),
+  );
+  const cellStep  = _niceGridStep(extent / VIEWER_GRID_TARGET_CELLS);
+  const size      = Math.ceil(extent / cellStep) * cellStep;
+  const divisions = Math.max(1, Math.round(size / cellStep));
+  return { size, divisions };
 }
 
 /**
@@ -331,6 +348,12 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _appliedGridPrimary?:   number;
   private _appliedGridSecondary?: number;
   private _appliedGridPrimaryEvery?: number;
+  /** Grid geometry currently applied, and the scene size at the last rebuild.
+   *  `_gridAppliedSize === 0` means "not yet sized". Used to step the grid to the
+   *  scene size (like the gizmo) without rebuilding on small parametric changes. */
+  private _gridAppliedSize      = 0;
+  private _gridAppliedDivisions = 0;
+  private _gridSceneSize        = 0;
   private _gizmoGroup?: THREE.Group;
   /** Scene size (largest bbox dimension) at the last gizmo-scale recalc, and the
    *  scale currently applied. `_gizmoScale === 0` means "not yet computed". */
@@ -825,6 +848,16 @@ export class ModelViewer extends SignalWatcher(LitElement)
     this._groundShadowMesh.position.set(center.x, center.y, -zOffset + shadowOffset);
   }
 
+  /** Scene size = largest dimension of the current model's bounding box (0 if none). */
+  private _computeSceneSize(): number
+  {
+    if (!this._currentModel) return 0;
+    const box = new THREE.Box3().setFromObject(this._currentModel);
+    if (box.isEmpty()) return 0;
+    const s = box.getSize(new THREE.Vector3());
+    return Math.max(s.x, s.y, s.z);
+  }
+
   /** Scale the origin gizmo (axis/origin) to the scene so it stays readable on
    *  large models. To avoid the gizmo jumping around while a parametric model
    *  changes by small amounts, the scale is only recomputed when the scene size
@@ -835,17 +868,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
   {
     if (!this._gizmoGroup) return;
 
-    // Scene size = largest dimension of the current model's bounding box.
-    let sceneSize = 0;
-    if (this._currentModel)
-    {
-      const box = new THREE.Box3().setFromObject(this._currentModel);
-      if (!box.isEmpty())
-      {
-        const s = box.getSize(new THREE.Vector3());
-        sceneSize = Math.max(s.x, s.y, s.z);
-      }
-    }
+    const sceneSize = this._computeSceneSize();
 
     // Skip small changes — only recompute past the increment (always compute the
     // first time, when the scale has not been established yet).
@@ -951,9 +974,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     if (!this._gridHelper)
     {
-      const cellStep  = _niceGridStep(VIEWER_SCENE_SIZE / VIEWER_GRID_CELLS_PER_SCENE);
-      const size      = Math.ceil(VIEWER_SCENE_SIZE / cellStep) * cellStep;
-      const divisions = Math.round(size / cellStep);
+      const { size, divisions } = _computeGridParams(this._computeSceneSize());
 
       this._gridHelper = new FadingGrid(
         size, divisions, primary, secondary,
@@ -966,6 +987,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._appliedGridPrimary      = primary;
       this._appliedGridSecondary    = secondary;
       this._appliedGridPrimaryEvery = primaryEvery;
+      this._gridAppliedSize         = size;
+      this._gridAppliedDivisions    = divisions;
+      this._gridSceneSize           = this._computeSceneSize();
       this._gridHelper.position.z = 0;
       return;
     }
@@ -986,6 +1010,36 @@ export class ModelViewer extends SignalWatcher(LitElement)
     }
     // Keep the radial fade matched to the (theme-resolved) background.
     this._gridHelper.setFadeColor(fadeColor);
+
+    // Step the grid extent/cell size to the current scene (like the gizmo).
+    this._updateGridSize();
+  }
+
+  /** Resize the grid geometry to the scene, stepped so the cell size snaps to
+   *  "nice" values. Rebuild is gated on VIEWER_GRID_RECALC_FRACTION so small
+   *  parametric changes don't churn the geometry. */
+  private _updateGridSize()
+  {
+    if (!this._gridHelper) return;
+
+    const sceneSize = this._computeSceneSize();
+
+    // Skip small changes — only recompute once the scene size has moved past a
+    // fraction of the current grid size (always compute the first time).
+    const uninitialized = this._gridAppliedSize === 0;
+    if (!uninitialized &&
+        Math.abs(sceneSize - this._gridSceneSize) < this._gridAppliedSize * VIEWER_GRID_RECALC_FRACTION)
+    {
+      return;
+    }
+
+    const { size, divisions } = _computeGridParams(sceneSize);
+    this._gridSceneSize = sceneSize;
+    if (size === this._gridAppliedSize && divisions === this._gridAppliedDivisions) return;
+
+    this._gridHelper.setSize(size, divisions);
+    this._gridAppliedSize      = size;
+    this._gridAppliedDivisions = divisions;
   }
 
   private _initGizmo()

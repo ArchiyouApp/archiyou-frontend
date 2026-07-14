@@ -28,7 +28,7 @@
 
 
 import type { ArchiyouModules, ArchiyouStateData } from "../types";
-import type { ModelMode, ModelUnits, KernelClasses, ModelerSceneExportGLTFOptions } from "./types";
+import type { ModelMode, ModelUnits, KernelClasses, ModelerSceneExportGLTFOptions, ModelerTextOptions } from "./types";
 
 import { ModelModeSchema, ModelUnitsSchema, PointLikeSchema } from "./schemas";
 
@@ -61,6 +61,7 @@ import type { Brep } from './brep/index'
 // Brep is loaded lazily in _loadBrep() to avoid pulling in the OpenCascade WASM at startup
 let brep: Brep | null = null;
 import { SmartShapeCollection } from "./SmartShapeCollection";
+import { defaultTextFont, getFont, registerFont, fetchFont } from "./TextFonts";
 import { SceneNodeGraphNode, isPointLike } from "meshup/src/types";
 import { Layouter } from "./Layouter";
 import { GLTFBuilder } from "../GLTFBuilder";
@@ -668,6 +669,109 @@ export class Modeler
             this._activeSketch = new (this._kernels.brep.Sketch)(plane, yAxis)
             return this._activeSketch
         }
+    }
+
+    //// TEXT ////
+
+    /** Render `text` as native geometry and add it to the scene (mesh mode only).
+     *
+     *  Styles:
+     *   - `'outline'` (default): filled glyph contours as 2-D curves (holes for
+     *      counters). Uses a TrueType/OpenType font.
+     *   - `'solid'`: the outline extruded into a 3-D solid (`opts.depth`, default 2).
+     *   - `'stroke'` (alias `'engrave'`): single-stroke Hershey line curves, ideal
+     *      for CNC engraving / pen plotting.
+     *
+     *  Fonts:
+     *   - outline/solid: `opts.font` accepts raw TTF/OTF `Uint8Array`/`ArrayBuffer`,
+     *     or the name of a font previously registered with {@link Modeler.loadFont}.
+     *     Omitted → the bundled default (Outfit).
+     *   - stroke: `opts.font` is a bundled Hershey name (`'sans'`, `'serif'`,
+     *     `'script'`, `'gothic'`, `'greek'`), raw `.jhf` text, or omitted for `'sans'`.
+     *
+     *  Text is laid out on the XY plane from the origin; use `opts.at` to position it. */
+    text(text: string, opts: ModelerTextOptions = {}): SmartShapeCollection | SmartMeshCurve | SmartMesh
+    {
+        if (this.mode() !== 'mesh')
+        {
+            throw new Error('Modeler::text(): native text is only available in mesh mode.')
+        }
+        if (typeof text !== 'string')
+        {
+            throw new Error('Modeler::text(): `text` must be a string.')
+        }
+
+        const style = opts.style ?? 'outline'
+        const align = opts.align ?? 'left'
+
+        if (style === 'stroke' || style === 'engrave')
+        {
+            // Hershey stroke fonts: forward a bundled name, raw .jhf text or bytes.
+            const curves = meshup.Sketch.textStroke(text, { font: opts.font, size: opts.size ?? 5, align })
+            return this._addTextCurves(curves, opts.at)
+        }
+
+        const fontBytes = this._resolveTextFont(opts.font)
+
+        if (style === 'solid')
+        {
+            const mesh = meshup.Sketch.textSolid(text, { font: fontBytes, size: opts.size ?? 20, depth: opts.depth ?? 2, align })
+            const shape = SmartMesh.from(this, mesh as meshup.Mesh)
+            if (opts.at) { (shape as any).move(opts.at) }
+            this.addToScene(shape)
+            return shape
+        }
+
+        if (style !== 'outline')
+        {
+            throw new Error(`Modeler::text(): unknown style '${style}'. Use 'outline', 'solid', or 'stroke'.`)
+        }
+
+        const curves = meshup.Sketch.textOutline(text, { font: fontBytes, size: opts.size ?? 20, align })
+        return this._addTextCurves(curves, opts.at)
+    }
+
+    /** Register a font (TTF/OTF) by name for use with {@link Modeler.text}.
+     *  `source` may be raw bytes (`Uint8Array`/`ArrayBuffer`) or a URL to a `.ttf`
+     *  /`.otf` file (fetched here). Returns the font bytes. woff2 is not supported —
+     *  for Google Fonts pass a direct TTF URL, not the CSS API. */
+    async loadFont(name: string, source: string | Uint8Array | ArrayBuffer): Promise<Uint8Array>
+    {
+        if (!name) { throw new Error('Modeler::loadFont(): a non-empty `name` is required.') }
+        let bytes: Uint8Array
+        if (source instanceof Uint8Array) { bytes = source }
+        else if (source instanceof ArrayBuffer) { bytes = new Uint8Array(source) }
+        else if (typeof source === 'string') { bytes = await fetchFont(source) }
+        else { throw new Error('Modeler::loadFont(): `source` must be a URL string, Uint8Array or ArrayBuffer.') }
+        registerFont(name, bytes)
+        return bytes
+    }
+
+    /** @internal Resolve an outline-text font option to raw bytes. */
+    private _resolveTextFont(font?: ModelerTextOptions['font']): Uint8Array
+    {
+        if (font == null) { return defaultTextFont() }
+        if (font instanceof Uint8Array) { return font }
+        if (font instanceof ArrayBuffer) { return new Uint8Array(font) }
+        if (typeof font === 'string')
+        {
+            const registered = getFont(font)
+            if (!registered)
+            {
+                throw new Error(`Modeler::text(): unknown font '${font}'. Register it first with loadFont('${font}', <url|bytes>), or pass raw TTF/OTF bytes.`)
+            }
+            return registered
+        }
+        throw new Error('Modeler::text(): `font` must be a name, Uint8Array or ArrayBuffer.')
+    }
+
+    /** @internal Wrap text curves as SmartMeshCurves, position them, add to scene. */
+    private _addTextCurves(curves: meshup.ShapeCollection<meshup.Curve>, at?: PointLike): SmartShapeCollection | SmartMeshCurve
+    {
+        const smart = curves.toArray().map(c => SmartMeshCurve.from(this, c as meshup.Curve))
+        if (at) { smart.forEach(s => (s as any).move(at)) }
+        this.addToScene(smart)
+        return smart.length === 1 ? smart[0] : new SmartShapeCollection(...smart)
     }
 
 

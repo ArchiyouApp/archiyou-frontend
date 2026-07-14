@@ -153,6 +153,14 @@ export function withSmartShape<T extends Constructor>(Base: T)
             return this
         }
 
+        /** Alias for {@link removeFromScene}: mark this shape as a temporary
+         *  (helper) shape that should not appear in the scene. Returns `this`
+         *  for chaining. */
+        tmp(): this
+        {
+            return this.removeFromScene()
+        }
+
         /** Get or set the shape name while keeping any scene node label in sync.
          *
          *  Shapes are auto-named after the variable they are assigned to, so

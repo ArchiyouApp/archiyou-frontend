@@ -45,6 +45,28 @@ export interface ExplodedViewOptions
     distance?: number
 }
 
+/** How a text run is rendered by {@link Modeler.text}. */
+export type ModelerTextStyle = 'outline' | 'solid' | 'stroke' | 'engrave'
+
+/** Options for {@link Modeler.text}. */
+export interface ModelerTextOptions
+{
+    /** Rendering style. Default `'outline'`. */
+    style?: ModelerTextStyle
+    /** Glyph size (point size for outline/solid, scale for stroke). */
+    size?: number
+    /** Extrusion depth for `'solid'`. Default 2. */
+    depth?: number
+    /** Horizontal alignment about the origin. Default `'left'`. */
+    align?: 'left' | 'center' | 'right'
+    /** Position to move the finished text to (XY-plane layout). */
+    at?: meshup.PointLike
+    /** Font: for outline/solid — raw TTF/OTF bytes or a name registered via
+     *  `loadFont()` (omitted → bundled default). For stroke — a bundled Hershey
+     *  name or raw `.jhf` text (omitted → `'sans'`). */
+    font?: string | Uint8Array | ArrayBuffer
+}
+
 export interface LayoutViewOptions
 {
     /** Lateral spacing between shapes when laid flat. Default 1.5 */

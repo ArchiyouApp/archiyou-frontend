@@ -13,7 +13,7 @@
 import { signal } from '@lit-labs/signals';
 import type { AuthResponse, PublicUser } from '@archiyou/types';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '';
+const API_BASE = (import.meta.env.SERVER_API_BASE_URL as string | undefined) ?? '';
 const TOKEN_KEY = 'archiyou:auth:token';
 
 let _token: string | null = null;

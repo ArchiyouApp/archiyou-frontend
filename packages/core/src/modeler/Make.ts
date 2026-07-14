@@ -144,7 +144,7 @@ export class Make
      *  NOTE: Added sloped roof with optional ridge height and centerline [0-1]:
      *    this will add a triangular top to the wall
      */
-    public wall(width: number, height: number, depth?: number, studThickness?: number, grid?: number, ridge?: { height: number; center: number }, openings: Array<WallOpening> = []): SmartShapeCollection
+    public wall(width: number, height: number, depth?: number, studThickness?: number, grid?: number, openings: Array<WallOpening> = [], ridge?: { height: number; center: number }): SmartShapeCollection
     {
         // SETTINGS
         const DEFAULT_GRID_DISTANCE = 610;
@@ -163,6 +163,9 @@ export class Make
 
         const OPENING_SNAP_POSITION_WITHIN_DISTANCE = studThickness * 2; // kingstud + frame
         const MIN_OPENING_GAP = studThickness * 2; // minimum gap between openings for two king studs
+
+        console.warn('==== HIERO 1 ====');
+        console.warn(ridge);
 
         // check if roof ridge is defined and valid
         if (ridge)

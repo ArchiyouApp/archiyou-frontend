@@ -411,6 +411,12 @@ export class PageEditor extends SignalWatcher(LitElement)
       return;
     }
 
+    if (value === 'export-dxf')
+    {
+      void this._exportModelAsDXF();
+      return;
+    }
+
     if (value === 'plugin-start')
     {
       // Enter plugin mode with the bundled example plugin.
@@ -658,6 +664,38 @@ export class PageEditor extends SignalWatcher(LitElement)
     const url = URL.createObjectURL(blob);
     const filename = script.name ? `${script.name}.js` : 'script.js';
 
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /** Main menu ▸ Export to… ▸ DXF 2D — run a lean export request and download the DXF text.
+   *  `?annotations=true` threads through to Modeler.toDXF() so dimension lines are baked in. */
+  private async _exportModelAsDXF()
+  {
+    const requestPath = 'default/model/dxf?annotations=true';
+    const result = await runScript(
+      this._buildRequest([requestPath], ['error'])
+    );
+
+    const dxf = result?.outputs
+      ?.find(o => o.path.requestedPath === requestPath)
+      ?.output as string | undefined;
+
+    if (typeof dxf !== 'string' || dxf.length === 0)
+    {
+      console.error('DXF export produced no output', result);
+      window.alert('DXF export failed — the model produced no 2D geometry.');
+      return;
+    }
+
+    const script = editorScript.get();
+    const filename = script?.name ? `${script.name}.dxf` : 'model.dxf';
+
+    const blob = new Blob([dxf], { type: 'application/dxf' });
+    const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = filename;

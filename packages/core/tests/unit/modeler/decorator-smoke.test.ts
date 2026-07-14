@@ -89,6 +89,42 @@ describe('scene-decorator smoke', () =>
         col.toArray().forEach((s: any) => expect(s.constructor.name).toBe('SmartMesh'))
     })
 
+    it('mesh collection.extrude forwards to each shape in meshup (no brep round-trip)', () =>
+    {
+        // Regression: collection.extrude used to force _toBrepCollection(), which
+        // for a mesh-mode collection of closed curves warned "brep adapter not set"
+        // and returned an empty collection. A collection of SmartMeshCurve sections
+        // must extrude via the mesh kernel instead.
+        const a = m.rect(20, 40)                 // closed SmartMeshCurve sections
+        const b = m.rect(20, 40).move(100, 0, 0)
+        const nested = m.collection(m.rect(20, 40).move(50, 0, 0))
+        const sections = m.collection(a, nested, b) // nested collection is flattened → 3 shapes
+
+        const solids = (sections.copy() as any).extrude(100)
+        expect(solids).toBeInstanceOf(SmartShapeCollection)
+        expect(solids.length).toBe(3)            // not empty
+        solids.toArray().forEach((s: any) =>
+        {
+            expect(s.constructor.name).toBe('SmartMesh')
+            expect(inScene(s)).toBe(true)
+        })
+    })
+
+    it('@sceneUpdate: polygon.subtract notches in place, keeps the node, no scene pollution', () =>
+    {
+        const pl = m.plane(100, 100) as any    // centred: x,y ∈ [-50, 50], area 10000
+        expect(pl.area()).toBeCloseTo(10000, 0)
+        const cutter = m.rect(20, 20).move(50, 50, 0) as any // closed SmartMeshCurve at the +x/+y corner
+        const before = m.all().length          // includes pl + cutter
+
+        const out = pl.subtract(cutter)         // 10x10 bite out of the corner
+
+        expect(out).toBe(pl)                    // same object
+        expect(pl.area()).toBeCloseTo(9900, 0)
+        expect(inScene(pl)).toBe(true)          // still in scene, same node
+        expect(m.all().length).toBe(before)     // subtract added no stray pieces
+    })
+
     it('regression: planeBetween renders to GLTF', async () =>
     {
         m.planeBetween([0,0,0],[100,100,0])

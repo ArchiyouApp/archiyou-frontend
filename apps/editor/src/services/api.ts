@@ -2,13 +2,14 @@
  * Central API handler.
  *
  * - Auto-injects Bearer token from authService
- * - Base URL from VITE_API_BASE_URL env var (defaults to '' — the server API is at the root)
+ * - Base URL from SERVER_API_BASE_URL env var (set to the backend origin, e.g.
+ *   http://localhost:4100 in dev — see apps/editor/.env). Defaults to '' (same origin).
  * - Throws ApiError on non-2xx responses
  */
 
 import { authService } from './auth-service.js';
 
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '';
+const BASE_URL = (import.meta.env.SERVER_API_BASE_URL as string | undefined) ?? '';
 
 export class ApiError extends Error {
   constructor(
@@ -43,6 +44,19 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
   // 204 No Content
   if (response.status === 204) return undefined as unknown as T;
+
+  // A 2xx that isn't JSON means the request didn't reach the API (e.g. the dev
+  // proxy fell through and Vite served index.html). Surface it instead of
+  // letting `response.json()` throw an opaque SyntaxError downstream.
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    throw new ApiError(
+      response.status,
+      `Expected JSON from ${path} but received "${contentType || 'unknown'}". ` +
+      `The request likely did not reach the API server.`,
+    );
+  }
+
   return response.json() as Promise<T>;
 }
 

@@ -218,6 +218,14 @@ export class SmartShapeCollection extends ShapeCollection<AnySmartShape>
         return this
     }
 
+    /** Alias for {@link removeFromScene}: mark this collection as temporary
+     *  (helper) geometry that should not appear in the scene. Returns `this`
+     *  for chaining. */
+    tmp(): this
+    {
+        return this.removeFromScene()
+    }
+
     //// SHAPE CREATION METHODS (MESH AND BREP) ////
 
     /** Orthographic elevation onto the 'elevation' layer. */
@@ -355,7 +363,23 @@ export class SmartShapeCollection extends ShapeCollection<AnySmartShape>
     }
 
     @toSmart visible(): SmartShapeCollection { return (this._toBrepCollection()?.visible() ?? []) as any }
-    @toSmart extrude(amount?: number, direction?: any): SmartShapeCollection { return (this._toBrepCollection()?.extrude(amount, direction) ?? []) as any }
+
+    /** Extrude every shape in the collection. When all shapes are mesh-mode (e.g. a
+     *  collection of closed SmartMeshCurve sections) this forwards to each shape's own
+     *  meshup extrude, keeping the whole operation in the mesh kernel — round-tripping
+     *  through the brep kernel here warns about a missing brep adapter and yields an
+     *  empty collection. Each SmartMeshCurve.extrude is @sceneReplace, so it removes
+     *  the source curve and adds the resulting mesh to the active layer itself. */
+    @toSmart extrude(amount?: number, direction?: any): SmartShapeCollection
+    {
+        if (this._isMeshOnlyCollection())
+        {
+            return this._shapes
+                .map(s => (s as any).extrude?.(amount, direction))
+                .filter((r: any) => r != null) as any
+        }
+        return (this._toBrepCollection()?.extrude(amount, direction) ?? []) as any
+    }
     @toSmart thicken(amount: number, direction?: any): SmartShapeCollection { return (this._toBrepCollection()?.thicken(amount, direction) ?? []) as any }
     @toSmart fillet(radius: number, at?: any): SmartShapeCollection { return (this._toBrepCollection()?.fillet(radius, at) ?? []) as any }
     @toSmart intersecting(other: any): SmartShapeCollection { return (this._toBrepCollection()?.intersecting(other) ?? []) as any }

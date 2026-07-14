@@ -45,7 +45,7 @@ const LICENCE_LABELS: Record<string, string> = {
   'CC-BY-NC-ND-4.0':  'CC BY-NC-ND 4.0 — Attribution-NonCommercial-NoDerivatives',
 };
 
-const DEFAULT_LICENCE = 'CC-BY-4.0';
+const DEFAULT_LICENCE = 'CC0-1.0';
 
 /** Parse "X.Y…" → [major, minor]; defaults to [0, 0] when unparseable. */
 function parseMajorMinor(v: string | null | undefined): [number, number] {
@@ -130,12 +130,15 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
           <!-- Version -->
           <div class="field">
             <label class="field-label">Version</label>
-            <input
-              class="text-input version-input"
-              type="text"
-              .value=${this._version}
-              @input=${(e: InputEvent) => { this._version = (e.target as HTMLInputElement).value; this._error = ''; }}
-            />
+            <div class="version-row">
+              <input
+                class="text-input version-input"
+                type="text"
+                .value=${this._version}
+                @input=${(e: InputEvent) => { this._version = (e.target as HTMLInputElement).value; this._error = ''; }}
+              />
+              ${this._lastVersion ? nothing : html`<span class="hint">(new share)</span>`}
+            </div>
             ${this._lastVersion
               ? html`<span class="hint">Last shared version was <strong>${this._lastVersion}</strong></span>`
               : nothing}
@@ -145,7 +148,7 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
           <div class="field">
             <label class="field-label">Description</label>
             <textarea
-              class="text-input"
+              class="text-input desc-input"
               rows="3"
               placeholder="What does this script do?"
               .value=${this._description}
@@ -323,7 +326,8 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
         const results = await searchUsers(q);
         const selectedIds = new Set(this._selectedUsers.map(u => u.id));
         this._userResults = results.filter(u => !selectedIds.has(u.id));
-      } catch {
+      } catch (err) {
+        console.error('User search failed:', err);
         this._userResults = [];
       } finally {
         this._searching = false;
@@ -513,6 +517,13 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
     }
     .text-input:focus { border-color: var(--color-primary); }
     .version-input { max-width: 140px; }
+    .version-row { display: flex; align-items: center; gap: 8px; }
+    .desc-input { font-size: var(--text-xs); }
+
+    /* Licence dropdown — smaller option text */
+    wa-select { font-size: var(--text-xs); }
+    wa-option { font-size: var(--text-xs); }
+    wa-option::part(label) { font-size: var(--text-xs); }
 
     .checkbox-row {
       display: flex;

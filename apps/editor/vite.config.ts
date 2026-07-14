@@ -53,6 +53,10 @@ export default defineConfig(() => {
   return {
     plugins: [servePluginsDir()],
 
+    // Expose SERVER_*-prefixed env vars to client code (in addition to the
+    // default VITE_*), so `import.meta.env.SERVER_API_BASE_URL` is available.
+    envPrefix: ['VITE_', 'SERVER_'],
+
     // WASM files served as assets; consumers use `?url` imports
     assetsInclude: ['**/*.wasm'],
 
@@ -76,14 +80,9 @@ export default defineConfig(() => {
 
     server: {
       port: 5173,
-      // Proxy the editor's backend calls to apps/server so dev needs no CORS and
-      // no VITE_API_BASE_URL. The server API is flat at the root (`/scripts/*`,
-      // `/auth/*`), so proxy those prefixes as-is. Override the target with
-      // VITE_API_PROXY_TARGET.
-      proxy: {
-        '/scripts': { target: process.env['VITE_API_PROXY_TARGET'] || 'http://localhost:4100', changeOrigin: true },
-        '/auth': { target: process.env['VITE_API_PROXY_TARGET'] || 'http://localhost:4100', changeOrigin: true },
-      },
+      // Backend calls go directly to apps/server via SERVER_API_BASE_URL (see
+      // apps/editor/.env). The server enables CORS for local origins, so no dev
+      // proxy is needed.
     },
   };
 });

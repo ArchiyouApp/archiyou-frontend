@@ -110,6 +110,16 @@ export class SmartMeshCurve extends withSmartShape(meshup.Curve)
         return super.edges() as any
     }
 
+    /** Copy a contiguous range of atomic segments and combine them into one curve,
+     *  added to the scene as a new SmartMeshCurve (this curve stays). */
+    @sceneAdd
+    // @ts-ignore — return type narrows base; mixin prevents override check
+    override segment(fromIndex: number, toIndex?: number): AnySmartShape
+    {
+        // @ts-ignore — super.segment() exists on the meshup.Curve kernel base at runtime
+        return super.segment(fromIndex, toIndex) as any
+    }
+
     /** Select sub-shapes from this curve using a selector string (e.g. 'V||left').
      *  The raw meshup result is wrapped as Smart* shapes, added to the scene, and
      *  returned as a SmartShapeCollection — or a single Smart shape when the selector
@@ -620,6 +630,25 @@ export class SmartMeshPolygon extends withSmartShape(meshup.Polygon)
     override cutoff(at: Axis, coord?: number, smallest?: boolean): this
     {
         return super.cutoff(at, coord, smallest) as any
+    }
+
+    /** Subtract a closed Curve/Polygon — or every shape in a SmartShapeCollection — from
+     *  this polygon (2D boolean difference). Mutates in place — same object, same scene node.
+     *  See meshup Polygon.difference() for the notch/split/interior-hole rules. */
+    @sceneUpdate
+    // @ts-ignore — return type narrows base; mixin inference prevents override check
+    override difference(other: meshup.Curve | meshup.Polygon | meshup.ShapeCollection<any>): this
+    {
+        return super.difference(other as any) as any
+    }
+
+    /** Subtract one or more closed cutters (Curve/Polygon/SmartShapeCollection) from this
+     *  polygon in place. Convenience over difference(); same object, same scene node. */
+    @sceneUpdate
+    // @ts-ignore — return type narrows base; mixin inference prevents override check
+    override subtract(...others: Array<meshup.Curve | meshup.Polygon | meshup.ShapeCollection<any>>): this
+    {
+        return super.subtract(...(others as any)) as any
     }
 }
 

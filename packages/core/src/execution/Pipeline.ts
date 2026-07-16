@@ -35,7 +35,7 @@
  *
  */ 
 
-import { SmartShapeCollection } from '../modeler/SmartShapeCollection';            
+import { ShapeCollection } from 'meshup/src/index';            
 import { analyzeFunc } from '../utils'
 
 //// SETTINGS ////
@@ -48,8 +48,8 @@ export class Pipeline
     //// END SETTINGS ////
 
     name:string;
-    _shapes:SmartShapeCollection
-    _function:() => SmartShapeCollection
+    _shapes:ShapeCollection
+    _function:() => ShapeCollection
 
 
     /** Create a Pipeline */
@@ -65,7 +65,7 @@ export class Pipeline
      *              or passed as arguments to it. This avoids unexpected behavior due to variable scope issues.
      *   
      */
-    do(fn:() => SmartShapeCollection):this
+    do(fn:() => ShapeCollection):this
     {
         if (typeof fn === 'function')
         {
@@ -101,8 +101,8 @@ export class Pipeline
         }
     }
 
-    /** Run pipeline and get a SmartShapeCollection back */
-    run():SmartShapeCollection
+    /** Run pipeline and get a ShapeCollection back */
+    run():ShapeCollection
     {
         if(!this._function)
         {

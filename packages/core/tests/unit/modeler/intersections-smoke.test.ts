@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { Modeler } from '../../../src/modeler/Modeler'
-import { SmartShapeCollection } from '../../../src/modeler/SmartShapeCollection'
+import { ShapeCollection as SmartShapeCollection } from 'meshup/src/index'
 
 describe('collection.intersections mesh path', () =>
 {
@@ -15,7 +15,7 @@ describe('collection.intersections mesh path', () =>
         const subbox = (m.box(100, 50, 50) as any).color('blue')
         const icol = boxes.copy().intersections(subbox)
         expect(icol).toBeInstanceOf(SmartShapeCollection)
-        icol.toArray().forEach((s: any) => expect(s.constructor.name).toBe('SmartMesh'))
+        icol.toArray().forEach((s: any) => expect(s.constructor.name).toBe('Mesh'))
     })
 
     it('intersections() replaces in place: originals removed, results visible', () =>

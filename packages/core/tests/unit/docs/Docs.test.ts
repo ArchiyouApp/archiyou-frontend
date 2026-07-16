@@ -11,7 +11,7 @@ import { DOC_DEFAULT_SVG_FONT_FAMILY, DOC_TEXT_HEIGHT_TO_FONT_SIZE_FACTOR } from
 import { Modeler } from '../../../src/modeler/Modeler'
 import { Docs } from '../../../src/docs/Docs'
 import { pointsToMm, mmToPoints } from '../../../src/docs/utils'
-import { SmartShapeCollection } from '../../../src/modeler/SmartShapeCollection'
+import { ShapeCollection as SmartShapeCollection } from 'meshup/src/index'
 
 const TEST_OUTPUTS_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '../../outputs/docs')
 

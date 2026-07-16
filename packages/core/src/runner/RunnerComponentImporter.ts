@@ -6,7 +6,8 @@ import { ScriptOutputPath } from '../execution/ScriptOutputPath';
 import type { RunnerScriptExecutionRequest, RunnerScriptScope } from './types';
 import { ScriptData } from '../execution/types';
 import { ImportComponentResult, ImportComponentResultPipelines } from './types';
-import { SmartSceneNode, type ComponentGraphNode } from '../modeler/SmartSceneNode';
+import { SceneNode } from 'meshup/src/index';
+import type { ComponentGraphNode } from 'meshup/src/index';
 
 
 /**
@@ -307,20 +308,20 @@ export class RunnerComponentImporter
 
     /** Recreate a component's scene subtree under the parent scope's modeler.
      *
-     *  Walks the ComponentGraphNode tree produced by SmartSceneNode.toComponentGraph(),
-     *  creating fresh SmartSceneNodes and re-binding each shape's `_modeler` to
+     *  Walks the ComponentGraphNode tree produced by SceneNode.toComponentGraph(),
+     *  creating fresh SceneNodes and re-binding each shape's `_modeler` to
      *  the main scope's modeler so subsequent ops (export, layouter, etc.)
      *  resolve against the correct kernel. */
-    _recreateComponentObjTree(tree: ComponentGraphNode, parentNode?: SmartSceneNode, onlyVisible: boolean = true): SmartSceneNode
+    _recreateComponentObjTree(tree: ComponentGraphNode, parentNode?: SceneNode, onlyVisible: boolean = true): SceneNode
     {
         if (onlyVisible && tree.style?.visible === false)
         {
             // Skip hidden subtrees entirely; mirrors the old onlyVisible filter.
-            return parentNode ?? new SmartSceneNode(tree.name);
+            return parentNode ?? new SceneNode(tree.name);
         }
 
         const mainModeler = this._scope._archiyou.modeler;
-        const newNode = new SmartSceneNode(tree.name);
+        const newNode = new SceneNode(tree.name);
 
         if (tree.style && Object.keys(tree.style).length > 0)
         {

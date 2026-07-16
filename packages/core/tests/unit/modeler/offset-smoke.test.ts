@@ -12,7 +12,7 @@ describe('SmartMeshPolygon.offset mutates in place', () =>
     it('planeBetween(...).offset(100) mutates the polygon in place, same scene node', () =>
     {
         const pl = m.planeBetween([0,0,0],[100,100,0])
-        expect(pl.constructor.name).toBe('SmartMeshPolygon')
+        expect(pl.constructor.name).toBe('Polygon')
         const node = (pl as any)._node
         const before = m.all().length
 

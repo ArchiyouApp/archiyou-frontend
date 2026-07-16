@@ -4,10 +4,10 @@ import { createNodeIO } from 'meshup/src/GLTFBuilder'
 
 import { Layouter } from '../../../src/modeler/Layouter'
 import { Modeler } from '../../../src/modeler/Modeler'
-import { SmartSceneNode } from '../../../src/modeler/SmartSceneNode'
+import { SceneNode as SmartSceneNode } from 'meshup/src/index'
 
-import type { SmartMesh } from '../../../src/modeler/SmartShapes'
-import { SmartShapeCollection } from '../../../src/modeler/SmartShapeCollection'
+import type { Mesh as SmartMesh } from 'meshup/src/index'
+import { ShapeCollection as SmartShapeCollection } from 'meshup/src/index'
 
 import { save } from 'meshup/src/utils'
 

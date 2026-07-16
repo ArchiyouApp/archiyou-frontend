@@ -61,7 +61,7 @@ describe('line().offset().cutoffBy() shortens the curve', () =>
     it('a closed XZ rect cut by a crossing line keeps the bigger region, in place', () =>
     {
         const rect = m.rectBetween([0,0,0],[100,0,100]) as any
-        expect(rect.constructor.name).toBe('SmartMeshCurve')
+        expect(rect.constructor.name).toBe('Curve')
         expect(rect.area()).toBeCloseTo(10000, 3)
         const cutter = m.line([-20,0,-20],[120,0,120]).moveZ(10) as any
         const before = m.all().length

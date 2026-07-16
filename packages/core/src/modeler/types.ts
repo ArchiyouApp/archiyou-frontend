@@ -1,15 +1,31 @@
-// Mesh kernel
+// Mesh kernel — type-only import: keep this module free of a runtime meshup load, as it is
+// imported very early/broadly across core and a value import would force meshup to initialize
+// at a bad point in the module graph (circular Vertex↔Shape init).
 import type * as meshup from 'meshup/src/index'
-
-import type { SmartSceneNode } from '../modeler/SmartSceneNode'
 
 import { type Static } from 'typebox'
 import { ModelUnitsSchema, ModelModeSchema, MainAxisSchema } from './schemas'
 
 
-// Re-export for convenience
-export type { AnySmartShape } from './SmartShapes'
-export { isAnySmartShape, wrapBrepShape } from './SmartShapes'
+//// SHAPE TYPES ////
+// The modeler works with plain meshup shapes directly (the old Smart* wrapper layer is gone).
+
+/** Any concrete meshup shape (Vertex | Curve | Polygon | Mesh). */
+export type AnyShape = meshup.Shape
+
+/** Duck-typed guard for a single meshup shape (true for Vertex/Curve/Polygon/Mesh, false for
+ *  a ShapeCollection). Avoids a runtime meshup import here — see the note above. */
+export function isAnyShape(o: any): o is meshup.Shape
+{
+    return o != null
+        && typeof o === 'object'
+        && typeof o.isShapeClass === 'function'
+        && o.isShapeClass() === true
+        && o.isShapeCollection?.() !== true
+}
+
+/** Serialised SceneNode subtree (re-export of meshup's, mirrors the viewer path builder). */
+export type { SceneNodeData } from 'meshup/src/index'
 
 
 // Infer from typebox schemas
@@ -27,14 +43,6 @@ export interface KernelClasses {
     Mesh:       typeof meshup.Mesh
     ShapeCollection: typeof meshup.ShapeCollection
     Bbox:       typeof meshup.Bbox
-}
-
-export interface SmartShapeConversion
-{
-    method:    string
-    fromMode:  ModelMode
-    toMode:    ModelMode
-    timestamp: number
 }
 
 //// SPECIAL ANIMATION OUTPUTS ////
@@ -83,7 +91,7 @@ export interface LayoutAnimationOptions
 
 export interface LayoutTransformation
 {
-    sceneNode: SmartSceneNode
+    sceneNode: meshup.SceneNode
     translation: [number, number, number]
     rotation: [number, number, number, number]
     scale: [number, number, number]
@@ -96,11 +104,4 @@ export interface LayoutTransformationResult
     transforms: Array<LayoutTransformation> // LayoutTransformation includes node reference, so we can apply directly to scene
 }
 
-export interface SmartSceneNodeData
-{
-    name: string
-    shape?: string | null // uuid of held shape; null/undefined for layer/group containers
-    style: meshup.StyleData
-    children: SmartSceneNodeData[]
-}
 

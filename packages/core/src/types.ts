@@ -18,7 +18,7 @@ import type { ParamOperation, ScriptParamData, ManagedBehavioursData } from "./e
 import type { Console } from "./console/Console";
 import type { Runner } from "./runner/Runner";
 import type { MaterialManager } from "./materials/MaterialManager";
-import { SmartSceneNodeData } from "./modeler/types";
+import type { SceneNodeData } from "./modeler/types";
 
 
 export interface ArchiyouModules 
@@ -47,7 +47,7 @@ export interface ArchiyouModules
 */
 export interface ArchiyouStateData
 {
-    scenegraph?: SmartSceneNodeData
+    scenegraph?: SceneNodeData
     annotations?: Array<any> // TODO: TS typing: DimensionLineData etc.
     /** Op stream produced by Interactor.getManagedHandlesData(). Empty array = quiet re-exec. */
     managedHandles?: ManagedHandlesData

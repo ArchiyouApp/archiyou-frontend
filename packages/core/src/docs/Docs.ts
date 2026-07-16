@@ -28,7 +28,7 @@
 
 import { ArchiyouModules } from '../types';
 
-import { SmartShapeCollection } from '../modeler/SmartShapeCollection';
+import { ShapeCollection } from 'meshup/src/index';
 
 import type { PageOrientation, ScaleInput, ImageOptions, TextOptions,
         ContainerAlignment, ContainerHAlignment, ContainerVAlignment,
@@ -256,7 +256,7 @@ export class Docs
     size(size:PageSize):Document { return this.checkAndMakeDefaultDoc().size(size); }
     padding(w:WidthHeightInput, h?:WidthHeightInput):Document { return this.checkAndMakeDefaultDoc().padding(w,h); }
     orientation(o:PageOrientation):Document { return this.checkAndMakeDefaultDoc().orientation(o); }
-    view(name?:string, shapes?:SmartShapeCollection):Document { return this.checkAndMakeDefaultDoc().view(name, shapes); }
+    view(name?:string, shapes?:ShapeCollection):Document { return this.checkAndMakeDefaultDoc().view(name, shapes); }
     image(url:string, options?:ImageOptions):Document { return this.checkAndMakeDefaultDoc().image(url, options); }
     text(text:string|number, options?:TextOptions):Document { return this.checkAndMakeDefaultDoc().text(text, options); }
     textarea(text:string|number, options?:TextOptions):Document { return this.checkAndMakeDefaultDoc().textarea(text, options); }
@@ -278,7 +278,7 @@ export class Docs
     contentAlign(align:ContainerHAlignment|ContainerVAlignment|ContainerAlignment):Document { return this.checkAndMakeDefaultDoc().contentAlign(align); }
     caption(s?:string):Document { return this.checkAndMakeDefaultDoc().caption(s); }
     title(s?:string):Document { return this.checkAndMakeDefaultDoc().title(s); }
-    shapes(shapes:SmartShapeCollection|string, all:boolean=false):Document { return this.checkAndMakeDefaultDoc().shapes(shapes, all); }
+    shapes(shapes:ShapeCollection|string, all:boolean=false):Document { return this.checkAndMakeDefaultDoc().shapes(shapes, all); }
     zoom(level:number):Document { return this.checkAndMakeDefaultDoc().zoom(level); }
     scale(factor?:ScaleInput):Document { return this.checkAndMakeDefaultDoc().scale(factor); }
     merge(d:Document|Array<Document>|Record<string, Document>, namePrefix:string=''):Document { return this.checkAndMakeDefaultDoc().merge(d, namePrefix); }

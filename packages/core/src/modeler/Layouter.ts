@@ -1,38 +1,35 @@
-import { Vector as MeshupVector, type SceneNode } from 'meshup/src/index'
+import { Vector as MeshupVector } from 'meshup/src/index'
 import { ShapeCollection } from 'meshup/src/ShapeCollection'
 import { SceneNode as MeshupSceneNode } from 'meshup/src/SceneNode'
 
-import { SmartSceneNode } from './SmartSceneNode'
 import type {
     ExplodedViewOptions,
     LayoutAnimationOptions,
     LayoutTransformation,
     LayoutTransformationResult,
-    LayoutViewOptions
+    LayoutViewOptions,
+    AnyShape,
 } from './types'
 
-import { AnySmartShape } from './SmartShapes'
-
-import { SmartShapeCollection } from './SmartShapeCollection'
 import { TOLERANCE } from 'meshup/src/constants'
 
 export class Layouter
 {
-    private _scene: SmartSceneNode
+    private _scene: MeshupSceneNode
     private _result: LayoutTransformationResult | null = null
 
-    constructor(sceneOrShapes: SmartSceneNode | ShapeCollection<any>)
+    constructor(sceneOrShapes: MeshupSceneNode | ShapeCollection<any>)
     {
         this._scene = this._normalizeInput(sceneOrShapes)
     }
 
-    scene(): SmartSceneNode
+    scene(): MeshupSceneNode
     {
         return this._scene
     }
 
     /** Copied flattened shapes of scene to do stuff with */
-    workNodeShapes(): Array<{ node: SmartSceneNode, shape: AnySmartShape }>
+    workNodeShapes(): Array<{ node: MeshupSceneNode, shape: AnyShape }>
     {
         return this._shapeNodes().map(s => 
         {
@@ -43,12 +40,12 @@ export class Layouter
         });
     }
 
-    /** Turn flattened node shapes into a SmartShapeCollection */
-    shapeCollection(): SmartShapeCollection
+    /** Turn flattened node shapes into a ShapeCollection */
+    shapeCollection(): ShapeCollection
     {
         const shapes = this._shapeNodes()
                         .map((n) => n.shape()).filter(shape => shape !== null)
-        return new SmartShapeCollection(shapes); // NOTE: reference, not copy
+        return new ShapeCollection(shapes); // NOTE: reference, not copy
     }
 
     result(): LayoutTransformationResult
@@ -205,7 +202,7 @@ export class Layouter
         return this
     }
 
-    applyAsCopy(): SmartSceneNode
+    applyAsCopy(): MeshupSceneNode
     {
         const result = this._requireResult()
         const cloned = this._cloneSceneNode(this._scene)
@@ -234,15 +231,15 @@ export class Layouter
         return new GLTFBuilder(gltfContent).addAnimation(this._requireResult(), options).then(b => b.toGLB())
     }
 
-    private _shapeNodes(): Array<SmartSceneNode>
+    private _shapeNodes(): Array<MeshupSceneNode>
     {
-        return [this._scene, ...this._scene.descendants()].filter(node => node.hasShape()) as Array<SmartSceneNode>
+        return [this._scene, ...this._scene.descendants()].filter(node => node.hasShape()) as Array<MeshupSceneNode>
     }
 
     /** If ShapeCollection turn it into a Scene */
-    private _normalizeInput(sceneOrShapes: SmartSceneNode | ShapeCollection<any>): SmartSceneNode
+    private _normalizeInput(sceneOrShapes: MeshupSceneNode | ShapeCollection<any>): MeshupSceneNode
     {
-        if (sceneOrShapes instanceof SmartSceneNode)
+        if (sceneOrShapes instanceof MeshupSceneNode)
         {
             return sceneOrShapes
         }
@@ -255,15 +252,15 @@ export class Layouter
         throw new Error('Layouter: expected a SceneNode or ShapeCollection input.')
     }
 
-    /** Convert a SmartShapeCollection into a SmartSceneNode */
-    private _sceneFromCollection(shapes: ShapeCollection<any>): SmartSceneNode
+    /** Convert a ShapeCollection into a MeshupSceneNode */
+    private _sceneFromCollection(shapes: ShapeCollection<any>): MeshupSceneNode
     {
-        const root = SmartSceneNode.root('root')
+        const root = MeshupSceneNode.root('root')
 
         shapes.toArray().forEach(shape =>
         {
             const nodeName = shape?._node?.name ?? MeshupSceneNode.getName(shape)
-            const child = new SmartSceneNode(nodeName)
+            const child = new MeshupSceneNode(nodeName)
             child.setStyle(shape?._node?.style?.explicitData?.() ?? {})
             ;(child as any)._shape = shape
             root.addChild(child)
@@ -329,12 +326,12 @@ export class Layouter
         throw new Error('Layouter: non-uniform scale is not supported for this shape kernel.')
     }
 
-    private _cloneSceneNode(source: SmartSceneNode): { scene: SmartSceneNode; map: Map<SmartSceneNode, SmartSceneNode> }
+    private _cloneSceneNode(source: MeshupSceneNode): { scene: MeshupSceneNode; map: Map<MeshupSceneNode, MeshupSceneNode> }
     {
-        const node = new SmartSceneNode(source.name)
+        const node = new MeshupSceneNode(source.name)
         node.setStyle(source.style.explicitData())
 
-        const map = new Map<SmartSceneNode, SmartSceneNode>([[source, node]])
+        const map = new Map<MeshupSceneNode, MeshupSceneNode>([[source, node]])
 
         if (source.hasShape())
         {

@@ -9,9 +9,9 @@
 
 import { ArchiyouModules } from '../types';
 import type { Modeler } from './Modeler';
-import { SmartShapeConversion } from './types';
-import type { SmartShapeFace, SmartShapeSolid } from './SmartShapes';
-import { SmartShapeCollection } from './SmartShapeCollection';
+import { ShapeCollection } from 'meshup/src/index';
+import type { Polygon } from 'meshup/src/index';
+import type { Mesh } from 'meshup/src/index';
 import { Table } from '../calc/Table';
 
 import { BinPacker } from '@archiyou/gdrr2bp-wasm/ts/BinPacker';
@@ -98,7 +98,7 @@ export class Make
      *  prio sets what members have priority (default: horizontal)
      *  Frame is parallel to the front side
      */
-    public frame(width: number, height: number, depth: number, thickness: number, prio: 'horizontal' | 'vertical' = 'horizontal'): SmartShapeCollection
+    public frame(width: number, height: number, depth: number, thickness: number, prio: 'horizontal' | 'vertical' = 'horizontal'): ShapeCollection
     {
         // very basic input tests
         if (
@@ -144,7 +144,7 @@ export class Make
      *  NOTE: Added sloped roof with optional ridge height and centerline [0-1]:
      *    this will add a triangular top to the wall
      */
-    public wall(width: number, height: number, depth?: number, studThickness?: number, grid?: number, openings: Array<WallOpening> = [], ridge?: { height: number; center: number }): SmartShapeCollection
+    public wall(width: number, height: number, depth?: number, studThickness?: number, grid?: number, openings: Array<WallOpening> = [], ridge?: { height: number; center: number }): ShapeCollection
     {
         // SETTINGS
         const DEFAULT_GRID_DISTANCE = 610;
@@ -360,7 +360,7 @@ export class Make
             .name('bottomplate');
 
         // Top plates are more complex if ridge is defined
-        const topPlates = new SmartShapeCollection();
+        const topPlates = new ShapeCollection();
         let roofLine; 
         let roofLineInside; // used to cut of studs and insulation if ridge
 
@@ -425,7 +425,7 @@ export class Make
         const stud = this.modeler
             .box(studThickness, depth, studHeight)
             .moveZ(studHeight/2 + studThickness)
-            .removeFromScene() as SmartShapeSolid; // this one is not to be shown
+            .removeFromScene() as Mesh; // this one is not to be shown
 
         gridLines.forEach((l, i, arr) =>
         {
@@ -513,7 +513,7 @@ export class Make
             const openingStart = o.bbox().min();
 
             // Modify openingDiagrams (flat faces) in place if needed
-            let checkedOpening = o as SmartShapeFace;
+            let checkedOpening = o as Polygon;
 
             // continue if opening is valid
             if (checkedOpening)
@@ -958,7 +958,7 @@ export class Make
      * @param options Sheet dimensions, kerf and solver budget.
      * @returns A collection of the placed copies, one per successfully packed shape.
      */
-    public pack(shapes: SmartShapeCollection, options: PackOptions): SmartShapeCollection
+    public pack(shapes: ShapeCollection, options: PackOptions): ShapeCollection
     {
         const DEFAULT_PACK_OPTIONS: Required<PackOptions> = {
             width: 2440,
@@ -1162,7 +1162,7 @@ export class Make
      *   - organize shapes into groups (group name → part name)
      *   - name individual shapes (shape name → subpart name)
      */
-    partList(shapes: SmartShapeCollection, name?: string): Table
+    partList(shapes: ShapeCollection, name?: string): Table
     {
         const COLUMNS = [
             'part',
@@ -1174,7 +1174,7 @@ export class Make
         ]; // TODO: label system, materials
 
         if (
-            !SmartShapeCollection.isShapeCollection(shapes) ||
+            !ShapeCollection.isShapeCollection(shapes) ||
             shapes.length === 0
         )
         {

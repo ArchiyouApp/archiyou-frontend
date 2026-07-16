@@ -10,7 +10,7 @@ describe('start()/end() wrap to SmartMeshVertex; dim() works', () =>
     {
         const ln = m.line([0,0,0],[100,100,0]) as any
         const s = ln.start()
-        expect(s.constructor.name).toBe('SmartMeshVertex')
+        expect(s.constructor.name).toBe('Vertex')
         expect(typeof s.toPoint).toBe('function')   // regression: was empty collection
         const p = s.toPoint()
         expect(p.x).toBeCloseTo(0)
@@ -20,7 +20,7 @@ describe('start()/end() wrap to SmartMeshVertex; dim() works', () =>
     it('line.end() returns a SmartMeshVertex', () =>
     {
         const e = (m.line([0,0,0],[100,100,0]) as any).end()
-        expect(e.constructor.name).toBe('SmartMeshVertex')
+        expect(e.constructor.name).toBe('Vertex')
         expect(e.toPoint().x).toBeCloseTo(100)
     })
 

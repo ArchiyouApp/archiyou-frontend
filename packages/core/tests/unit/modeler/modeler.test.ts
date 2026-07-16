@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 
 import { Modeler } from '../../../src/modeler/Modeler'
-import { SmartMeshCurve, SmartMesh, SmartMeshPolygon, SmartBrepEdge, SmartBrepSolid } from '../../../src/modeler/SmartShapes';
-import { SmartShapeCollection } from '../../../src/modeler/SmartShapeCollection';
+import { Curve as SmartMeshCurve, Mesh as SmartMesh, Polygon as SmartMeshPolygon, Vertex as SmartMeshVertex } from 'meshup/src/index';
+import { ShapeCollection as SmartShapeCollection } from 'meshup/src/index';
 import { ShapeCollection } from 'meshup/src/ShapeCollection';
 import { Mesh } from 'meshup/src/Mesh';
 
@@ -60,34 +60,13 @@ describe('Modeler', async () =>
         expect(await box.toGLB()).toBeInstanceOf(Uint8Array);
     });
 
-    it('should load BREP kernel', async () =>
+    it('brep mode is not yet wired after the SmartShape removal', async () =>
     {
-        await modeler.switch(); // switch to brep, should load if not already
-        
-        expect(modeler.kernel()).toBeDefined();
-
-        
-        const start = modeler.point(0,0,0);
-        const line = modeler.line(start, [10,0]);
-        expect(line).toBeInstanceOf(SmartBrepEdge);
-        expect(line.type).toBe('Edge'); // main native type
-        expect(line.subtype()).toBe('Line');
-        expect(line.length()).toBe(10);
-
-        const box = modeler.box(10,20,30) as SmartBrepSolid;
-
-        expect(box).toBeInstanceOf(SmartBrepSolid);
-        expect(box.mode).toBe('brep');
-        expect(box.type).toBe('Solid'); // main native type
-        expect(box.subtype()).toBe('Box');
-        expect(box.bbox().width()).toBe(10);
-        expect(box.bbox().depth()).toBe(20);
-        expect(box.bbox().height()).toBe(30);
-        expect(box.faces().length).toBe(6);
-
-        box.fillet(1);
-        expect(box.faces().length).toBe(26); // 6 original + 12 fillet faces + 8 corner faces
-        
+        // Brep kernel files are kept under modeler/brep/ but the branch is not wired: the
+        // mesh kernel is the only supported branch. Brep-mode primitives throw a clear error.
+        modeler.mode('brep');
+        expect(() => modeler.box(10, 20, 30)).toThrow(/brep mode is not yet wired/);
+        modeler.mode('mesh');
     });
 
     it('should set up a scene and output to GLB', async () =>

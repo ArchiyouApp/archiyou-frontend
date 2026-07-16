@@ -16,14 +16,13 @@
  *  is consumed through meshup Curve's public accessors (subtype(), points(),
  *  tessellate(), bbox(), isClosed(), degree(), knots(), weights(), spans()).
  *
- *  See buildDXF() for the top-level assembly used by SmartShapeCollection.toDXF(),
- *  SmartSceneNode.toDXF() and Modeler.toDXF().
+ *  See buildDXF() for the top-level assembly used by ShapeCollection.toDXF(),
+ *  SceneNode.toDXF() and Modeler.toDXF() (all via shapeAnnotations.ts).
  */
 
 import type * as meshup from 'meshup/src/index'
 import type { ModelUnits } from './types'
-import type { AnySmartShape } from './SmartShapes'
-import type { SmartShapeCollection } from './SmartShapeCollection'
+import type { AnyShape } from './types'
 
 //// TYPES ////
 
@@ -578,11 +577,11 @@ function toCurve(shape: any): meshup.Curve | null
 }
 
 /**
- *  Assemble a full DXF string from a set of Smart shapes + dimension annotations.
+ *  Assemble a full DXF string from a set of meshup shapes + dimension annotations.
  *  Returns null (with a warning) when there are no 2D-on-XY shapes to export.
  */
 export function buildDXF(
-    shapes: SmartShapeCollection | AnySmartShape[],
+    shapes: meshup.ShapeCollection | AnyShape[],
     annotations: Array<any>,
     opts: toDXFOptions = {},
 ): string | null

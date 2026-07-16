@@ -34,7 +34,7 @@ import { Table } from './Table'
 import { Image } from './Image'
 import { Graphic } from './Graphic'
 
-import { SmartShapeCollection } from '../modeler/SmartShapeCollection'
+import { ShapeCollection } from 'meshup/src/index'
 
 import { ScriptParam } from '../execution/ScriptParam'
 import type { ScriptParamData } from '../execution/types'
@@ -233,7 +233,7 @@ export class Document
     //// BASIC CONTAINERS ////
 
     /** Add View Container to active Page */
-    view(name?:string, shapes?:SmartShapeCollection):this
+    view(name?:string, shapes?:ShapeCollection):this
     {
         if(typeof name !== 'string'){ throw new Error(`Document::view: Please supply a name to the view!`);}
         this._checkPageIsActive();
@@ -241,7 +241,7 @@ export class Document
         const newViewContainer = new View().on(this._getOrMakeActivePage()).setName(name);
         this._activeContainer = newViewContainer;
 
-        if(SmartShapeCollection.isShapeCollection(shapes))
+        if(ShapeCollection.isShapeCollection(shapes))
         {
             this.shapes(shapes);
         }
@@ -947,7 +947,7 @@ export class Document
     //// FORWARD TO SPECIFIC CONTAINER TYPES ////
 
     /** Bind ShapeCollection to View: either a real reference or the name of a ShapeCollection after running the doc pipeline */
-    shapes(shapes:SmartShapeCollection|string, all:boolean=false):this
+    shapes(shapes:ShapeCollection|string, all:boolean=false):this
     {
         if(!this._activeContainer){ throw new Error(`Document::shapes(): Cannot add Shapes because no View Container is active! Make a View first with view("myView")!`)};
         if(this._activeContainer._type !== 'view'){ { throw new Error(`Document::shapes(): Cannot add Shapes because no active container is a not a View. Check the order of your statements!`)};}

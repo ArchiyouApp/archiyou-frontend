@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
 import { Modeler } from '../../../src/modeler/Modeler'
-import { SmartShapeCollection } from '../../../src/modeler/SmartShapeCollection'
+import { ShapeCollection as SmartShapeCollection } from 'meshup/src/index'
 import { save } from 'meshup/src/utils'
 
 const TEST_OUTPUT_DIR = './tests/outputs/modeler'

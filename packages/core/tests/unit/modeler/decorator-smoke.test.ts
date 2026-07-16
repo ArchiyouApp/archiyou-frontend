@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { Modeler } from '../../../src/modeler/Modeler'
-import { SmartShapeCollection } from '../../../src/modeler/SmartShapeCollection'
+import { ShapeCollection as SmartShapeCollection } from 'meshup/src/index'
 
 describe('scene-decorator smoke', () =>
 {
@@ -14,7 +14,7 @@ describe('scene-decorator smoke', () =>
         const c = m.circle(20)
         expect(inScene(c)).toBe(true)
         const mesh = (c as any).extrude(10)
-        expect(mesh.constructor.name).toBe('SmartMesh')
+        expect(mesh.constructor.name).toBe('Mesh')
         expect(inScene(mesh)).toBe(true)     // result added
         expect(inScene(c)).toBe(false)       // original detached
     })
@@ -23,7 +23,7 @@ describe('scene-decorator smoke', () =>
     {
         const p = m.polygon([[0,0,0],[50,0,0],[50,50,0],[0,50,0]])
         const mesh = (p as any).extrude(10)
-        expect(mesh.constructor.name).toBe('SmartMesh')
+        expect(mesh.constructor.name).toBe('Mesh')
         expect(inScene(mesh)).toBe(true)
         expect(inScene(p)).toBe(false)
     })
@@ -33,7 +33,7 @@ describe('scene-decorator smoke', () =>
         const p = m.polygon([[0,0,0],[50,0,0],[50,50,0],[0,50,0]])
         const before = m.all().length
         const mesh = (p as any).toMesh()
-        expect(mesh.constructor.name).toBe('SmartMesh')
+        expect(mesh.constructor.name).toBe('Mesh')
         expect(m.all().length).toBe(before)  // pure: no scene change
         expect(inScene(p)).toBe(true)
     })
@@ -62,11 +62,11 @@ describe('scene-decorator smoke', () =>
         const verts = rect.select('V||left')
         expect(verts).toBeInstanceOf(SmartShapeCollection)
         expect(verts.length).toBe(2)
-        verts.toArray().forEach((v: any) => expect(v.constructor.name).toBe('SmartMeshVertex'))
+        verts.toArray().forEach((v: any) => expect(v.constructor.name).toBe('Vertex'))
         // 'E||front' matches exactly one edge → collapsed to a single SmartMeshCurve
         const edge = rect.select('E||front')
         expect(edge).not.toBeInstanceOf(SmartShapeCollection)
-        expect(edge.constructor.name).toBe('SmartMeshCurve')
+        expect(edge.constructor.name).toBe('Curve')
     })
 
     it('@sceneLayer: mesh.elevation puts curves on elevation layer, keeps original', () =>
@@ -86,7 +86,7 @@ describe('scene-decorator smoke', () =>
         const col = (m.box(20,20,20) as any).row(3, 10)
         expect(col).toBeInstanceOf(SmartShapeCollection)
         expect(col.length).toBe(3)
-        col.toArray().forEach((s: any) => expect(s.constructor.name).toBe('SmartMesh'))
+        col.toArray().forEach((s: any) => expect(s.constructor.name).toBe('Mesh'))
     })
 
     it('mesh collection.extrude forwards to each shape in meshup (no brep round-trip)', () =>
@@ -105,7 +105,7 @@ describe('scene-decorator smoke', () =>
         expect(solids.length).toBe(3)            // not empty
         solids.toArray().forEach((s: any) =>
         {
-            expect(s.constructor.name).toBe('SmartMesh')
+            expect(s.constructor.name).toBe('Mesh')
             expect(inScene(s)).toBe(true)
         })
     })

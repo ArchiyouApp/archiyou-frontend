@@ -48,7 +48,7 @@ import { Db } from '../calc/Db';
 // Archiyou modules
 import { Console } from '../console/Console';
 import { Modeler } from '../modeler/Modeler';
-import { isAnySmartShape } from '../modeler/SmartShapes';
+import { isAnyShape } from '../modeler/types';
 import { Annotator } from '../annotator/Annotator';
 import { Interactor } from '../interaction/Interactor';
 import { Calc } from '../calc/Calc';
@@ -156,7 +156,7 @@ export class Runner
                 if (typeof key === 'string' && !key.startsWith('_'))
                 {
                     try {
-                        if (isAnySmartShape(value) && (!(value as any).name() || (value as any)._nameInherited === true))
+                        if (isAnyShape(value) && (!(value as any).name() || (value as any)._nameInherited === true))
                         {
                             // Unnamed shapes are named after their variable; so are
                             // fresh copies, which inherit the source's name — e.g.

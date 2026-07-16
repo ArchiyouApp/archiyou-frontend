@@ -20,7 +20,7 @@ describe('SmartMeshCurve.loft()', () =>
 
         const surf = ll1.loft(ll2) as any
         expect(surf).toBeTruthy()
-        expect(surf.constructor.name).toBe('SmartMeshPolygon')
+        expect(surf.constructor.name).toBe('Polygon')
         expect(surf.area()).toBeCloseTo(6656.854, 2)
 
         // result is in the scene; the source profile (ll1) is replaced, ll2 remains

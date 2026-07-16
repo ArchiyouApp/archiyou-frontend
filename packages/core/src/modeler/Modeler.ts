@@ -35,32 +35,23 @@ import { ModelModeSchema, ModelUnitsSchema, PointLikeSchema } from "./schemas";
 import { Type } from 'typebox'
 
 import { validate, optional } from "../decorators";
-import {
-    SmartMeshCurve,
-    SmartMesh,
-    SmartMeshVertex,
-    SmartMeshPolygon,
-    SmartBrepEdge,
-    SmartBrepWire,
-    SmartBrepFace,
-    SmartBrepShell,
-    SmartBrepSolid,
-    type AnySmartShape, isAnySmartShape,
-    SmartShapeFace,
-} from "./SmartShapes";
+import { type AnyShape, isAnyShape } from "./types";
 
-import { SmartSceneNode } from "./SmartSceneNode";
 import { buildDXF, type toDXFOptions } from "./DXFExporter";
 
 // Meshup namespace — imported as value (for instanceof) and type
 import * as meshup from 'meshup/src/index'
+
+// Side-effect import: augments meshup Shape/SceneNode/ShapeCollection prototypes with the
+// visual/app methods (dimension, label, material, onClick, addToScene, toDXF, …). Must load
+// before any script runs so those methods exist on the meshup shapes the modeler returns.
+import './shapeAnnotations'
 
 import type { Meshup } from 'meshup/src/index'
 import type { Brep } from './brep/index'
 
 // Brep is loaded lazily in _loadBrep() to avoid pulling in the OpenCascade WASM at startup
 let brep: Brep | null = null;
-import { SmartShapeCollection } from "./SmartShapeCollection";
 import { defaultTextFont, getFont, registerFont, fetchFont } from "./TextFonts";
 import { SceneNodeGraphNode, isPointLike } from "meshup/src/types";
 import { Layouter } from "./Layouter";
@@ -91,8 +82,8 @@ export class Modeler
     // geometry. Set from the execution request; read by dimension-line SVG etc.
     private _unitSystem: 'metric'|'imperial' = 'metric'
 
-    declare private _scene: SmartSceneNode
-    declare private _activeLayer: SmartSceneNode | null
+    declare private _scene: meshup.SceneNode
+    declare private _activeLayer: meshup.SceneNode | null
     declare private _activeSketch: any
     declare private _make: Make
     
@@ -145,9 +136,35 @@ export class Modeler
     /** Reset state */
     reset()
     {
-        this._scene = SmartSceneNode.root('root'); // new scene root
-        this._activeLayer = this._scene;
+        this._scene = meshup.SceneNode.root('root'); // new scene root
+        this._setActiveLayer(this._scene);
         this.setMake();
+    }
+
+    /** Set the active layer (where new shapes land) and mirror it onto the scene root so
+     *  the meshup scene decorators can resolve it from any in-scene shape via
+     *  `node.root().activeLayer()`. */
+    private _setActiveLayer(node: meshup.SceneNode | null): void
+    {
+        this._activeLayer = node;
+        this._scene?.setActiveLayer(node);
+    }
+
+    /** Adopt a freshly-created meshup shape into this modeler: tag it with the modeler
+     *  back-reference (so its augmented visual methods can reach the app modules) and add it
+     *  to the scene at the active layer. Returns the same shape for chaining. */
+    private _adopt<T extends AnyShape>(shape: T): T
+    {
+        (shape as any)._modeler = this;
+        this.addToScene(shape);
+        return shape;
+    }
+
+    /** Brep mode is not yet re-wired after the SmartShape removal. The brep kernel files
+     *  under modeler/brep/ are kept but unused; mesh is the only wired branch. */
+    private _brepNotWired(method: string): never
+    {
+        throw new Error(`Modeler::${method}(): brep mode is not yet wired after the SmartShape removal. Use mesh mode.`);
     }
 
     /** Get active kernel */
@@ -238,7 +255,7 @@ export class Modeler
         return k as KernelClasses;
     }
 
-    scene(): SmartSceneNode
+    scene(): meshup.SceneNode
     {
         return this._scene;
     }
@@ -248,16 +265,23 @@ export class Modeler
         return new Layouter(this._scene)
     }
 
-    /** Add a Smart* shape (or array of Smart* shapes) to the scene at the active layer. */
-    addToScene(shape: AnySmartShape | Array<AnySmartShape>): SmartSceneNode
+    /** Add a meshup shape (or array of shapes) to the scene at the active layer. Tags each
+     *  with the modeler back-reference so its augmented visual methods can reach the app. */
+    addToScene(shape: AnyShape | Array<AnyShape>): meshup.SceneNode
     {
         const shapes = Array.isArray(shape) ? shape : [shape];
-        if (!shapes.every(s => isAnySmartShape(s)))
+        if (!shapes.every(s => isAnyShape(s)))
         {
-            throw new Error('Modeler::addToScene(): argument must be a Smart* shape or array of Smart* shapes.');
+            throw new Error('Modeler::addToScene(): argument must be a meshup shape or array of meshup shapes.');
         }
-        shapes.forEach(s => this._activeLayer.addShape(s as any));
-        return this._activeLayer;
+        shapes.forEach(s =>
+        {
+            (s as any)._modeler = this;
+            // A shape marked tmp() opts out of the scene.
+            if ((s as any)._suppressScene) return;
+            this._activeLayer!.addShape(s as any);
+        });
+        return this._activeLayer!;
     }
 
     /** Set Modeler mode: mesh (default) or brep */
@@ -290,35 +314,26 @@ export class Modeler
     @validate(PointLikeSchema)
     point(xp?:PointLike, y?:number, z?:number): Point
     {
-        return (this.mode() === 'mesh')
-            ? new meshup.Point(xp, y, z) as meshup.Point
-            : new brep.Point(xp as brep.PointLike, y, z) as brep.Point
+        if (this.mode() !== 'mesh') this._brepNotWired('point');
+        return new meshup.Point(xp, y, z) as meshup.Point
     }
 
     /** Creates a 2D/3D Vector */
     @validate(PointLikeSchema)
     vector(xp?:PointLike, y?:number, z?:number): Vector
     {
-        return (this.mode() === 'mesh')
-            ? new meshup.Vector(xp, y, z) as meshup.Vector
-            : new brep.Vector(xp as brep.PointLike, y, z) as brep.Vector
+        if (this.mode() !== 'mesh') this._brepNotWired('vector');
+        return new meshup.Vector(xp, y, z) as meshup.Vector
     }
 
 
-    /** Creates a Vertex and adds it to the scene. In mesh mode this returns a
-     *  SmartMeshVertex so that .color()/.name()/etc. work and the point is
-     *  actually exported to the GLB. */
+    /** Creates a Vertex and adds it to the scene so .color()/.name()/etc. work and the
+     *  point is exported to the GLB. */
     @validate(PointLikeSchema)
-    vertex(xp?:PointLike, y?:number, z?:number): SmartMeshVertex | Vertex
+    vertex(xp?:PointLike, y?:number, z?:number): meshup.Vertex
     {
-        if (this.mode() === 'mesh')
-        {
-            const shape = SmartMeshVertex.from(this, new meshup.Vertex(meshup.Point.from(xp, y, z)) as meshup.Vertex)
-            this.addToScene(shape);
-            return shape;
-        }
-        // brep mode: no Smart wrapper yet, returned raw (not added to scene)
-        return new brep.Vertex(xp as brep.PointLike, y, z) as brep.Vertex
+        if (this.mode() !== 'mesh') this._brepNotWired('vertex');
+        return this._adopt(new meshup.Vertex(meshup.Point.from(xp, y, z)) as meshup.Vertex)
     }
 
 
@@ -326,296 +341,241 @@ export class Modeler
 
     /** Creates a Line Curve */
     @validate(PointLikeSchema, PointLikeSchema)
-    line(start: PointLike, end: PointLike): SmartMeshCurve | SmartBrepEdge
+    line(start: PointLike, end: PointLike): meshup.Curve
     {
-        const shape = (this.mode() === 'mesh')
-            ? SmartMeshCurve.from(this, meshup.Curve.Line(start, end) as meshup.Curve)
-            : SmartBrepEdge.from(this, new brep.Edge(start as brep.PointLike, end as brep.PointLike) as brep.Edge)
-        this.addToScene(shape);
-        return shape;
+        if (this.mode() !== 'mesh') this._brepNotWired('line');
+        return this._adopt(meshup.Curve.Line(start, end) as meshup.Curve)
     }
 
     /** Makes an Arc through start, mid and end Point */
     @validate(PointLikeSchema, PointLikeSchema, PointLikeSchema)
-    arc(start: PointLike, mid: PointLike, end: PointLike): SmartMeshCurve | SmartBrepEdge
+    arc(start: PointLike, mid: PointLike, end: PointLike): meshup.Curve
     {
-        const shape = (this.mode() === 'mesh')
-            ? SmartMeshCurve.from(this, meshup.Curve.Arc(start, mid, end) as meshup.Curve)
-            : SmartBrepEdge.from(this, new brep.Edge().makeArc(start as brep.PointLike, mid as brep.PointLike, end as brep.PointLike) as brep.Edge)
-        this.addToScene(shape);
-        return shape;
+        if (this.mode() !== 'mesh') this._brepNotWired('arc');
+        return this._adopt(meshup.Curve.Arc(start, mid, end) as meshup.Curve)
     }
 
     /** Makes a Spline going through given Points */
-    spline(...points: PointLike[]): SmartMeshCurve | SmartBrepEdge
+    spline(...points: PointLike[]): meshup.Curve
     {
-        const shape = (this.mode() === 'mesh')
-            ? SmartMeshCurve.from(this, meshup.Curve.Interpolated(...points) as meshup.Curve)
-            : SmartBrepEdge.from(this, new brep.Edge().makeSpline(points as brep.PointLike[]) as brep.Edge)
-        this.addToScene(shape);
-        return shape;
+        if (this.mode() !== 'mesh') this._brepNotWired('spline');
+        return this._adopt(meshup.Curve.Interpolated(...points) as meshup.Curve)
     }
 
     /** Makes a Polyline through multiple points */
-    polyline(points: PointLike | PointLike[], ...args: PointLike[]): SmartMeshCurve | SmartBrepWire
+    polyline(points: PointLike | PointLike[], ...args: PointLike[]): meshup.Curve
     {
-        const shape = (this.mode() === 'mesh')
-            ? SmartMeshCurve.from(this, meshup.Curve.Polyline(points, ...args) as meshup.Curve)
-            : SmartBrepWire.from(this, new brep.Wire().fromVertices(
-                Array.isArray(points) ? [...points, ...args] as brep.PointLike[] : [points, ...args] as brep.PointLike[]
-              ) as brep.Wire)
-        this.addToScene(shape);
-        return shape;
+        if (this.mode() !== 'mesh') this._brepNotWired('polyline');
+        return this._adopt(meshup.Curve.Polyline(points, ...args) as meshup.Curve)
     }
 
-    /** Makes a 2D Spiral — brep only */
-    spiral(...args: any[]): SmartBrepWire
+    /** Makes a 2D Spiral — brep only (not yet wired) */
+    spiral(..._args: any[]): never
     {
-        if (this.mode() === 'mesh') { throw new Error('spiral(): not available in mesh mode') }
-        const shape = SmartBrepWire.from(this, (new brep.Wire() as any).makeSpiral(...args) as brep.Wire)
-        this.addToScene(shape);
-        return shape;
+        this._brepNotWired('spiral');
     }
 
-    /** Makes a Helix — brep only */
-    helix(...args: any[]): SmartBrepWire
+    /** Makes a Helix — brep only (not yet wired) */
+    helix(..._args: any[]): never
     {
-        if (this.mode() === 'mesh') { throw new Error('helix(): not available in mesh mode') }
-        const shape = SmartBrepWire.from(this, (new brep.Wire() as any).makeHelix(...args) as brep.Wire)
-        this.addToScene(shape);
-        return shape;
+        this._brepNotWired('helix');
     }
 
     //// CLOSED 2D SHAPES ////
 
     /** Creates a rectangular Curve */
-    rect(width: number = 100, depth: number = 100, center: PointLike = [0, 0, 0]): SmartMeshCurve | SmartBrepWire
+    rect(width: number = 100, depth: number = 100, center: PointLike = [0, 0, 0]): meshup.Curve
     {
-        const shape = (this.mode() === 'mesh')
-            ? SmartMeshCurve.from(this, meshup.Curve.Rect(width, depth, center) as meshup.Curve)
-            : SmartBrepWire.from(this, new brep.Wire().makeRect(width, depth, center as brep.PointLike) as brep.Wire)
-        this.addToScene(shape);
-        return shape;
+        if (this.mode() !== 'mesh') this._brepNotWired('rect');
+        return this._adopt(meshup.Curve.Rect(width, depth, center) as meshup.Curve)
     }
 
     /** Creates a rectangular Curve between two Points */
     @validate(PointLikeSchema, PointLikeSchema)
-    rectBetween(from: PointLike, to: PointLike): SmartMeshCurve | SmartBrepFace
+    rectBetween(from: PointLike, to: PointLike): meshup.Curve
     {
-        const shape = (this.mode() === 'mesh')
-            ? SmartMeshCurve.from(this, meshup.Curve.RectBetween(from, to) as meshup.Curve)
-            : SmartBrepFace.from(this, new brep.Face().makeRectBetween(from as brep.PointLike, to as brep.PointLike) as unknown as brep.Face)
-        this.addToScene(shape);
-        return shape;
+        if (this.mode() !== 'mesh') this._brepNotWired('rectBetween');
+        return this._adopt(meshup.Curve.RectBetween(from, to) as meshup.Curve)
     }
 
     /** Creates a closed planar Polygon from 3+ points.
      *  Accepts either an array — polygon([p1, p2, p3]) — or flat args — polygon(p1, p2, p3). */
-    polygon(vertices: PointLike | PointLike[], ...args: PointLike[]): SmartMeshPolygon | SmartBrepFace
+    polygon(vertices: PointLike | PointLike[], ...args: PointLike[]): meshup.Polygon
     {
+        if (this.mode() !== 'mesh') this._brepNotWired('polygon');
         const points = (isPointLike(vertices) ? [vertices, ...args] : [...vertices, ...args]) as PointLike[];
-        const shape = (this.mode() === 'mesh')
-            ? SmartMeshPolygon.from(this, new meshup.Polygon(points) as meshup.Polygon)
-            : SmartBrepFace.from(this, new brep.Face().fromVertices(points as brep.PointLike[]) as brep.Face)
-        this.addToScene(shape);
-        return shape;
+        return this._adopt(new meshup.Polygon(points) as meshup.Polygon)
     }
 
     /** Creates a circular Curve */
-    circle(radius: number = 50, center: PointLike = [0, 0, 0]): SmartMeshCurve | SmartBrepEdge
+    circle(radius: number = 50, center: PointLike = [0, 0, 0]): meshup.Curve
     {
-        const shape = (this.mode() === 'mesh')
-            ? SmartMeshCurve.from(this, meshup.Curve.Circle(radius, center) as meshup.Curve)
-            : SmartBrepEdge.from(this, new brep.Edge().makeCircle(radius, center as brep.PointLike) as brep.Edge)
-        this.addToScene(shape);
-        return shape;
+        if (this.mode() !== 'mesh') this._brepNotWired('circle');
+        return this._adopt(meshup.Curve.Circle(radius, center) as meshup.Curve)
     }
 
     /** Creates a planar surface */
-    plane(...args: any[]): SmartMeshPolygon | SmartBrepFace
+    plane(...args: any[]): meshup.Polygon
     {
-        if (this.mode() === 'mesh')
+        if (this.mode() !== 'mesh') this._brepNotWired('plane');
+
+        const [
+            width = 50,
+            depth = 50,
+            position = [0, 0, 0],
+            normal = [0, 0, 1],
+        ] = args as [number?, number?, PointLike?, PointLike?]
+
+        // A plane is a flat surface, so build it as a Polygon (not a solid Mesh): flat shapes
+        // are cut in 2D (see Polygon.cutoff), whereas Mesh.cutoff needs a solid.
+        const basePolygon = meshup.Curve.Rect(width, depth, [0, 0, 0]).toPolygon()
+        if (!basePolygon)
         {
-            const [
-                width = 50,
-                depth = 50,
-                position = [0, 0, 0],
-                normal = [0, 0, 1],
-            ] = args as [number?, number?, PointLike?, PointLike?]
-
-            // A plane is a flat surface, so build it as a Polygon (not a solid Mesh): flat shapes
-            // are cut in 2D (see SmartMeshPolygon.cutoff), whereas Mesh.cutoff needs a solid.
-            const basePolygon = meshup.Curve.Rect(width, depth, [0, 0, 0]).toPolygon()
-            if (!basePolygon)
-            {
-                throw new Error('plane(): failed to create mesh plane surface.')
-            }
-
-            const shape = SmartMeshPolygon.from(this, basePolygon as meshup.Polygon)
-            const normalVector = new meshup.Vector(normal)
-            if (normalVector.length() === 0)
-            {
-                throw new Error('plane(): normal must be a non-zero vector.')
-            }
-
-            const targetNormal = normalVector.normalize()
-            const baseNormal = new meshup.Vector(0, 0, 1)
-            if (!baseNormal.equals(targetNormal))
-            {
-                shape.rotateQuaternion(baseNormal.rotationBetween(targetNormal))
-            }
-
-            shape.move(position)
-            this.addToScene(shape)
-            return shape
+            throw new Error('plane(): failed to create mesh plane surface.')
         }
 
-        const shape = SmartBrepFace.from(this, (new brep.Face() as any).makePlane(...args) as brep.Face)
-        this.addToScene(shape);
-        return shape;
+        const shape = basePolygon as meshup.Polygon
+        const normalVector = new meshup.Vector(normal)
+        if (normalVector.length() === 0)
+        {
+            throw new Error('plane(): normal must be a non-zero vector.')
+        }
+
+        const targetNormal = normalVector.normalize()
+        const baseNormal = new meshup.Vector(0, 0, 1)
+        if (!baseNormal.equals(targetNormal))
+        {
+            shape.rotateQuaternion(baseNormal.rotationBetween(targetNormal))
+        }
+
+        shape.move(position)
+        return this._adopt(shape)
     }
 
     /** Creates a planar Face between two Points */
     @validate(PointLikeSchema, PointLikeSchema)
-    planeBetween(from: PointLike, to: PointLike): SmartShapeFace
+    planeBetween(from: PointLike, to: PointLike): meshup.Polygon
     {
-        const shape = (this.mode() === 'mesh')
-            ? SmartMeshPolygon.from(this, meshup.Polygon.planeBetween(from, to) as meshup.Polygon)
-            : SmartBrepFace.from(this, (new brep.Face() as any).makePlaneBetween(from, to) as brep.Face)
-        this.addToScene(shape);
-        return shape;
+        if (this.mode() !== 'mesh') this._brepNotWired('planeBetween');
+        return this._adopt(meshup.Polygon.planeBetween(from, to) as meshup.Polygon)
     }
 
-    /** Creates a base plane along a main axis — brep only */
-    basePlane(...args: any[]): SmartBrepFace
+    /** Creates a base plane along a main axis — brep only (not yet wired) */
+    basePlane(..._args: any[]): never
     {
-        if (this.mode() === 'mesh') { throw new Error('basePlane(): not available in mesh mode') }
-        const shape = SmartBrepFace.from(this, (new brep.Face() as any).makeBasePlane(...args) as brep.Face)
-        this.addToScene(shape);
-        return shape;
+        this._brepNotWired('basePlane');
     }
 
     //// 3D SHAPES ////
 
     /** Creates a Box shape */
     @validate(Type.Number(), Type.Number(), Type.Number(), optional(PointLikeSchema))
-    box(width: number = 100, depth?: number, height?: number, position?: PointLike): SmartSolid
+    box(width: number = 100, depth?: number, height?: number, position?: PointLike): meshup.Mesh
     {
-        const shape = (this.mode() === 'mesh')
-            ? SmartMesh.from(this, meshup.Mesh.Box(width, depth, height) as meshup.Mesh)
-            : SmartBrepSolid.from(this, new brep.Solid().makeBox(width, depth, height) as brep.Solid)
-        if (position) { (shape as any).move(position) }
-        this.addToScene(shape);
-        return shape;
+        if (this.mode() !== 'mesh') this._brepNotWired('box');
+        const shape = meshup.Mesh.Box(width, depth, height) as meshup.Mesh
+        if (position) { shape.move(position) }
+        return this._adopt(shape)
     }
 
     /** Alias for box */
     @validate(Type.Number(), Type.Number(), Type.Number(), optional(PointLikeSchema))
-    cube(width: number = 100, depth?: number, height?: number, position?: PointLike): SmartMesh | SmartBrepSolid
+    cube(width: number = 100, depth?: number, height?: number, position?: PointLike): meshup.Mesh
     {
         return this.box(width, depth, height, position)
     }
 
     /** Creates a Box shape between two Points */
     @validate(PointLikeSchema, PointLikeSchema)
-    boxBetween(from: PointLike, to: PointLike): SmartMesh | SmartBrepSolid
+    boxBetween(from: PointLike, to: PointLike): meshup.Mesh
     {
-        const shape = (this.mode() === 'mesh')
-            ? SmartMesh.from(this, meshup.Mesh.BoxBetween(from, to) as meshup.Mesh)
-            : SmartBrepSolid.from(this, new brep.Solid().makeBoxBetween(from as brep.PointLike, to as brep.PointLike) as brep.Solid)
-        this.addToScene(shape);
-        return shape;
+        if (this.mode() !== 'mesh') this._brepNotWired('boxBetween');
+        return this._adopt(meshup.Mesh.BoxBetween(from, to) as meshup.Mesh)
     }
 
     /** Creates a Sphere shape */
     @validate(Type.Number(), PointLikeSchema)
-    sphere(radius: number = 50, position?: PointLike): SmartMesh | SmartBrepSolid
+    sphere(radius: number = 50, position?: PointLike): meshup.Mesh
     {
-        const shape = (this.mode() === 'mesh')
-            ? (() => { const m = SmartMesh.from(this, meshup.Mesh.Sphere(radius) as meshup.Mesh); if (position) (m as any).move(position); return m })()
-            : SmartBrepSolid.from(this, new brep.Solid().makeSphere(radius, position as brep.PointLike) as brep.Solid)
-        this.addToScene(shape);
-        return shape;
+        if (this.mode() !== 'mesh') this._brepNotWired('sphere');
+        const shape = meshup.Mesh.Sphere(radius) as meshup.Mesh
+        if (position) { shape.move(position) }
+        return this._adopt(shape)
     }
 
-    /** Creates a Cone — brep only */
-    cone(...args: any[]): SmartBrepSolid
+    /** Creates a Cone — brep only (not yet wired) */
+    cone(..._args: any[]): never
     {
-        if (this.mode() === 'mesh') { throw new Error('cone(): not available in mesh mode') }
-        const shape = SmartBrepSolid.from(this, new brep.Solid().makeCone(...args) as brep.Solid)
-        this.addToScene(shape);
-        return shape;
+        this._brepNotWired('cone');
     }
 
     /** Creates a Cylinder shape */
     @validate(Type.Number(), Type.Number(), PointLikeSchema)
-    cylinder(radius: number = 50, height: number = 100, position?: PointLike): SmartMesh | SmartBrepSolid
+    cylinder(radius: number = 50, height: number = 100, position?: PointLike): meshup.Mesh
     {
-        const shape = (this.mode() === 'mesh')
-            ? SmartMesh.from(this, meshup.Mesh.Cylinder(radius, height) as meshup.Mesh)
-            : SmartBrepSolid.from(this, new brep.Solid().makeCylinder(radius, height, position as brep.PointLike) as brep.Solid)
-        if (position) { (shape as any).move(position) }
-        this.addToScene(shape);
-        return shape;
+        if (this.mode() !== 'mesh') this._brepNotWired('cylinder');
+        const shape = meshup.Mesh.Cylinder(radius, height) as meshup.Mesh
+        if (position) { shape.move(position) }
+        return this._adopt(shape)
     }
 
     //// ==== SCENE MANAGEMENT ==== ////
 
-    activeLayer(): SmartSceneNode | null
+    activeLayer(): meshup.SceneNode | null
     {
         return this._activeLayer;
     }
 
-    layerShapes(): SmartShapeCollection
+    layerShapes(): meshup.ShapeCollection
     {
-        return this._activeLayer ? this._activeLayer.shapes() : new SmartShapeCollection();
+        return this._activeLayer ? this._activeLayer.shapes() : new meshup.ShapeCollection();
     }
 
-    /** Create or activate a named layer 
+    /** Create or activate a named layer
      *  a layer is always created as sibling of the active layer, and becomes the new active layer.
     */
-    layer(name?: string): SmartSceneNode
+    layer(name?: string): meshup.SceneNode
     {
-        if (!name) { return this._activeLayer ?? null }
-        
+        if (!name) { return this._activeLayer ?? this._scene }
+
         // Check if layer name exists
         const existingLayers = this.scene()
             .findAll(n => n.name === name);
-            
+
         if(existingLayers.length > 0)
-        { 
+        {
             if(existingLayers.length > 1){ console.warn(`Multiple layers with name "${name}" found. Getting the first one.`) }
-            return existingLayers[0] as any as SmartSceneNode;
+            return existingLayers[0];
         }
-        
-        const layer = new SmartSceneNode(name);
-        (this._activeLayer.parent() || this._activeLayer).addChild(layer as any);
-        this._activeLayer = layer;
+
+        const layer = new meshup.SceneNode(name);
+        (this._activeLayer!.parent() || this._activeLayer!).addChild(layer);
+        this._setActiveLayer(layer);
         console.info(`Modeler::layer(): Created and switched to layer "${name}".`);
-        return this._activeLayer;
+        return this._activeLayer!;
     }
 
     /** Return all Shapes in the scene as a ShapeCollection */
-    all(): SmartShapeCollection
+    all(): meshup.ShapeCollection
     {
-        if(!this._scene){ return new SmartShapeCollection(); }
-        return new SmartShapeCollection((this._scene as any).shapes());
+        if(!this._scene){ return new meshup.ShapeCollection(); }
+        return new meshup.ShapeCollection(this._scene.shapes());
     }
 
     /** @alias all */
-    allShapes(): SmartShapeCollection
+    allShapes(): meshup.ShapeCollection
     {
         return this.all();
     }
 
-    /** Create a scene-backed SmartShapeCollection. Its shapes (and groups) are
-     *  nested under a new layer parented at the current active layer. */
-    collection(...args: Array<any>): SmartShapeCollection
+    /** Create a scene-backed ShapeCollection. Its shapes (and groups) are nested under a new
+     *  layer parented at the current active layer. */
+    collection(...args: Array<any>): meshup.ShapeCollection
     {
-        const col = new SmartShapeCollection() // empty: keep constructor scene-agnostic
+        const col = new meshup.ShapeCollection() // empty: keep constructor scene-agnostic
         col._modeler = this
-        const layer = new SmartSceneNode(col._name)
-        this._activeLayer.addChild(layer as any) // child of active layer; do NOT reassign _activeLayer
+        const layer = new meshup.SceneNode(col._name)
+        this._activeLayer!.addChild(layer) // child of active layer; do NOT reassign _activeLayer
         col._layer = layer
         args.forEach(arg => col.add(arg))
         return col
@@ -656,11 +616,9 @@ export class Modeler
             // we register a callback to capture the result and add to scene
             this._activeSketch.onEnd((curves) =>
             {
-                const smartCurves = (curves as meshup.ShapeCollection<meshup.Curve>)
-                                        .toArray()
-                                        .map(c => SmartMeshCurve.from(this, c));
-                this.addToScene(smartCurves);
-                return smartCurves.length === 1 ? smartCurves[0] : new SmartShapeCollection(...smartCurves);
+                const sketchCurves = (curves as meshup.ShapeCollection<meshup.Curve>).toArray();
+                this.addToScene(sketchCurves);
+                return sketchCurves.length === 1 ? sketchCurves[0] : new meshup.ShapeCollection(...sketchCurves);
             });
             return this._activeSketch
         }
@@ -690,7 +648,7 @@ export class Modeler
      *     `'script'`, `'gothic'`, `'greek'`), raw `.jhf` text, or omitted for `'sans'`.
      *
      *  Text is laid out on the XY plane from the origin; use `opts.at` to position it. */
-    text(text: string, opts: ModelerTextOptions = {}): SmartShapeCollection | SmartMeshCurve | SmartMesh
+    text(text: string, opts: ModelerTextOptions = {}): meshup.ShapeCollection | meshup.Curve | meshup.Mesh
     {
         if (this.mode() !== 'mesh')
         {
@@ -715,11 +673,9 @@ export class Modeler
 
         if (style === 'solid')
         {
-            const mesh = meshup.Sketch.textSolid(text, { font: fontBytes, size: opts.size ?? 20, depth: opts.depth ?? 2, align })
-            const shape = SmartMesh.from(this, mesh as meshup.Mesh)
-            if (opts.at) { (shape as any).move(opts.at) }
-            this.addToScene(shape)
-            return shape
+            const mesh = meshup.Sketch.textSolid(text, { font: fontBytes, size: opts.size ?? 20, depth: opts.depth ?? 2, align }) as meshup.Mesh
+            if (opts.at) { mesh.move(opts.at) }
+            return this._adopt(mesh)
         }
 
         if (style !== 'outline')
@@ -765,13 +721,13 @@ export class Modeler
         throw new Error('Modeler::text(): `font` must be a name, Uint8Array or ArrayBuffer.')
     }
 
-    /** @internal Wrap text curves as SmartMeshCurves, position them, add to scene. */
-    private _addTextCurves(curves: meshup.ShapeCollection<meshup.Curve>, at?: PointLike): SmartShapeCollection | SmartMeshCurve
+    /** @internal Position text curves, add them to the scene, return one or a collection. */
+    private _addTextCurves(curves: meshup.ShapeCollection<meshup.Curve>, at?: PointLike): meshup.ShapeCollection | meshup.Curve
     {
-        const smart = curves.toArray().map(c => SmartMeshCurve.from(this, c as meshup.Curve))
-        if (at) { smart.forEach(s => (s as any).move(at)) }
-        this.addToScene(smart)
-        return smart.length === 1 ? smart[0] : new SmartShapeCollection(...smart)
+        const shapes = curves.toArray() as meshup.Curve[]
+        if (at) { shapes.forEach(s => s.move(at)) }
+        this.addToScene(shapes)
+        return shapes.length === 1 ? shapes[0] : new meshup.ShapeCollection(...shapes)
     }
 
 

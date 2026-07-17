@@ -46,7 +46,7 @@ import type { DocData } from '../docs/types';
 import { Db } from '../calc/Db';
 
 // Archiyou modules
-import { Console } from '../console/Console';
+import { Console, NATIVE_CONSOLE } from '../console/Console';
 import { Modeler } from '../modeler/Modeler';
 import { isAnyShape } from '../modeler/types';
 import { Annotator } from '../annotator/Annotator';
@@ -116,9 +116,15 @@ export class Runner
     {
         const BASIC_SCOPE = { console: console };
 
+        // Capture the scope we are nesting inside before buildLocalExecScopeState() swaps
+        // globalThis.console for the new scope's Console.
+        const parentScope = (name !== 'default') ? this._localScopes[this._activeScope?.name] : undefined;
+
         const state = this.buildLocalExecScopeState();
         state._scope = name; // set name of the scope inside scope
         state._main = (name === 'default'); // is this the main scope
+
+        state._archiyou.console.setParent(parentScope?._archiyou?.console);
 
         /*
                 Proxy is used to isolate scope changes
@@ -417,7 +423,11 @@ export class Runner
         if(!this._localScopes[name]){ throw new Error(`Runner:: scope(): Scope '${name}' does not exist`)}
         delete this._localScopes[name];
         this._activeScope = { name: 'default', context: 'local' }; // reset to default scope
-        
+
+        // Hand the global console back to the scope we return to. Without this the deleted
+        // scope's Console stays installed globally and every later run stacks another one on top.
+        globalThis.console = this._localScopes['default']?._archiyou?.console ?? NATIVE_CONSOLE;
+
         console.info(`Runner::deleteLocalScope(): Deleted scope: '${name}. Returned to default.'`);
 
         return this;

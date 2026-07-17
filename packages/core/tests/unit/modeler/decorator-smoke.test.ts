@@ -164,4 +164,89 @@ describe('scene-decorator smoke', () =>
         expect(inScene(pl)).toBe(true)
         expect(m.all().length).toBe(before + 1) // only the cutter line, not split pieces
     })
+
+    //// SCENE-DERIVED SUB-SHAPES ////
+    //
+    // segments()/start()/vertices() are @sceneCarry: they hand back fresh, unattached shapes
+    // (adding every segment of every curve would flood the scene). Those shapes still carry
+    // their source's scene root, so a later @sceneUpdate op on one can find the active layer.
+
+    it('@sceneCarry: segments() stay out of the scene but carry the scene root', () =>
+    {
+        const pl = m.polyline([0, 0, 0], [100, 0, 100], [200, 0, 0]) as any
+        const before = m.all().length
+        const seg = pl.segments().first()
+        expect(inScene(seg)).toBe(false)
+        expect(m.all().length).toBe(before)
+        expect(seg._scene).toBe(pl._node.root())
+    })
+
+    it('copy() of a detached sub-shape attaches it: copy() means "give me a new shape"', () =>
+    {
+        const pl = m.polyline([0, 0, 0], [100, 0, 100], [200, 0, 0]) as any
+        const seg = pl.segments().first()
+
+        const c = seg.copy().moveZ(10)
+
+        expect(inScene(seg)).toBe(false)   // the accessor result itself stays out
+        expect(inScene(c)).toBe(true)      // its copy does not
+    })
+
+    it('copy() of a shape removed from the scene stays out', () =>
+    {
+        const pl = m.polyline([0, 0, 0], [100, 0, 100], [200, 0, 0]) as any
+        const template = pl.copy().removeFromScene()
+        const before = m.all().length
+
+        const c = template.copy()
+
+        expect(inScene(c)).toBe(false)
+        expect(m.all().length).toBe(before)
+    })
+
+    it('_copy() is the pure clone: never touches the scene', () =>
+    {
+        const pl = m.polyline([0, 0, 0], [100, 0, 100], [200, 0, 0]) as any
+        const before = m.all().length
+
+        const c = pl._copy()
+
+        expect(inScene(c)).toBe(false)
+        expect(m.all().length).toBe(before)
+    })
+
+    it('@sceneUpdate: connect() on a copied segment puts the result in the scene', () =>
+    {
+        const pl = m.polyline([0, 0, 0], [100, 0, 100], [200, 0, 0]) as any
+        const opl = pl.copy().offset(-10) as any
+
+        const r = pl.segments().first().copy().connect(opl.segments().first())
+
+        expect(inScene(r)).toBe(true)
+        expect(r.isClosed()).toBe(true)
+    })
+
+    it('@sceneUpdate: offset() on a shape removed from the scene must not re-add it', () =>
+    {
+        const pl = m.polyline([0, 0, 0], [100, 0, 100], [200, 0, 0]) as any
+        const helper = pl.copy().removeFromScene()
+        const before = m.all().length
+
+        helper.offset(-10)
+
+        expect(inScene(helper)).toBe(false)
+        expect(m.all().length).toBe(before)
+    })
+
+    it('tmp() sub-shapes stay out of the scene through connect()', () =>
+    {
+        const pl = m.polyline([0, 0, 0], [100, 0, 100], [200, 0, 0]) as any
+        const opl = pl.copy().offset(-10) as any
+        const before = m.all().length
+
+        const r = pl.segments().first().copy().tmp().connect(opl.segments().first())
+
+        expect(inScene(r)).toBe(false)
+        expect(m.all().length).toBe(before)
+    })
 })

@@ -152,7 +152,7 @@ export class Make
         const ENDING_STUDS_INSIDE = true;
         const OPENING_WIDTH_MIN = 100;
         const OPENING_HEIGHT_MIN = 100;
-        const RIDGE_CENTER_MIN = 0.2; // max = 1 - RIDGE_CENTER_MIN
+        const RIDGE_CENTER_MIN = 0.15; // max = 1 - RIDGE_CENTER_MIN
         // if ridge.center is outside will default to 0 or 1
 
         grid = grid || DEFAULT_GRID_DISTANCE;
@@ -164,25 +164,28 @@ export class Make
         const OPENING_SNAP_POSITION_WITHIN_DISTANCE = studThickness * 2; // kingstud + frame
         const MIN_OPENING_GAP = studThickness * 2; // minimum gap between openings for two king studs
 
-        console.warn('==== HIERO 1 ====');
-        console.warn(ridge);
-
         // check if roof ridge is defined and valid
         if (ridge)
         {
-            if (typeof ridge.height !== 'number' || typeof ridge.center !== 'number')
+            if(ridge.height <= 0)
+            {
+                console.warn(`Invalid ridge height: ${ridge.height}. No ridge.`);
+                ridge = undefined;
+            }
+            else if (typeof ridge.height !== 'number' || typeof ridge.center !== 'number')
             {
                 console.warn(`Invalid ridge definition: ${JSON.stringify(ridge)}. Ignored.`);
                 ridge = undefined;
             }
-            if (ridge.center < RIDGE_CENTER_MIN)
+            else if (ridge.center < RIDGE_CENTER_MIN)
             {
                 console.user(`wall(): ridge.center snapped to 0`);
                 ridge.center = 0;
             }
-            else if (ridge.center > 1 - RIDGE_CENTER_MIN)
+            else if (ridge.center > (1 - RIDGE_CENTER_MIN))
             {
                 console.user(`wall(): ridge.center snapped to 1`);
+                ridge.center = 1;
             }
         }
 
@@ -193,7 +196,7 @@ export class Make
                         [0, 0, 0], // counterclockwise
                         [width, 0, 0], 
                         [width, 0, height],
-                        [width * (1-ridge.center), 0, height + ridge.height],
+                        [width * (ridge.center), 0, height + ridge.height],
                         [0, 0, height]
                     ])
                 : this.modeler.planeBetween([0, 0, 0], [width, 0, height])
@@ -347,7 +350,8 @@ export class Make
             )
         );
 
-        let studHeight = height - studThickness * 2;
+        // total maximum stud height (this includes ridge)
+        let studHeight = height - studThickness * 2; 
         if (ridge)
         {
             studHeight += ridge.height; // TODO: correction for angle
@@ -379,8 +383,8 @@ export class Make
             if(ridge.center === 0 || ridge.center === 1)
             {
                 roofLine = (ridge.center === 0) 
-                  ? this.modeler.line([0, 0, height],[width, 0, height + ridge.height]) // ridge is left
-                  : this.modeler.line( [0, 0, height + ridge.height],[width, 0, height]); // ridge is right
+                  ? this.modeler.line([0, 0, height + ridge.height],[width, 0, height ]) // ridge is left
+                  : this.modeler.line( [0, 0, height],[width, 0, height+ridge.height]); // ridge is right
 
                 const roofAngleRad = Math.atan(ridge.height / width);
                 const ridgeThicknessHeight = studThickness / Math.cos(roofAngleRad);
@@ -400,23 +404,32 @@ export class Make
                   [0, 0, height],
                   [width * ridge.center, 0, height + ridge.height],
                   [width, 0, height]
-                ).removeFromScene();
+                ); /*.removeFromScene();*/
 
-                roofLineInside = roofLine.copy().offset(-studThickness)
-                          .extendTo(this.modeler.line([0,0,0],[0,0,height+ridge.height]).removeFromScene())
-                          .extendTo(this.modeler.line([width,0,0],[width,0,height+ridge.height]).removeFromScene())
-                          .removeFromScene(); // roofLineInside extended to wall sides left and right
+                roofLineInside = roofLine
+                          .copy()
+                          .offset(-studThickness)
+                          .extendTo(this.modeler.line([0,0,0],[0,0,height+ridge.height]).tmp())
+                          .extendTo(this.modeler.line([width,0,0],[width,0,height+ridge.height]).tmp())
+                          .name('roofLineInside')
+                          .tmp(); // no in scene
+                          
+                
+                const topPlateLeft = roofLine
+                                      .segments().first()
+                                      .copy()
+                                      .connect(roofLineInside.segments().first())
+                                      .extrude(depth).moveY(-depth/2)
+                                      .name('topPlateLeft')
 
-                const topPlateLeft = roofLine.segments().first()
-                                      .connect(roofLineInside.segments().first()).toPolygon()
-                                      .extrude(depth).moveY(-depth/2).name('topPlateLeft');
                 const topPlateRight = roofLine.segments().last()
-                                      .connect(roofLineInside.segments().last()).toPolygon()
-                                      .extrude(depth).moveY(-depth/2).name('topPlateRight');
+                                      .connect(roofLineInside.segments().last())
+                                      .extrude(depth).moveY(-depth/2)
+                                      .name('topPlateRight');
                 topPlates.add(topPlateLeft, topPlateRight);
             }
         }
-
+        
         const plates = this.modeler.collection(bottomPlate, topPlates);
 
         // primary studs
@@ -445,6 +458,8 @@ export class Make
             primaryStuds.add(newStud);
         });
 
+        
+
         // Ending stud (see: skipEndStud above)
         if (!skipEndStud)
         {
@@ -472,17 +487,19 @@ export class Make
 
         // If ridge, cut studs and insulation
         let wallRidgeContour; // keep for later to check if openings are within
+        let wallRidgeContourSolid;
         if(ridge)
         {
             // make intersection volume
             wallRidgeContour = roofLineInside.copy().connect(
                   this.modeler.line([0,0,0],[width,0,0]).removeFromScene());
 
-            const wallRidgeContourSolid = wallRidgeContour.copy().toPolygon()
+            wallRidgeContourSolid = wallRidgeContour.copy().toPolygon()
                 .extrude(depth*2).moveY(-depth) // make solid 2x bigger
                 .removeFromScene();
 
             // do this in place, instead of Collection.intersections(...)
+            // TODO: fix
             primaryStuds.forEach((shape) => 
                 shape.intersection(wallRidgeContourSolid));
             insulation.forEach((shape) => 
@@ -803,7 +820,7 @@ export class Make
                             [
                                 openingFrameBbox.min().x + studThickness,
                                 depth / 2,
-                                height - studThickness
+                                (ridge) ? studHeight : height - studThickness
                             ]
                         )
                         .moveX(leftSnapOffset)
@@ -923,6 +940,20 @@ export class Make
                     );
             }
         });
+
+        // cut off studs around openings and clean insulation
+        if(ridge)
+        {
+            openingKingStuds.add(
+                openingKingStuds.forEach((s) => s.intersection(wallRidgeContourSolid)));
+            openingJackStuds.add(
+                openingJackStuds.forEach((s) => s.intersection(wallRidgeContourSolid)));
+            insulation.forEach((s) => {
+                s.subtract(openingKingStuds);
+                s.subtract(openingJackStuds);}
+            );
+        }
+
 
         // organize and output
         removedStuds.removeFromScene();

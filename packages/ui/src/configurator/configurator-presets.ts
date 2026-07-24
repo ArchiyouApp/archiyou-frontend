@@ -17,8 +17,13 @@ export class ConfiguratorPresets extends SignalWatcher(LitElement)
   // ── 1. Render ──
   override render()
   {
+    const presets = configuratorPresets.get();
+
+    // Hide the whole menu section when there are no presets to show.
+    this.toggleAttribute('hidden', presets.length === 0);
+    if (presets.length === 0) return nothing;
+
     const collapsed = presetMenuCollapsed.get();
-    const presets   = configuratorPresets.get();
 
     return html`
       <div class="header" @click=${this._toggleCollapse}>
@@ -30,16 +35,13 @@ export class ConfiguratorPresets extends SignalWatcher(LitElement)
 
       ${!collapsed ? html`
         <div class="preset-grid">
-          ${presets.length === 0
-            ? html`<span class="empty">No presets saved yet</span>`
-            : presets.map(p => html`
-                <wa-button
-                  size="small"
-                  appearance="outlined"
-                  @click=${() => applyConfiguratorPreset(p.name)}
-                >${p.name}</wa-button>
-              `)
-          }
+          ${presets.map(p => html`
+            <wa-button
+              size="small"
+              appearance="outlined"
+              @click=${() => applyConfiguratorPreset(p.name)}
+            >${p.name}</wa-button>
+          `)}
         </div>
       ` : nothing}
     `;
@@ -57,6 +59,11 @@ export class ConfiguratorPresets extends SignalWatcher(LitElement)
     {
       display: block;
       border-bottom: 1px solid var(--color-border);
+    }
+
+    :host([hidden])
+    {
+      display: none;
     }
 
     .header
@@ -93,14 +100,6 @@ export class ConfiguratorPresets extends SignalWatcher(LitElement)
       gap: var(--space-sm);
       padding: var(--space-md);
       background: var(--color-bg);
-    }
-
-    .empty
-    {
-      font-family: var(--font-sans);
-      font-size: var(--text-sm);
-      color: var(--color-text-muted, #888);
-      font-style: italic;
     }
   `;
 }

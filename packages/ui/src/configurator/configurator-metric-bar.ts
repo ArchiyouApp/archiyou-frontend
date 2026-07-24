@@ -31,8 +31,8 @@ export class ConfiguratorMetricBar extends SignalWatcher(LitElement)
         <div class="scroll-area">
           ${metrics.length === 0
             ? executing
-              ? html`<span class="empty"><wa-spinner style="font-size:0.9em"></wa-spinner>&ensp;Calculating metrics…</span>`
-              : html`<span class="empty">No metrics — add <code>calc.metric()</code> calls to your script</span>`
+              ? html`<span class="empty"><wa-spinner style="font-size:0.9em"></wa-spinner></span>`
+              : ''
             : metrics.map(m => html`
                 <configurator-metric-card .metric=${m}></configurator-metric-card>
               `)
@@ -140,6 +140,12 @@ export class ConfiguratorMetricBar extends SignalWatcher(LitElement)
     :host
     {
       display: block;
+      /* Fixed, self-contained height so the bar stays a constant size and
+         never scales with the split-panel divider or its own contents. */
+      height: 80px;
+      flex: 0 0 80px;
+      box-sizing: border-box;
+      overflow: hidden;
       border-top: 1px solid var(--color-border);
       background: var(--color-bg-elevated);
     }

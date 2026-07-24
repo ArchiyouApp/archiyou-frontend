@@ -45,6 +45,8 @@ export interface RunOptions
   componentScripts?: ScriptData[];       // local $component('./name') scripts
   selection?: string[];
   messages?: ConsoleMessageType[];
+  perStatement?: boolean;                // execute statement-by-statement (partial model + profiling)
+  assetProxyUrl?: string;                // base URL of the asset proxy for $import(); default '' → /proxy
 }
 
 /** Constructor options. */
@@ -196,6 +198,8 @@ export class RunnerWorker
       componentScripts: opts.componentScripts,
       selection: opts.selection,
       messages: opts.messages,
+      perStatement: opts.perStatement,
+      assetProxyUrl: opts.assetProxyUrl,
     };
   }
 

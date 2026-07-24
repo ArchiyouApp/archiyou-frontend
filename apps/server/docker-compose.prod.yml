@@ -50,12 +50,11 @@ services:
     env_file: .env
     environment:
       - NODE_ENV=production
-      - PORT=4000
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASW}
-      - DATABASE_FILE=./data/archiyou.db
-      - LIBRARY_PATH=./data/cache
+      - SERVER_PORT=4000
+      - SERVER_REDIS_HOST=redis
+      - SERVER_REDIS_PORT=6379
+      - SERVER_REDIS_PASSWORD=${REDIS_PASW}
+      - SERVER_DATABASE_FILE=./data/archiyou.db
     depends_on:
       redis:
         condition: service_healthy
@@ -74,9 +73,9 @@ services:
     env_file: .env
     environment:
       - NODE_ENV=production
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASW}
+      - SERVER_REDIS_HOST=redis
+      - SERVER_REDIS_PORT=6379
+      - SERVER_REDIS_PASSWORD=${REDIS_PASW}
       - WORKER_ID=worker
     depends_on:
       redis:

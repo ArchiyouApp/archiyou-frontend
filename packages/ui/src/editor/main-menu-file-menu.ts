@@ -81,6 +81,10 @@ export class MainMenuFileMenu extends LitElement
           <wa-icon slot="icon" library="lucide" name="rocket"></wa-icon>
           ${msg('Publish as configurator')}
         </wa-dropdown-item>
+        <wa-dropdown-item value="manage-configurators">
+          <wa-icon slot="icon" library="lucide" name="layout-grid"></wa-icon>
+          ${msg('Manage configurators')}
+        </wa-dropdown-item>
 
         <wa-divider></wa-divider>
 

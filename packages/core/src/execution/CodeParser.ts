@@ -28,8 +28,10 @@ export class CodeParser
 {   
     //// SETTINGS ////
     ACORN_OPTIONS:Options = {
-        ecmaVersion: 6, 
+        ecmaVersion: 'latest',
         locations: true,
+        sourceType: 'script',
+        allowAwaitOutsideFunction: true, // scripts use top-level await
     }
     
     IMPORT_RE = /\$import\((\'|\")([^\'\"]+)\'[\s]*,[\s]*(\{[^\}]+\})/ 
@@ -71,48 +73,98 @@ export class CodeParser
     /** Split as best as possible into seperate ScriptStatements to be executed */
     parse()
     {
-        try { 
+        try {
             this.tree = Parser.parse(this.code, this.ACORN_OPTIONS)
             this.makeStatements();
             this.filterStatements();
-            this.removeDeclarations();
         }
         catch(e)
         {
             // move Error up to GeomWorker
-            throw new Error(`${e}`);   
+            throw new Error(`${e}`);
         }
 
     }
 
-    /** Create ScriptStatements from AST tree */
+    /** Create ScriptStatements from AST tree.
+     *
+     *  Statements execute one-by-one inside the Runner's `with(scope)` Proxy, which lets us
+     *  omit var/let/const so assignments land as scope variables. So we AST-rewrite each
+     *  top-level statement:
+     *   - VariableDeclaration: strip the leading let/var/const keyword. Only the *leading*
+     *     keyword of a top-level node is removed, so string literals and nested declarations
+     *     (inside function/arrow bodies) are untouched — unlike the old regex pass.
+     *   - Function/ClassDeclaration: rewrite to a named assignment (`foo = function foo(){…}`)
+     *     so it becomes a scope variable. The name is kept for readable stack traces.
+     *
+     *  Because those declarations become plain assignments they no longer hoist, so a helper
+     *  called before its definition would break in statement mode while working whole-script.
+     *  To keep the two modes equivalent we emit the rewritten function/class statements first
+     *  (in source order), then the rest (in source order).
+     */
     makeStatements():Array<ScriptStatement>
     {
         const EXCLUDE_NODE_TYPES = ['EmptyStatement'];
 
-        this.statements = []; // reset ScriptStatements
+        const hoisted:Array<ScriptStatement> = []; // function/class declarations, emitted first
+        const rest:Array<ScriptStatement> = [];
 
         this.tree.body.forEach(
-            node => 
+            node =>
             {
                 // We have a valid ScriptStatement Node
                 if(!EXCLUDE_NODE_TYPES.includes(node.type))
                 {
-                    let statement:ScriptStatement = { 
-                        startIndex: node.start, 
-                        endIndex: node.end, 
+                    const isHoisted = (node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration');
+                    const statement:ScriptStatement = {
+                        startIndex: node.start,
+                        endIndex: node.end,
                         lineStart: node.loc.start.line,
                         lineEnd: node.loc.end.line,
                         columnStartIndex: node.loc.start.column,
                         columnEndIndex: node.loc.end.column,
-                        code: this.getCodeOfNode(node)
+                        code: this._rewriteTopLevelNode(node)
                        }
-                    this.statements.push(statement)
+                    ;(isHoisted ? hoisted : rest).push(statement)
                 }
             }
         )
 
+        this.statements = [...hoisted, ...rest];
+
         return this.statements;
+    }
+
+    /** Rewrite a top-level AST node into scope-friendly code (see makeStatements). */
+    _rewriteTopLevelNode(node:Node):string
+    {
+        const raw = this.getCodeOfNode(node);
+
+        if(node.type === 'VariableDeclaration')
+        {
+            // Strip only the leading keyword by cutting at the first declarator.
+            const decl = (node as any).declarations?.[0];
+            if(!decl){ return raw; }
+            const inner = this.code.substring(decl.start, node.end); // e.g. 'x = 5;' or '{a,b} = obj;'
+            // A bare destructuring assignment (`{a,b} = obj`) parses as a block at statement
+            // start, so wrap it in parentheses. Trailing ';' is moved outside the parens.
+            const idType = decl.id?.type;
+            if(idType === 'ObjectPattern' || idType === 'ArrayPattern')
+            {
+                const body = inner.replace(/;\s*$/, '');
+                return `(${body});`;
+            }
+            return inner;
+        }
+        else if(node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration')
+        {
+            const name = (node as any).id?.name;
+            if(!name){ return raw; } // anonymous default export etc — leave as-is
+            // `function foo(){…}` -> `foo = function foo(){…}` (named expr keeps stack-trace name)
+            return `${name} = ${raw}`;
+        }
+
+        return raw;
     }
     
     
@@ -144,25 +196,10 @@ export class CodeParser
     {
         const FILTERS:Array<ScriptStatementFilter> = [
             // { pattern: '\n', operation: (statement) => ScriptStatement.trim().replace('\n', '') }, // clean new lines and spaces
-            { pattern: 'Geom()' }, // filter out the geom init code
         ];
 
         this.statements = this.statements.filter( s => !FILTERS.some(f => s.code.includes(f.pattern) ) )
     }
-
-    removeDeclarations()
-    {
-        const declarations = ['let', 'var', 'const'];
-
-        declarations.forEach( declarationCode => 
-        {
-            let regex = new RegExp(`(^| )${declarationCode}(?= |=)`, 'g');
-            this.statements.forEach( ScriptStatement =>
-            {
-                ScriptStatement.code = ScriptStatement.code.replace(regex, ''); 
-            })
-        });  
-    } 
 
     addComponentCodeDeclarations(componentCode:string):string
     {

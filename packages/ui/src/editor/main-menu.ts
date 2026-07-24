@@ -47,11 +47,21 @@ export class MainMenu extends SignalWatcher(LitElement)
       <!-- configurator / app preview dialog -->
       <wa-dialog
         class="configurator-dialog"
-        label=${inPluginMode ? msg('app') : msg('configurator')}
+        label=${inPluginMode ? msg('App') : msg('Configurator Preview')}
         style="--width: 80vw"
         ?open=${this._configuratorOpen}
         @wa-after-hide=${() => { this._configuratorOpen = false; }}
       >
+        ${inPluginMode ? '' : html`
+          <wa-button
+            slot="header-actions"
+            size="small"
+            variant="brand"
+            @click=${this._publishFromPreview}
+          >
+            <wa-icon slot="start" library="lucide" name="rocket"></wa-icon>
+            ${msg('Publish as configurator')}
+          </wa-button>`}
         ${this._configuratorOpen
           ? (inPluginMode ? html`<plugin-app></plugin-app>` : html`<page-configurator></page-configurator>`)
           : ''}
@@ -107,6 +117,19 @@ export class MainMenu extends SignalWatcher(LitElement)
   private _openConfigurator()
   {
     this._configuratorOpen = true;
+  }
+
+  /** Close the preview and route into the "Publish as configurator" flow. The
+   *  event bubbles (composed) up to the editor's @menu-action handler, which
+   *  opens <publish-script-menu>. */
+  private _publishFromPreview()
+  {
+    this._configuratorOpen = false;
+    this.dispatchEvent(new CustomEvent('menu-action', {
+      detail: 'publish',
+      bubbles: true,
+      composed: true,
+    }));
   }
 
   private _select(item: MenuItem)

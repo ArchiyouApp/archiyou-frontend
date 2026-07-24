@@ -8,7 +8,7 @@ import { ScriptParamSchema } from './schemas';
 
 // The Script-level schema/types now live in packages/core/src/ScriptSchema.ts.
 // Re-exported here so existing `execution/types` consumers keep working.
-export type { ScriptData, ScriptPublishedData, ScriptSharedData as ScriptShared } from '../ScriptSchema'
+export type { ScriptData, ScriptPublishedData, ScriptPublishedFulfillmentData, ScriptSharedData as ScriptShared } from '../ScriptSchema'
 
 export type ScriptOutputCategory = 'model'|'metrics'|'tables'|'docs'
 export type ScriptOutputFormatInternal = 'internal'; // basics
@@ -41,7 +41,7 @@ export interface ScriptStatementResult extends ScriptStatement
     status: 'error'|'success'
     message?: string,
     duration?: number
-    durationPerc?:number // Added by Archiyou app ProfilingMenu
+    durationPerc?:number // share of total statement time; set by Runner in per-statement mode
 }
 
 /** After execution of the script (on client or server) we fill in some metadata */

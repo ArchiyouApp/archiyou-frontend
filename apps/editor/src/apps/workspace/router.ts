@@ -30,6 +30,13 @@ export const routes: Route[] = [
     action: async () => { await import('../../pages/reset-password.js'); },
   },
 
+  // --- Published configurator (standalone, no nav-bar — embeddable) ---
+  {
+    path: '/configurators/:user/:scriptAndVersion',
+    component: 'page-published-configurator',
+    action: async () => { await import('../../pages/published-configurator.js'); },
+  },
+
   // --- App (with nav-bar layout) ---
   {
     path: '/',

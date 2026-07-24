@@ -8,7 +8,7 @@
  * null on every save (a concrete semver is assigned only when publishing/sharing).
  */
 
-import { eq, and, desc, isNotNull, type AnyColumn } from 'drizzle-orm';
+import { eq, and, desc, isNotNull, sql, type AnyColumn } from 'drizzle-orm';
 import semver from 'semver';
 
 import { Script } from '@archiyou/core/src/Script';
@@ -143,7 +143,9 @@ export class ScriptStore {
     return db
       .select()
       .from(scriptVersions)
-      .where(and(eq(scriptVersions.author, author.toLowerCase()), eq(scriptVersions.name, name.toLowerCase()), isNotNull(col)))
+      // Case-insensitive name match: names are stored with their original case
+      // but addressed case-insensitively in library URLs.
+      .where(and(eq(scriptVersions.author, author.toLowerCase()), sql`lower(${scriptVersions.name}) = ${name.toLowerCase()}`, isNotNull(col)))
       .orderBy(desc(scriptVersions.updated))
       .all();
   }
@@ -182,6 +184,58 @@ export class ScriptStore {
   listPublishedByAuthor(author: string): ScriptData[] { return this.libraryList(scriptVersions.published, author); }
   getPublishedVersions(author: string, name: string): string[] { return this.libraryVersions(scriptVersions.published, author, name); }
   getPublished(author: string, name: string, version?: string): ScriptData | null { return this.libraryGet(scriptVersions.published, author, name, version); }
+
+  /** Every published version owned by `author` (NOT deduped per file — powers the
+   *  "manage configurators" list), newest semver first (tiebreak newest updated). */
+  listPublishedVersionsForAuthor(author: string): ScriptData[] {
+    const rows = db
+      .select()
+      .from(scriptVersions)
+      .where(and(eq(scriptVersions.author, author.toLowerCase()), isNotNull(scriptVersions.published)))
+      .all();
+    return rows
+      .map((r) => this.rowToData(r))
+      .sort((a, b) => {
+        const av = semver.coerce(a.version ?? '') ?? '0.0.0';
+        const bv = semver.coerce(b.version ?? '') ?? '0.0.0';
+        const cmp = semver.rcompare(av, bv);
+        if (cmp !== 0) return cmp;
+        return (Date.parse(b.updated ?? '') || 0) - (Date.parse(a.updated ?? '') || 0);
+      });
+  }
+
+  /** Update the `published` metadata of a single already-published version IN PLACE
+   *  (the version + code snapshot are unchanged — editing a configurator must not
+   *  create a new version). Ownership-checked by row id + author. */
+  updatePublishedVersion(author: string, versionId: string, published: ScriptData['published']): ScriptData {
+    const row = db
+      .select()
+      .from(scriptVersions)
+      .where(and(eq(scriptVersions.id, versionId), eq(scriptVersions.author, author.toLowerCase())))
+      .get();
+    if (!row) throw new ScriptStoreError('not_found', `Version ${versionId} not found`);
+    const now = new Date();
+    db.update(scriptVersions)
+      .set({ published: published ?? null, updated: now })
+      .where(and(eq(scriptVersions.id, versionId), eq(scriptVersions.author, author.toLowerCase())))
+      .run();
+    return this.rowToData({ ...row, published: (published ?? null) as ScriptVersionRow['published'], updated: now });
+  }
+
+  /** Un-publish a single version: clear its `published` metadata (the version row
+   *  and any working/shared state are kept). Ownership-checked by row id + author. */
+  unpublishVersion(author: string, versionId: string): void {
+    const row = db
+      .select()
+      .from(scriptVersions)
+      .where(and(eq(scriptVersions.id, versionId), eq(scriptVersions.author, author.toLowerCase())))
+      .get();
+    if (!row) throw new ScriptStoreError('not_found', `Version ${versionId} not found`);
+    db.update(scriptVersions)
+      .set({ published: null })
+      .where(and(eq(scriptVersions.id, versionId), eq(scriptVersions.author, author.toLowerCase())))
+      .run();
+  }
 
   // Shared library
   listShared(): ScriptData[] { return this.libraryList(scriptVersions.shared); }
@@ -317,6 +371,23 @@ export class ScriptStore {
     const id = uuid4();
     const now = new Date();
     const row = this.toRow(data, author, { id, fileId, version: data.version, shared: data.shared, now });
+    this.insertRow(row);
+    return this.rowToData({ ...row, created: now, updated: now } as ScriptVersionRow);
+  }
+
+  /** Publish a file: append a new row carrying a concrete semver + the published
+   *  metadata (both read from the payload). Ownership-checked; the unique
+   *  (fileId, version) index rejects re-publishing an already-used version.
+   *  The file's current shared state is preserved on the new row. */
+  publish(author: string, fileId: string, payload: unknown): ScriptData {
+    this.latestRow(author, fileId); // ownership gate (throws not_found)
+    const data = this.normalize(payload);
+    if (!data.version) throw new ScriptStoreError('invalid', 'Publish requires a version');
+    if (!data.published) throw new ScriptStoreError('invalid', 'Publish requires published metadata');
+    const id = uuid4();
+    const now = new Date();
+    const shared = this.currentShared(author, fileId); // preserve the file's shared state
+    const row = this.toRow(data, author, { id, fileId, version: data.version, shared, now });
     this.insertRow(row);
     return this.rowToData({ ...row, created: now, updated: now } as ScriptVersionRow);
   }

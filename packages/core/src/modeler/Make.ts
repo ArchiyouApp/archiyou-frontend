@@ -948,12 +948,14 @@ export class Make
                 openingKingStuds.forEach((s) => s.intersection(wallRidgeContourSolid)));
             openingJackStuds.add(
                 openingJackStuds.forEach((s) => s.intersection(wallRidgeContourSolid)));
+            /*
             insulation.forEach((s) => {
                 s.subtract(openingKingStuds);
                 s.subtract(openingJackStuds);}
             );
+            */
+           insulation.subtract(openingKingStuds).subtract(openingJackStuds);
         }
-
 
         // organize and output
         removedStuds.removeFromScene();

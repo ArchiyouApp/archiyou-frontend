@@ -24,13 +24,16 @@ import '@archiyou/ui/editor/tools/data-tool.js';
 import '@archiyou/ui/editor/tools/metrics-tool.js';
 import '@archiyou/ui/editor/tools/document-viewer.js';
 import '@archiyou/ui/editor/tools/console-tool.js';
+import '@archiyou/ui/editor/tools/profiling-tool.js';
 import '@archiyou/ui/editor/file-info.js';
 import '@archiyou/ui/editor/script-manager.js';
 import '@archiyou/ui/editor/script-importer.js';
 import '@archiyou/ui/editor/share-script-menu.js';
+import '@archiyou/ui/editor/publish-script-menu.js';
+import '@archiyou/ui/editor/manage-configurators-menu.js';
 import type { ToolDef } from '@archiyou/ui/editor/toolbar.js';
 
-import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, openSharedScript, deleteScriptById, importScriptFromData, isReadOnly, selectedPath, scriptUnitSystem, ensureScriptUnitSystem } from '../state/workspace';
+import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, openSharedScript, deleteScriptById, importScriptFromData, isReadOnly, selectedPath, scriptUnitSystem, ensureScriptUnitSystem, perStatement, autoRun } from '../state/workspace';
 import { registerScheduleExecution, triggerResetCamera } from '../state/viewer';
 import { RunnerScriptExecutionRequest } from '@archiyou/core/src/runner/types';
 import type { ScriptData, ScriptParamData } from '@archiyou/core/src/execution/types';
@@ -44,6 +47,7 @@ export class PageEditor extends SignalWatcher(LitElement)
 
   readonly TOOLS: ToolDef[] = [
     { id: 'console', icon: 'terminal',   name: 'Console',   exclusive: false, component: 'editor-console-tool',  width: 30, height: 50 },
+    { id: 'profiling', icon: 'timer',    name: 'Profiling', exclusive: false, component: 'editor-profiling-tool', width: 30, height: 50 },
     { id: 'scene',   icon: 'network',    name: 'Scene',     exclusive: false, component: 'editor-scene-tool',    width: 30, height: 50 },
     { id: 'data',    icon: 'table',      name: 'Data',      exclusive: false, component: 'editor-data-tool',     width: 30, height: 50 },
     { id: 'metrics', icon: 'chart-bar',  name: 'Metrics',   exclusive: false, component: 'editor-metrics-tool',  width: 30, height: 50,  outputs: ['default/metrics/*/json'] },
@@ -112,6 +116,17 @@ export class PageEditor extends SignalWatcher(LitElement)
         @share-script-done=${this._handleShareDone}
         @share-script-cancel=${this._handleShareCancel}
       ></share-script-menu>
+      <publish-script-menu
+        ?open=${this._showPublishMenu}
+        .editData=${this._editConfigurator}
+        @publish-script-done=${this._handlePublishDone}
+        @publish-script-cancel=${this._handlePublishCancel}
+      ></publish-script-menu>
+      <manage-configurators-menu
+        ?open=${this._showManageConfigurators}
+        @manage-configurators-edit=${this._handleManageConfiguratorsEdit}
+        @manage-configurators-cancel=${this._handleManageConfiguratorsCancel}
+      ></manage-configurators-menu>
       <script-importer
         ?open=${this._showScriptImporter}
         @script-importer-cancel=${this._handleScriptImporterCancel}
@@ -128,6 +143,10 @@ export class PageEditor extends SignalWatcher(LitElement)
   @state() private _showScriptManager = false;
   @state() private _showScriptImporter = false;
   @state() private _showShareMenu = false;
+  @state() private _showPublishMenu = false;
+  @state() private _showManageConfigurators = false;
+  // Non-null → the publish menu opens in edit mode for this published version.
+  @state() private _editConfigurator: ScriptData | null = null;
 
   // Plugin mode (isolated session; personal scripts untouched)
   @state() private _pluginSchema: ScriptParamData[] | null = null;
@@ -247,6 +266,13 @@ export class PageEditor extends SignalWatcher(LitElement)
     if (this._codeChangeTimeout !== null)
     {
       clearTimeout(this._codeChangeTimeout);
+      this._codeChangeTimeout = null;
+    }
+
+    // Automatic execute disabled → never auto-run; the user runs via the Run button.
+    if (!autoRun.get())
+    {
+      return;
     }
 
     if (scriptCode.length < this.CONST_AUTORUN_MIN_SIZE)
@@ -298,6 +324,8 @@ export class PageEditor extends SignalWatcher(LitElement)
       componentScripts,
       // editor: display in the script's own unit system
       unitSystem: scriptUnitSystem.get(),
+      // per-statement mode: partial model on error + profiling (toggled next to Run)
+      perStatement: perStatement.get(),
     } as RunnerScriptExecutionRequest;
   }
 
@@ -402,6 +430,19 @@ export class PageEditor extends SignalWatcher(LitElement)
     if (value === 'share')
     {
       this._showShareMenu = true;
+      return;
+    }
+
+    if (value === 'publish')
+    {
+      this._editConfigurator = null;   // fresh publish (not edit mode)
+      this._showPublishMenu = true;
+      return;
+    }
+
+    if (value === 'manage-configurators')
+    {
+      this._showManageConfigurators = true;
       return;
     }
 
@@ -640,6 +681,38 @@ export class PageEditor extends SignalWatcher(LitElement)
   private _handleShareCancel()
   {
     this._showShareMenu = false;
+  }
+
+  private _handlePublishDone()
+  {
+    this._showPublishMenu = false;
+    this._editConfigurator = null;
+  }
+
+  private _handlePublishCancel()
+  {
+    this._showPublishMenu = false;
+    this._editConfigurator = null;
+  }
+
+  private _handleManageConfiguratorsCancel()
+  {
+    this._showManageConfigurators = false;
+  }
+
+  /** Edit a published configurator: load its script as the active (editable)
+   *  script, then open the publish menu (which re-runs its precheck + prefill). */
+  private _handleManageConfiguratorsEdit(e: CustomEvent<ScriptData>)
+  {
+    const data = e.detail;
+    // Load the exact published version so the editor reflects what's being edited
+    // (author == me ⇒ editable). The publish menu itself operates on `editData`.
+    openSharedScript(data as unknown as Record<string, any>);
+    this._editConfigurator = data;          // → publish menu opens in edit mode
+    this._showManageConfigurators = false;
+    this._showPublishMenu = true;
+    triggerResetCamera();
+    this._handleExecute();
   }
 
   /** A read-only script was forked into an editable copy — re-run it. */

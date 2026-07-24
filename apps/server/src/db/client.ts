@@ -13,7 +13,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 
 import * as schema from './schema';
 
-export const DATABASE_FILE = resolve(process.env.DATABASE_FILE ?? './data/archiyou.db');
+export const DATABASE_FILE = resolve(process.env.SERVER_DATABASE_FILE ?? './data/archiyou.db');
 
 // Ensure the parent directory exists before better-sqlite3 opens the file.
 const dir = dirname(DATABASE_FILE);

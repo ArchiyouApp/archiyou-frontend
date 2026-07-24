@@ -54,6 +54,25 @@ export const ScriptSharedSchema = Type.Object({
 
 //// PUBLISHED ////
 
+/** How a fulfillment's exported files reach the end-user of the configurator. */
+export const FULFILLMENT_DELIVERIES = ['anonymous download', 'email', 'pay'] as const
+export type FulfillmentDelivery = typeof FULFILLMENT_DELIVERIES[number]
+export const FulfillmentDeliverySchema = Type.Union(
+    FULFILLMENT_DELIVERIES.map((d) => Type.Literal(d)),
+)
+
+/** A fulfillment: a named bundle of outputs (a model, data tables, documents…) the
+ *  configurator makes available to end-users, with a delivery method + optional price.
+ *  `exports` are output-path strings (see ScriptOutputPath), for example
+ *  "default/model/(all)", "default/tables/(name)/xlsx" or "default/docs/(name)/pdf". */
+export const ScriptPublishedFulfillmentSchema = Type.Object({
+    name:        Type.String(),
+    description: Type.Optional(Type.String()),
+    exports:     Type.Array(Type.String()),   // resolved output-path strings
+    delivery:    FulfillmentDeliverySchema,
+    price:       Type.Optional(Type.Number()), // defaults to 0 (applied in UI/normalize)
+})
+
 /** Published part of script
  *      Publishing means people can use the configurator.
  *      NOTE: version now lives at the top level of ScriptSchema (shared by
@@ -67,9 +86,14 @@ export const ScriptPublishedSchema = Type.Object({
     title:       Type.Optional(Type.String()),
     description: Type.Optional(Type.String()),
 
+    licence:     Type.Optional(CCLicenceSchema),
+    validated:   Type.Optional(Type.Boolean()), // set once the script has been validated (used later)
+
     // overrides main params/presets
     params:      Type.Optional(ParamRecordSchema),
     presets:     Type.Optional(Type.Array(Type.String())),
+
+    fulfillments: Type.Optional(Type.Array(ScriptPublishedFulfillmentSchema)),
 })
 
 //// SCRIPT ////
@@ -113,6 +137,7 @@ export const ScriptSchema = Type.Object(
     units:       Type.Optional(Type.Union([Type.Literal('metric'), Type.Literal('imperial')])),
 })
 
-export type ScriptSharedData    = Static<typeof ScriptSharedSchema>
-export type ScriptPublishedData = Static<typeof ScriptPublishedSchema>
-export type ScriptData          = Static<typeof ScriptSchema>
+export type ScriptSharedData               = Static<typeof ScriptSharedSchema>
+export type ScriptPublishedData            = Static<typeof ScriptPublishedSchema>
+export type ScriptPublishedFulfillmentData = Static<typeof ScriptPublishedFulfillmentSchema>
+export type ScriptData                     = Static<typeof ScriptSchema>

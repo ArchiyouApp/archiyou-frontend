@@ -80,6 +80,17 @@ export interface RunnerScriptExecutionRequest
      *  geometry stays in the script's model unit. */
     unitSystem?: 'metric'|'imperial'
 
+    /** Execute the script statement-by-statement instead of as one block. A single
+     *  failing statement then halts the run but keeps the model built so far (partial
+     *  output), and per-statement timings are returned in result.statements. Opt-in:
+     *  the editor sets it (user-toggleable), the server leaves it unset. */
+    perStatement?: boolean
+
+    /** Base URL of the Archiyou asset proxy (`${assetProxyUrl}/proxy?url=…`) used
+     *  by `$import(...)` to fetch remote assets past browser CORS. The app fills it
+     *  from SERVER_API_BASE_URL; empty string → root-relative `/proxy`. */
+    assetProxyUrl?: string
+
     /** Local scripts the runner can resolve as components when the parent
      *  script references them via $component('./name'). Sent as ScriptData
      *  (structured-clone-safe over the worker boundary) — the worker shim

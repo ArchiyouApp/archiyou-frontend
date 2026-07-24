@@ -10,9 +10,9 @@ import type { RedisConfig } from './types.js';
 
 // Get Redis configuration from environment variables
 const redisConfig: RedisConfig = {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379'),
-    password: process.env.REDIS_PASSWORD || undefined,
+    host: process.env.SERVER_REDIS_HOST || 'localhost',
+    port: parseInt(process.env.SERVER_REDIS_PORT || '6379'),
+    password: process.env.SERVER_REDIS_PASSWORD || undefined,
 };
 
 const workerId = process.env.WORKER_ID || 'worker-unknown';

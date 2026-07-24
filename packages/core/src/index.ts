@@ -38,3 +38,6 @@ export type {
 } from './execution/types';
 export type { ModelMode } from './modeler/types';
 export type { ConsoleMessage, ConsoleMessageType } from './console/types';
+
+export { Importer } from './importer/Importer';
+export type { AssetImportOptions, AssetPayload, ImportContext } from './importer/Importer';

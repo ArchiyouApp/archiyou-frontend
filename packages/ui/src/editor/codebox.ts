@@ -10,12 +10,13 @@
  */
 
 import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 
 // Webawesome imports
 import '@awesome.me/webawesome/dist/components/split-panel/split-panel.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@awesome.me/webawesome/dist/components/button/button.js';
+import '@awesome.me/webawesome/dist/components/checkbox/checkbox.js';
 
 // CodeMirror imports
 import { EditorView, basicSetup } from 'codemirror';
@@ -27,7 +28,7 @@ import { autocompletion, acceptCompletion, completionStatus } from '@codemirror/
 import { archiyouCompletions } from './completions.js';
 
 import { SignalWatcher } from '@lit-labs/signals';
-import { executing, executionResult } from '@archiyou/editor/src/state/workspace';
+import { executing, executionResult, perStatement, autoRun } from '@archiyou/editor/src/state/workspace';
 
 const lightTheme = EditorView.theme({}, { dark: false });
 const themeCompartment = new Compartment();
@@ -92,10 +93,38 @@ export class CodeBox extends SignalWatcher(LitElement)
             }
           </span>
           <span class="spacer"></span>
-          <button class="execute-button" 
+          <button class="execute-button"
               @click=${this._handleRunClick} title="Run (Ctrl+Enter)">
               <wa-icon library="lucide" name="play" label="Execute"></wa-icon>
           </button>
+          <div class="options-wrap">
+            <button class="options-button ${this._optionsOpen ? 'active' : ''}"
+                @click=${this._toggleOptions}
+                title="Execution options"
+                aria-label="Execution options">
+              <wa-icon library="lucide" name="ellipsis-vertical"></wa-icon>
+            </button>
+            ${this._optionsOpen ? html`
+              <div class="options-menu" @click=${(e: Event) => e.stopPropagation()}>
+                <div class="options-menu-header">
+                  <span class="options-menu-title">Execute options</span>
+                  <button class="options-close" @click=${this._closeOptions} aria-label="Close">
+                    <wa-icon library="lucide" name="x"></wa-icon>
+                  </button>
+                </div>
+                <wa-checkbox
+                    size="small"
+                    ?checked=${perStatement.get()}
+                    @change=${this._handlePerStatementChange}
+                >Execute per statement</wa-checkbox>
+                <wa-checkbox
+                    size="small"
+                    ?checked=${autoRun.get()}
+                    @change=${this._handleAutoRunChange}
+                >Automatic execute</wa-checkbox>
+              </div>
+            ` : ''}
+          </div>
         </div>
         ${result?.status === 'error'
           ? html`
@@ -269,11 +298,13 @@ export class CodeBox extends SignalWatcher(LitElement)
     super.disconnectedCallback();
     this._darkMQ.removeEventListener('change', this._onColorSchemeChange);
     this._themeObserver.disconnect();
+    document.removeEventListener('pointerdown', this._onDocPointerDown, true);
     this._view?.destroy();
     this._view = null;
   }
 
   // ── 4. Behaviour & Methods ──
+  @state() private _optionsOpen = false;
   private _view: EditorView | null = null;
   private _skipNextUpdate = false;
   private _lastAppliedResult: ReturnType<typeof executionResult.get> | undefined = undefined;
@@ -330,6 +361,46 @@ export class CodeBox extends SignalWatcher(LitElement)
   {
     this._fireExecute();
   }
+
+  private _handlePerStatementChange(e: Event)
+  {
+    // The checkbox emits a bubbling, composed `change` event that would otherwise
+    // reach the editor's own @change (code-sync) handler and wipe the script with
+    // this event's empty detail. Keep it inside the codebox.
+    e.stopPropagation();
+    perStatement.set((e.target as HTMLInputElement).checked);
+  }
+
+  private _handleAutoRunChange(e: Event)
+  {
+    e.stopPropagation(); // same reason as _handlePerStatementChange
+    autoRun.set((e.target as HTMLInputElement).checked);
+  }
+
+  private _toggleOptions()
+  {
+    this._optionsOpen ? this._closeOptions() : this._openOptions();
+  }
+
+  private _openOptions()
+  {
+    this._optionsOpen = true;
+    // Close when clicking anywhere outside the menu (composedPath crosses shadow DOM).
+    document.addEventListener('pointerdown', this._onDocPointerDown, true);
+  }
+
+  private _closeOptions()
+  {
+    this._optionsOpen = false;
+    document.removeEventListener('pointerdown', this._onDocPointerDown, true);
+  }
+
+  private _onDocPointerDown = (e: Event) =>
+  {
+    const path = e.composedPath();
+    const wrap = this.renderRoot.querySelector('.options-wrap');
+    if (wrap && !path.includes(wrap)) { this._closeOptions(); }
+  };
 
   /** Dispatch the error-line effect to the CodeMirror editor. */
   private _applyErrorHighlight(result: ReturnType<typeof executionResult.get>)
@@ -478,6 +549,95 @@ export class CodeBox extends SignalWatcher(LitElement)
     }
 
     .spacer { flex: 1; }
+
+    .options-wrap {
+      position: relative;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+    }
+
+    .options-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: none;
+      border-radius: var(--radius-full);
+      background: transparent;
+      color: var(--color-text);
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+
+    .options-button:hover,
+    .options-button.active {
+      background: color-mix(in srgb, var(--color-border) 40%, transparent);
+    }
+
+    .options-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      z-index: 20;
+      min-width: 190px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      padding: 0.5rem;
+      background: var(--color-bg-elevated, var(--color-gray));
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md, 6px);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+    }
+
+    .options-menu-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding-bottom: 0.35rem;
+      margin-bottom: 0.1rem;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .options-menu-title {
+      font-size: var(--text-xs, 0.75rem);
+      font-weight: 600;
+      color: var(--color-text);
+    }
+
+    .options-close {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      border: none;
+      border-radius: var(--radius-full);
+      background: transparent;
+      color: var(--color-gray-dark, #9aa0a6);
+      cursor: pointer;
+      font-size: 0.75rem;
+    }
+
+    .options-close:hover {
+      background: color-mix(in srgb, var(--color-border) 40%, transparent);
+      color: var(--color-text);
+    }
+
+    .options-menu wa-checkbox {
+      font-size: var(--text-xs, 0.75rem);
+    }
+
+    .options-menu wa-checkbox::part(label) {
+      font-size: var(--text-xs, 0.75rem);
+      color: var(--color-text);
+      padding-inline-start: 0.3rem;
+    }
 
     .execute-button {
       width: 22px;

@@ -8,9 +8,15 @@
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 
-import type { ScriptShared } from '@archiyou/core/src/execution/types';
+import type { ScriptData, ScriptShared } from '@archiyou/core/src/execution/types';
 
+import { config } from '../config';
 import { scriptStore } from '../services/ScriptStore';
+
+/** Public URL where a published configurator is served (frontend origin). */
+function configuratorUrl(author: string, name: string, version: string): string {
+  return `${config.frontendUrl}/configurators/${author}/${name}:${version}`;
+}
 
 export async function registerScriptRoutes(fastify: FastifyInstance): Promise<void> {
   // Reject unless authenticated AND the {user} segment is the caller's own handle.
@@ -32,6 +38,45 @@ export async function registerScriptRoutes(fastify: FastifyInstance): Promise<vo
     reply.code(201);
     return stored;
   });
+
+  // The caller's published configurators — every published version, newest first.
+  // Lives under the static `/scripts/configurators` segment (a static child of the
+  // static `scripts` node, like `/scripts/published`) so it isn't shadowed by the
+  // `/scripts/:user/:fileId` param route; the author comes from the JWT, not the path.
+  const authedOnly = { preHandler: [fastify.authenticate] };
+  fastify.get('/scripts/configurators', authedOnly, async (request) => {
+    return scriptStore.listPublishedVersionsForAuthor(request.user.sub);
+  });
+
+  // Edit a published configurator in place: update just this version's `published`
+  // metadata (version + code snapshot unchanged). Body is the ScriptData whose
+  // `published` is applied. Re-stamps the configurator URL (name/version stable).
+  fastify.put<{ Params: { versionId: string } }>(
+    '/scripts/configurators/:versionId',
+    authedOnly,
+    async (request, reply) => {
+      const body = request.body as ScriptData;
+      const published = body?.published;
+      if (!published) {
+        reply.code(422);
+        return { success: false, error: 'Published metadata is required' };
+      }
+      if (body.name && body.version) {
+        published.url = configuratorUrl(request.user.sub, body.name, body.version);
+      }
+      return scriptStore.updatePublishedVersion(request.user.sub, request.params.versionId, published);
+    },
+  );
+
+  // Un-publish a single version (clears its `published` metadata; keeps the row).
+  fastify.delete<{ Params: { versionId: string } }>(
+    '/scripts/configurators/:versionId',
+    authedOnly,
+    async (request, reply) => {
+      scriptStore.unpublishVersion(request.user.sub, request.params.versionId);
+      reply.code(204);
+    },
+  );
 
   // Latest version of one file.
   fastify.get<{ Params: { user: string; fileId: string } }>('/scripts/:user/:fileId', auth, async (request) => {
@@ -70,6 +115,25 @@ export async function registerScriptRoutes(fastify: FastifyInstance): Promise<vo
     auth,
     async (request, reply) => {
       const stored = scriptStore.share(request.user.sub, request.params.fileId, request.body);
+      reply.code(201);
+      return stored;
+    },
+  );
+
+  // Publish a file as configurator: append a new version carrying a concrete
+  // semver + published metadata. Body is the full ScriptData (with `version` +
+  // `published` set).
+  fastify.post<{ Params: { user: string; fileId: string } }>(
+    '/scripts/:user/:fileId/publish',
+    auth,
+    async (request, reply) => {
+      const body = request.body as ScriptData;
+      // Stamp the public configurator URL (built from FRONTEND_URL) so the client
+      // can show where the configurator is served — works in dev + prod.
+      if (body?.published && body.version && body.name) {
+        body.published.url = configuratorUrl(request.user.sub, body.name, body.version);
+      }
+      const stored = scriptStore.publish(request.user.sub, request.params.fileId, body);
       reply.code(201);
       return stored;
     },

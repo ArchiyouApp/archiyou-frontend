@@ -29,6 +29,8 @@ import type { RunnerActiveScope,
 
 
 import { RunnerComponentImporter } from './RunnerComponentImporter'; // helper for importing components in scope
+import { Importer as AssetImporter } from '../importer/Importer'; // $import: fetch+parse remote assets
+import type { AssetPayload } from '../importer/Importer';
 
 
 // Execution
@@ -73,6 +75,7 @@ export class Runner
 
     private _linkedComponentScripts: Array<Script> = [];
     private _componentScripts: Record<string, Script> = {}; // prefetched component scripts by name=url=path
+    private _importAssets: Record<string, AssetPayload> = {}; // prefetched $import() assets by url (raw bytes)
     private _pipelines:Array<Pipeline> = []; // keep track of defined pipelines
     _pipelineExports:Array<any> = []; // HACK: if we want to dump some outputs - for example in pipelines (see calc.gsheets pipeline)
 
@@ -371,6 +374,25 @@ export class Runner
         // Shortcut to create a new interaction Handle.
         // Use .start(target) for initial placement, .at(target) for every-run push.
         state.$handle = () => state._archiyou.interactor.addHandle();
+
+        // Import a remote asset (SVG/GeoJSON/DXF/STL/OBJ/glTF/AMF/3MF) as a ShapeCollection.
+        // The bytes were pre-fetched by _prefetchImportAssets(), so this is synchronous
+        // (no await needed). Auto-centers, auto-scales and adds to the scene by default.
+        state.$import = (url:string, opts:Record<string,any> = {}) =>
+        {
+            const payload = this._importAssets[url];
+            if(!payload)
+            {
+                const msg = `$import('${url}'): asset not pre-loaded. $import needs a plain ` +
+                            `string-literal URL (dynamic/computed URLs are not supported).`;
+                state._archiyou.console.error(msg);
+                throw new Error(msg);
+            }
+            return AssetImporter.build(payload, opts, {
+                modeler: state._archiyou.modeler,
+                console: state._archiyou.console,
+            });
+        };
     }
 
     //// PIPELINES ////
@@ -444,6 +466,10 @@ export class Runner
     {
         const { missing } = await this._prefetchComponentScripts(request);
 
+        // Pre-fetch remote assets referenced by $import('url') so the in-scope
+        // $import() can resolve them synchronously (no await in user scripts).
+        await this._prefetchImportAssets(request);
+
         console.info(`==== Runner::execute() - prefetched components: ${Object.keys(this._componentScripts).length } ====`);
         Object.entries(this._componentScripts).forEach(([name, script]) => {
             console.info(`- ${name}: <<<${script.code}>>>`); // library path, url, inline code
@@ -462,6 +488,20 @@ export class Runner
                 errors: [{ status: 'error', message: errorMessage } as any],
                 state: { sceneGraph: null, annotations: [], managedParams: null, managedPresets: null },
             } as RunnerScriptExecutionResult;
+        }
+
+        // Normalize a bare code string into a request so we can inspect flags below.
+        if(typeof request === 'string')
+        {
+            request = { script: { code: request } } as RunnerScriptExecutionRequest;
+        }
+
+        // Per-statement mode: split the script and execute statement-by-statement so a
+        // single failure halts with a partial model instead of losing the whole run, and
+        // each statement is timed. Opt-in via request.perStatement (editor on, server off).
+        if(request.perStatement)
+        {
+            return await this.executeInScriptStatements(request);
         }
 
         return await this._execute(request, true, true);
@@ -511,18 +551,29 @@ export class Runner
         return await this._executeLocal(this._activeExecRequest, startRun, result);
     }
 
-    /** Main entrypoint for execution in ScriptStatements
-     *  Use this is you need more control of execution and possible errors
-     *  This seperates the code in ScriptStatements and returns results for each ScriptStatement
-     *  It still uses execute() internally
-     *  Used in editor to provide more granular feedback
+    /** Main entrypoint for per-statement execution.
+     *  Splits the script into top-level statements and executes them one-by-one in a single
+     *  shared scope. On failure it halts at the offending statement but still collects the
+     *  outputs built up to that point (a partial model), and it records per-statement timings
+     *  in result.statements. Reached from execute() when request.perStatement is set, and
+     *  directly by executeUrl().
     */
     async executeInScriptStatements(request: RunnerScriptExecutionRequest):Promise<RunnerScriptExecutionResult>
     {
-        this._activeExecRequest = this._checkRequestAndAddDefaults(request);
-        const ScriptStatementResults = [] as Array<ScriptStatementResult>;
+        // Normalize like _execute(): fill param + output defaults so this works standalone.
+        if(!request.params)
+        {
+            const script = Script.fromData(request.script);
+            request.params = script?.getDefaultParamValues() ?? {};
+        }
+        if(!request.outputs || request.outputs.length === 0)
+        {
+            request.outputs = this.DEFAULT_OUTPUTS;
+        }
 
-        return await this._executeLocalInScriptStatements(this._activeExecRequest, ScriptStatementResults);
+        this._activeExecRequest = this._checkRequestAndAddDefaults(request);
+
+        return await this._executeLocalInScriptStatements(this._activeExecRequest);
     }
 
     /** Check execution request */
@@ -799,86 +850,159 @@ ${e.message === '***** CODE ****\nUnexpected end of input' ? code : ''}
     }
 
 
-    /** Run a execution request (with script, params etc) in individual ScriptStatements 
-     *  This is used for debugging and testing in browser
-     *  NOTE: see executeInScriptStatements() for main entrypoint
+    /** Execute a request statement-by-statement in one shared scope.
+     *
+     *  Unlike the whole-script path, each statement is compiled and run on its own so we can:
+     *   - time each statement (result.statements),
+     *   - halt at the first failure while keeping the model built so far (partial output).
+     *
+     *  IMPORTANT: statements do NOT go through _execute() — that re-normalizes the request and
+     *  emits several console lines per call, which the buffered Archiyou Console would multiply
+     *  by the statement count. Setup (startRun) happens once up front and output collection
+     *  (getScopeResults) once after the loop.
     */
-    async _executeLocalInScriptStatements(request: RunnerScriptExecutionRequest, ScriptStatementResults:Array<ScriptStatementResult>):Promise<RunnerScriptExecutionResult>
+    async _executeLocalInScriptStatements(request: RunnerScriptExecutionRequest):Promise<RunnerScriptExecutionResult>
     {
-        await this._prefetchComponentScripts(request); // Prefetch component scripts if needed
-
-        const codeParser = new CodeParser(request.script.code, {}, null); // TODO: config, IO => archiyou?
-        const ScriptStatements = await codeParser.getStatements();
-        
-        let result:RunnerScriptExecutionResult;
-
-        console.info(`Runner::_executeLocalInScriptStatements(): Executing script in ${ScriptStatements.length} ScriptStatements in active local context: '${this._activeScope?.name}'`);
-
-        for(let s = 0; s < ScriptStatements.length; s++)
+        // Wait for the kernel like _executeLocal does — re-enter once loaded.
+        if(!this.loaded())
         {
-            const ScriptStatementStartTime = performance.now()
-            const ScriptStatement = this._preprocessScriptStatement({ ...ScriptStatements[s] });
-            const output = (s === ScriptStatements.length -1); // only output on last ScriptStatement
-
-            const r = await this._execute(
-                { 
-                    ...request, // take from main request
-                    script: {  
-                        code: ScriptStatement.code,  // only ScriptStatement code
-                        params: request.script.params || {} // use params from request
-                    },
-                } as RunnerScriptExecutionRequest, 
-                (s === 0), // startRun on first ScriptStatement
-                output // only return output on last ScriptStatement
-            ); 
-
-            const ScriptStatementDuration = Math.round(performance.now() - ScriptStatementStartTime);
-            if(r?.status === 'error') // r can be null
-            {
-                console.error(`!!!! Runner::_executeLocalInScriptStatements(): ***** ERROR: '${r.errors[0].message}' in following ScriptStatement @${ScriptStatement.lineStart}-${ScriptStatement.lineEnd}} !!!! `);
-                console.error(ScriptStatement.code);
-
-                ScriptStatementResults.push({ 
-                    ...ScriptStatement,
-                    status: 'error',
-                    message: r.errors[0].message, // add error message to ScriptStatement result
-                    duration: ScriptStatementDuration 
-                }); 
-            }
-            
-            (console as any).exec(`Runner::_executeLocalInScriptStatements(): ScriptStatement #${s+1} - ${output ? 'with' : 'without'} output] executed in ${ScriptStatementDuration}ms`);
-            result = r;
-            
+            console.warn(`Runner::_executeLocalInScriptStatements(): WASM kernel not loaded yet. The request is executed once it is!`);
+            return new Promise((resolve) => {
+                const checkLoaded = () => {
+                    if(this.loaded()){ resolve(this._executeLocalInScriptStatements(request)); }
+                    else { setTimeout(checkLoaded, 100); }
+                };
+                checkLoaded();
+            });
         }
 
-        return result
+        // Ensure BinPacker WASM is ready so synchronous make.pack() calls don't race (see _executeLocal).
+        try { await this._modeler?.make?.packReady?.(); }
+        catch(e){ console.warn(`Runner::_executeLocalInScriptStatements(): BinPacker WASM failed to load: ${e}`); }
+
+        await this._prefetchComponentScripts(request); // idempotent; needed when called via executeUrl()
+        await this._prefetchImportAssets(request);      // idempotent; $import() assets for the direct path
+
+        const executeStartTime = performance.now();
+
+        // Fresh scope + one-time run setup (params, module resets) — mirrors startRun in _executeLocal.
+        this.createScope('default');
+        const scope = this.getActiveScope();
+        this._executionStartRunInScope.call(scope, scope, request);
+
+        // Split into statements. A syntax error surfaces here as a single whole-script error.
+        let statements:Array<ScriptStatement>;
+        try {
+            const codeParser = new CodeParser(request.script.code, {}, null);
+            statements = codeParser.getStatementsWithoutImports(); // sync — $import/$load path is dead
+        }
+        catch(e)
+        {
+            return this._handleExecutionError(scope, request, request.script.code, e as Error);
+        }
+
+        console.info(`Runner::_executeLocalInScriptStatements(): Executing ${statements.length} statements in scope '${this._activeScope?.name}'`);
+
+        const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+        const statementResults:Array<ScriptStatementResult> = [];
+        let failed:ScriptStatementResult | null = null;
+
+        for(let s = 0; s < statements.length; s++)
+        {
+            const stmt = statements[s];
+            const stmtStartTime = performance.now();
+            try
+            {
+                // Keep sub-millisecond precision: fast geometry ops round to 0ms, which would
+                // make every durationPerc zero. Display code rounds when it renders.
+                await this._runStatementInScope(scope, stmt.code, AsyncFunction);
+                statementResults.push({ ...stmt, status: 'success', duration: performance.now() - stmtStartTime });
+            }
+            catch(e)
+            {
+                const duration = performance.now() - stmtStartTime;
+                const message = this._formatStatementError(stmt, request, e as Error);
+                failed = { ...stmt, status: 'error', message, duration };
+                statementResults.push(failed);
+                // Mirror into the Archiyou console buffer so UI consoles surface it.
+                scope?._archiyou?.console?.error(message);
+                console.error(`Runner::_executeLocalInScriptStatements(): ERROR at line ${stmt.lineStart}: ${message}`);
+                break; // halt, keep the partial model
+            }
+        }
+
+        // Collect outputs ONCE from whatever was built (partial on failure). getScopeResults sets
+        // status:'success'/errors:[] — we override below when a statement failed.
+        let result:RunnerScriptExecutionResult;
+        try {
+            result = await this.getScopeResults(scope, request);
+        }
+        catch(e)
+        {
+            // Output collection itself failed on a half-built scope — report that instead.
+            return this._handleExecutionError(scope, request, request.script.code, e as Error);
+        }
+
+        // Attach per-statement profiling (durationPerc relative to summed statement time).
+        const totalStatementTime = statementResults.reduce((sum, r) => sum + (r.duration ?? 0), 0);
+        result.statements = statementResults.map(r => ({
+            ...r,
+            durationPerc: totalStatementTime > 0 ? Math.round(((r.duration ?? 0) / totalStatementTime) * 100) : 0,
+        }));
+
+        // A failed statement makes the whole run an error, keeping the partial model in result.state.
+        if(failed)
+        {
+            result.status = 'error';
+            result.errors = [failed];
+        }
+
+        this._finalizeExecutionDuration(result, executeStartTime);
+
+        return result;
     }
 
-    /** Some preprocessing for ScriptStatements */
-    _preprocessScriptStatement(ScriptStatement:ScriptStatement):ScriptStatement
+    /** Compile and run a single statement's code inside the shared scope.
+     *  Lean by design: no per-statement setup or output collection (done once by the caller),
+     *  so only the compile + call cost is paid per statement. Mirrors the whole-script wrapper
+     *  shape (`with(scope){ 'use strict'; … }`) so scope semantics are identical.
+    */
+    async _runStatementInScope(scope:RunnerScriptScope, code:string, AsyncFunction:any):Promise<any>
     {
-        const CODE_REPLACE_RES = [
-            { 
-                // Replace function declarations with function expressions
-                // So the function is assigned to a variable - otherwise it is not available in the local scope
-                from: /function\s+(\w+)\s*\(/g, 
-                to: (match, functionName) => `${functionName} = function(`,
-                msg:  (matches) => {
-                    return `Replacing declaration of '${matches[0]}' in ScriptStatement '${ScriptStatement.code}' to fit in local scope! Please use fn = function(){...} instead of function fn(){...} !`
-                }
-            }
-        ]
-        CODE_REPLACE_RES.forEach(ft => 
+        const fn = new AsyncFunction('scope', `with (scope) { 'use strict'; ${code} }`);
+        return await fn.call(scope, scope);
+    }
+
+    /** Build an error message for a failing statement, anchored to its original source line.
+     *  Statement mode knows each statement's line range from acorn, so we don't need the
+     *  V8-eval-offset calibration that _extractScriptContextFromErrorStack() relies on.
+    */
+    _formatStatementError(stmt:ScriptStatement, request:RunnerScriptExecutionRequest, e:Error):string
+    {
+        const CONTEXT_LINES_BEFORE = 3;
+        const CONTEXT_LINES_AFTER = 3;
+        const lines = (request.script.code ?? '').split('\n');
+        const line = stmt.lineStart ?? 1;                 // 1-indexed
+        const errIdx = Math.max(0, line - 1);             // 0-indexed anchor
+        const endIdx = Math.min(lines.length, (stmt.lineEnd ?? line));
+        const startIdx = Math.max(0, errIdx - CONTEXT_LINES_BEFORE);
+        const stopIdx = Math.min(lines.length, endIdx + CONTEXT_LINES_AFTER);
+        const gutterWidth = String(stopIdx).length;
+
+        const contextLines:string[] = [];
+        for(let i = startIdx; i < stopIdx; i++)
         {
-            const originalCode = ScriptStatement.code; // keep original code for error messages
-            ScriptStatement.code = ScriptStatement.code.replace(ft.from, ft.to);
-            if(originalCode !== ScriptStatement.code)
-            {
-                console.warn(`Runner::_preprocessScriptStatement(): ${ft.msg(originalCode.match(ft.from))}`);
-            }
-        });
-        
-        return ScriptStatement;
+            const marker = (i >= errIdx && i < (stmt.lineEnd ?? line)) ? '>' : ' ';
+            contextLines.push(`${marker} ${String(i + 1).padStart(gutterWidth)} | ${lines[i]}`);
+        }
+
+        return `
+**** EXECUTION ERROR ****
+- error: '${e.message}'
+- line: ${line}
+- context:
+${contextLines.join('\n')}
+**** END ERROR ****`;
     }
 
 
@@ -1118,6 +1242,50 @@ ${e.message === '***** CODE ****\nUnexpected end of input' ? code : ''}
         console.log(`Runner::_prefetchComponentScripts(): Fetched ${Object.keys(this._componentScripts).length} component scripts: ${Object.keys(this._componentScripts).join(', ')}`);
 
         return { scripts: this._componentScripts, missing }; // return all fetched component scripts
+    }
+
+    //// $import ASSETS ////
+
+    /** Extract the string-literal URLs of every `$import('url'[, {...}])` in the code.
+     *  Deduplicated. Only static string literals are pre-fetchable (like $component);
+     *  a dynamic `$import(someVar)` is reported at call time as a cache miss. */
+    _extractImportUrls(code:string):Array<string>
+    {
+        const urls = new Set<string>();
+        const re = /\$import\s*\(\s*(['"`])([^'"`]+)\1/g;
+        let m:RegExpExecArray | null;
+        while((m = re.exec(code)) !== null)
+        {
+            const url = m[2].trim();
+            if(url) urls.add(url);
+        }
+        return Array.from(urls);
+    }
+
+    /** Fetch (through the asset proxy) every $import() URL in the script and cache the
+     *  raw payload by URL. Runs before execution so the in-scope $import() is synchronous.
+     *  Already-cached URLs are skipped so editor re-runs don't re-fetch. */
+    async _prefetchImportAssets(request:string|Script|RunnerScriptExecutionRequest):Promise<void>
+    {
+        const code = (typeof request === 'string')
+                        ? request
+                        : (Script.isScript(request))
+                            ? request.code
+                            : request?.script?.code;
+        if(!code) return;
+
+        const proxyUrl = (typeof request === 'object' && request !== null && 'assetProxyUrl' in request)
+                            ? (request as RunnerScriptExecutionRequest).assetProxyUrl
+                            : undefined;
+
+        const urls = this._extractImportUrls(code).filter(u => !this._importAssets[u]);
+        if(urls.length === 0) return;
+
+        console.info(`Runner::_prefetchImportAssets(): fetching ${urls.length} asset(s): ${urls.join(', ')}`);
+        await Promise.all(urls.map(async (url) =>
+        {
+            this._importAssets[url] = await AssetImporter.fetch(url, { proxyUrl });
+        }));
     }
 
     /** Manage component script cache */

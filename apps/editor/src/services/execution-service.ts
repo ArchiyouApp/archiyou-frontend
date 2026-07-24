@@ -17,6 +17,10 @@ import type { ConsoleMessage } from '@archiyou/core/src/console/types';
 // Shared, lazily-initialised worker for the whole app (editor, plugins, etc.).
 const worker = new RunnerWorker();
 
+// Base URL of the backend, used by the core $import() asset proxy. Same value
+// api.ts/auth-service.ts use; '' → root-relative /proxy.
+const ASSET_PROXY_URL = (import.meta.env.SERVER_API_BASE_URL as string | undefined) ?? '';
+
 function formatUnknownError(error: unknown): string
 {
   if (error instanceof Error) return error.message;
@@ -85,6 +89,8 @@ export async function runScript(request: RunnerScriptExecutionRequest): Promise<
 {
   try
   {
+    // Point $import() at the backend asset proxy unless the caller set one.
+    request.assetProxyUrl ??= ASSET_PROXY_URL;
     // The viewer needs the full result (scenegraph/annotations/handles), so use run().
     return await worker.run(request);
   }

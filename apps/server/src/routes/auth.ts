@@ -64,7 +64,7 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
         { sub: user.id, type: 'reset', pfp: pwFingerprint(user.passwordHash) },
         { expiresIn: RESET_TOKEN_TTL },
       );
-      const link = `${config.editorUrl}/reset-password?token=${encodeURIComponent(token)}`;
+      const link = `${config.frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
       await emailService.sendPasswordReset(user.email, link);
     }
     return { success: true };
@@ -103,6 +103,6 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
   // Google OAuth is not configured in this build. Bounce gracefully so the
   // client's "Continue with Google" button doesn't hit a dead route.
   fastify.get('/auth/google', async (_request, reply) => {
-    return reply.redirect(`${config.editorUrl}/callback#error=google_not_configured`);
+    return reply.redirect(`${config.frontendUrl}/callback#error=google_not_configured`);
   });
 }

@@ -177,6 +177,17 @@ export const scripts          = signal<Script[]>(_initialScripts);
 export const executing        = signal<boolean>(false);
 export const executionResult  = signal<RunnerScriptExecutionResult | null>(null);
 
+/** Per-statement execution mode: run the script statement-by-statement so a single
+ *  failure halts with a partial model instead of losing the whole run, and each
+ *  statement is timed (see the Profiling tool). Toggled in the Run options menu.
+ *  Session-only, like `executing`/`executionResult`. */
+export const perStatement     = signal<boolean>(true);
+
+/** Automatic execute: re-run the script automatically a short delay after code
+ *  changes (and on load / unit flip). When off, the user runs manually via the
+ *  Run button. Toggled in the Run options menu. Session-only. */
+export const autoRun          = signal<boolean>(true);
+
 /** Combined view — use when you need the full core shape. */
 export const core = computed<WorkspaceCoreState>(() => ({
   user:      userState.get(),

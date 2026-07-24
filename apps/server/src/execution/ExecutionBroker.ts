@@ -27,9 +27,9 @@ export class ExecutionBroker
         // Initialize Redis connection
         this.redis = new Redis(
         {
-            host: redisConfig?.host || process.env.REDIS_HOST || 'localhost',
+            host: redisConfig?.host || process.env.SERVER_REDIS_HOST || 'localhost',
             port: redisConfig?.port || 6379,
-            password: redisConfig?.password || process.env.REDIS_PASSWORD || undefined,
+            password: redisConfig?.password || process.env.SERVER_REDIS_PASSWORD || undefined,
             maxRetriesPerRequest: null, // Disable automatic retries
             lazyConnect: true, // Don't connect immediately, we'll do it manually with error handling
         });

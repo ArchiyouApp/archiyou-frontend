@@ -22,6 +22,7 @@ import { registerUserRoutes } from './routes/users';
 import { registerScriptRoutes } from './routes/scripts';
 import { registerLibraryRoutes } from './routes/library';
 import { registerExecuteRoutes } from './routes/execute';
+import { registerProxyRoutes } from './routes/proxy';
 import { ValidationError } from './validate';
 import { UserError } from './services/UserService';
 import { ScriptStoreError } from './services/ScriptStore';
@@ -72,6 +73,7 @@ export async function serverApiPlugin(fastify: FastifyInstance): Promise<void> {
   await fastify.register(registerScriptRoutes);   // /scripts/{user}/* (authed)
   await fastify.register(registerLibraryRoutes);  // /scripts/{published,shared}/* (public)
   await fastify.register(registerExecuteRoutes);  // /scripts/published/execute/*
+  await fastify.register(registerProxyRoutes);    // /proxy?url= (asset proxy for $import)
 }
 
 function setupErrorHandling(fastify: FastifyInstance): void {

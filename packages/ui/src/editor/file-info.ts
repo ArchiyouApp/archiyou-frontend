@@ -66,16 +66,28 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
         <wa-icon library="lucide" name="file"></wa-icon>
 
         ${this._editingName && !readOnly
-          ? html`
-              <input
-                id=${`fm-name-header-${this._uid}`}
-                class="name-input"
-                .value=${this._nameDraft}
-                @input=${(e: InputEvent) => (this._nameDraft = (e.target as HTMLInputElement).value)}
-                @blur=${this._commitNameEdit}
-                @keydown=${this._onNameKeydown}
-                @click=${(e: Event) => e.stopPropagation()}
-              />`
+          ? (() => {
+              const trimmed = this._nameDraft.trim();
+              const taken = !!trimmed && isScriptNameTaken(trimmed, script?.fileId);
+              return html`
+                <input
+                  id=${`fm-name-header-${this._uid}`}
+                  class=${`name-input${taken ? ' invalid' : ''}`}
+                  .value=${this._nameDraft}
+                  @input=${(e: InputEvent) => (this._nameDraft = (e.target as HTMLInputElement).value)}
+                  @blur=${this._commitNameEdit}
+                  @keydown=${this._onNameKeydown}
+                  @click=${(e: Event) => e.stopPropagation()}
+                />
+                ${taken
+                  ? html`
+                      <span class="name-taken header" @click=${(e: Event) => e.stopPropagation()}>
+                        <wa-icon library="lucide" name="triangle-alert"></wa-icon>
+                        already exists
+                      </span>`
+                  : nothing}
+              `;
+            })()
           : html`
               <span
                 class="script-name"
@@ -170,16 +182,27 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
       <div class="body">
         <div class="form">
 
-          ${this._renderField('name', html`
-            <input
-              id=${`fm-name-form-${this._uid}`}
-              class="text-input"
-              .value=${this._draft.projectName}
-              placeholder="script name…"
-              @input=${(e: InputEvent) =>
-                (this._draft = { ...this._draft, projectName: (e.target as HTMLInputElement).value })}
-            />
-          `)}
+          ${this._renderField('name', (() => {
+            const trimmed = this._draft.projectName.trim();
+            const taken = !!trimmed && isScriptNameTaken(trimmed, script?.fileId);
+            return html`
+              <input
+                id=${`fm-name-form-${this._uid}`}
+                class=${`text-input${taken ? ' invalid' : ''}`}
+                .value=${this._draft.projectName}
+                placeholder="script name…"
+                @input=${(e: InputEvent) =>
+                  (this._draft = { ...this._draft, projectName: (e.target as HTMLInputElement).value })}
+              />
+              ${taken
+                ? html`
+                    <div class="name-taken">
+                      <wa-icon library="lucide" name="triangle-alert"></wa-icon>
+                      already exists
+                    </div>`
+                : nothing}
+            `;
+          })())}
 
           ${this._renderField('version', html`
             <input
@@ -649,6 +672,19 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
       outline: none;
     }
 
+    .name-input.invalid
+    {
+      border-color: var(--color-alert, #ef4444);
+    }
+
+    /* Header variant of the "already exists" warning — inline, no top margin. */
+    .name-taken.header
+    {
+      margin-top: 0;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
     .edit-name-btn
     {
       display: flex;
@@ -864,6 +900,25 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
     .text-input:focus
     {
       border-color: var(--color-primary);
+    }
+
+    .text-input.invalid,
+    .text-input.invalid:focus
+    {
+      border-color: var(--color-alert, #ef4444);
+    }
+
+    /* ── Inline "already exists" name warning ── */
+
+    .name-taken
+    {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 4px;
+      color: var(--color-alert, #ef4444);
+      font-size: var(--text-xs);
+      font-weight: 500;
     }
 
     .text-input:disabled

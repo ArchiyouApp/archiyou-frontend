@@ -23,7 +23,7 @@ export const MODELER_METHODS_INTO_GLOBAL = [
 //// EXECUTION AND OUTPUT SETTINGS ////
 
 export const SCRIPT_OUTPUT_CATEGORIES = ['model','metrics','tables','docs'] // see types: ScriptOutputCategory
-export const SCRIPT_OUTPUT_MODEL_FORMATS = ['gltf','glb','step','stl','svg', 'dae', 'obj', 'dxf'] // see types: ScriptOutputModelFormat
+export const SCRIPT_OUTPUT_MODEL_FORMATS = ['gltf','glb','step','stl','svg', 'dae', 'obj', 'dxf', 'amf'] // see types: ScriptOutputModelFormat
 export const SCRIPT_OUTPUT_METRIC_FORMATS = ['json','xlsx'] // see types: ScriptOutputMetricFormat
 export const METRIC_DEFAULT_ICON = 'gauge' // default icon for metrics without an explicit icon set (Lucide icon name)
 export const SCRIPT_OUTPUT_TABLE_FORMATS = ['json','xlsx', 'gsheets'] // see types: ScriptOutputTableFormat

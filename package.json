@@ -6,6 +6,8 @@
   "packageManager": "pnpm@10.32.1",
   "scripts": {
     "build": "turbo build",
+    "build:editor": "pnpm --filter @archiyou/editor build:prod",
+    "build:editor:dev": "pnpm --filter @archiyou/editor build:dev",
     "dev": "turbo dev --filter=@archiyou/editor --filter=@archiyou/server",
     "dev:editor": "turbo dev --filter=@archiyou/editor",
     "dev:server": "turbo dev --filter=@archiyou/server",

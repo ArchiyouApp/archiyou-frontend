@@ -5,8 +5,9 @@
  * Publishing makes the parametric script available as an embeddable configurator
  * where end-users tweak parameters and download "fulfillments" (a model, data
  * tables, documents). The menu collects a title, description, version (prefilled
- * with a +0.1 bump over the last published version), public flag, licence and a
- * list of fulfillments — each a named bundle of output paths with a delivery
+ * with a +0.1 bump over the highest version the file already used — published OR
+ * shared, since `(fileId, version)` is unique server-side), public flag, licence
+ * and a list of fulfillments — each a named bundle of output paths with a delivery
  * method and optional price. Fulfillments are edited in a sub-pane on the same
  * modal.
  *
@@ -38,6 +39,7 @@ import type { RunnerScriptExecutionRequest } from '@archiyou/core/src/runner/typ
 import { editorScript, userState, bumpScript } from '@archiyou/editor/src/state/workspace';
 import { runScript, warmupWorker } from '@archiyou/editor/src/services/execution-service';
 import { publishScript, fetchPublishedScript, updateConfigurator } from '@archiyou/editor/src/services/publishing';
+import { fetchFileVersions } from '@archiyou/editor/src/services/scripts-sync';
 import { OVERLAY_MENU_WIDTH } from '@archiyou/editor/src/settings';
 
 import {
@@ -79,6 +81,22 @@ function isHigher(a: string, b: string): boolean {
   return amaj > bmaj || (amaj === bmaj && amin > bmin);
 }
 
+/** True when both strings denote the same (major, minor) release. */
+function isSameVersion(a: string, b: string): boolean {
+  return parseMajorMinor(a).join('.') === parseMajorMinor(b).join('.');
+}
+
+/** The highest of `versions` on (major, minor), or null when empty. */
+function highestVersion(versions: string[]): string | null {
+  return versions.reduce<string | null>((max, v) => (max === null || isHigher(v, max) ? v : max), null);
+}
+
+/** Server error text (`{ success, error }` body of a 4xx) when there is one. */
+function errorMessage(err: unknown, fallback: string): string {
+  const body = (err as { body?: { error?: string } } | undefined)?.body;
+  return body?.error ?? (err as Error)?.message ?? fallback;
+}
+
 /** Deep-ish clone of a fulfillment (safe for local editing). */
 function cloneFulfillment(f: ScriptPublishedFulfillmentData): ScriptPublishedFulfillmentData {
   return { ...f, exports: [...(f.exports ?? [])] };
@@ -106,8 +124,6 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
 
   // ── Form state ──
   @state() private _view: 'form' | 'fulfillment' = 'form';
-  @state() private _title       = '';
-  @state() private _description = '';
   @state() private _version     = '0.1';
   @state() private _public      = true;
   @state() private _licence     = DEFAULT_LICENCE;
@@ -115,6 +131,9 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
 
   // ── Prefill / submit ──
   @state() private _lastVersion: string | null = null;
+  /** Every version this file already used server-side (published or shared) —
+   *  the server rejects a re-use, so the menu must never suggest one. */
+  @state() private _usedVersions: string[] = [];
   @state() private _submitting  = false;
   @state() private _error       = '';
   @state() private _success: { url: string; public: boolean; count: number } | null = null;
@@ -238,30 +257,6 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
         <span>${this._durationLabel()}</span>
       </div>
 
-      <!-- Title -->
-      <div class="field">
-        <label class="field-label">Title</label>
-        <input
-          class="text-input"
-          type="text"
-          placeholder="Name shown to configurator users"
-          .value=${this._title}
-          @input=${(e: InputEvent) => (this._title = (e.target as HTMLInputElement).value)}
-        />
-      </div>
-
-      <!-- Description -->
-      <div class="field">
-        <label class="field-label">Description</label>
-        <textarea
-          class="text-input desc-input"
-          rows="3"
-          placeholder="What does this configurator make?"
-          .value=${this._description}
-          @input=${(e: InputEvent) => (this._description = (e.target as HTMLTextAreaElement).value)}
-        ></textarea>
-      </div>
-
       <!-- Version -->
       <div class="field">
         <label class="field-label">Version</label>
@@ -279,6 +274,10 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
               ? html`<span class="hint">last published: <strong>${this._lastVersion}</strong></span>`
               : html`<span class="hint">(new)</span>`}
         </div>
+        ${!this._editMode && this._usedVersions.length > 0
+          ? html`<span class="hint">Versions already used by this script:
+              <strong>${this._usedVersions.join(', ')}</strong></span>`
+          : nothing}
       </div>
 
       <!-- Public -->
@@ -296,12 +295,15 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
       <!-- Licence -->
       <div class="field">
         <label class="field-label">Licence</label>
+        <!-- The selected attribute on the option (not value on the select) is what
+             makes wa-select show a preselected licence; "change" is the event
+             WebAwesome 3 emits — "wa-change" never fires. -->
         <wa-select
-          value=${this._licence}
-          @wa-change=${(e: Event) => (this._licence = (e.target as HTMLSelectElement).value)}
+          class="licence-select"
+          @change=${(e: Event) => (this._licence = String((e.target as HTMLElement & { value: string }).value ?? ''))}
         >
           ${CC_LICENCES.map(l => html`
-            <wa-option value=${l}>${LICENCE_LABELS[l] ?? l}</wa-option>`)}
+            <wa-option value=${l} ?selected=${l === this._licence}>${LICENCE_LABELS[l] ?? l}</wa-option>`)}
         </wa-select>
       </div>
 
@@ -544,6 +546,11 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
   override updated(changed: Map<string, unknown>)
   {
     if (changed.has('open') && this.open && !userState.get().anonymous) void this._prepare();
+
+    // Keep the licence dropdown in sync once it has options (its value lags the
+    // slotted options on first paint, and prefill arrives after the fetch).
+    const select = this.renderRoot?.querySelector('.licence-select') as (HTMLElement & { value: string | string[] | null }) | null;
+    if (select && select.value !== this._licence) select.value = this._licence;
   }
 
   // ── Precheck + prefill ──
@@ -557,11 +564,10 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
     this._meta = null;
     this._success = null;
     this._view = 'form';
-    this._title = '';
-    this._description = '';
     this._public = true;
     this._licence = DEFAULT_LICENCE;
     this._lastVersion = null;
+    this._usedVersions = [];
     this._version = '0.1';
     this._editMode = false;
     this._fulfillments = DEFAULT_FULFILLMENTS.map(cloneFulfillment);
@@ -619,8 +625,6 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
   {
     const p = data.published;
     this._version       = data.version ?? '';
-    this._title         = p?.title ?? data.name ?? '';
-    this._description   = p?.description ?? '';
     this._licence       = p?.licence ?? DEFAULT_LICENCE;
     this._public        = p?.public ?? true;
     this._fulfillments  = (p?.fulfillments?.length ? p.fulfillments : DEFAULT_FULFILLMENTS).map(cloneFulfillment);
@@ -632,14 +636,18 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
     const author = script.author ?? userState.get().id ?? null;
     const name = script.name ?? null;
 
+    // Versions of *this file*: uniqueness is per (fileId, version) across the
+    // published AND shared libraries, so a version shared earlier is taken too.
+    this._usedVersions = script.fileId
+      ? [...new Set(await fetchFileVersions(script.fileId))].sort((a, b) => (isHigher(a, b) ? 1 : -1))
+      : [];
+
     if (author && name)
     {
       const prev = await fetchPublishedScript(author, name);
       if (prev?.published)
       {
         this._lastVersion = prev.version ?? null;
-        this._title       = prev.published.title ?? '';
-        this._description = prev.published.description ?? '';
         this._licence     = prev.published.licence ?? DEFAULT_LICENCE;
         this._public      = prev.published.public ?? true;
         if (prev.published.fulfillments?.length)
@@ -649,8 +657,16 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
       }
     }
 
-    if (!this._title) this._title = script.published?.title ?? script.name ?? '';
-    this._version = bumpVersion(this._lastVersion);
+    this._version = this._nextFreeVersion();
+  }
+
+  /** A +0.1 bump over the highest version this file ever used (published, shared
+   *  or the last published one), so the suggestion can never collide server-side. */
+  private _nextFreeVersion(): string
+  {
+    const known = [...this._usedVersions];
+    if (this._lastVersion) known.push(this._lastVersion);
+    return bumpVersion(highestVersion(known));
   }
 
   // ── Fulfillment list actions ──
@@ -793,6 +809,12 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
       this._error = `Version must be higher than the last published version (${this._lastVersion})`;
       return;
     }
+    // A version is unique per file server-side, across publishing AND sharing.
+    if (this._usedVersions.some(v => isSameVersion(v, version)))
+    {
+      this._error = `Version ${version} is already used by this script — try ${this._nextFreeVersion()}`;
+      return;
+    }
 
     const script = editorScript.get();
     if (!script) { this._error = 'No active script'; return; }
@@ -800,8 +822,8 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
     // Compose the published metadata + version onto the script for the request.
     script.version = version;
     script.published = {
-      title:        this._title.trim() || undefined,
-      description:  this._description.trim() || undefined,
+      title:        script.name || undefined,
+      description:  script.description?.trim() || undefined,
       public:       this._public,
       licence:      this._licence as CCLicence,
       validated:    false,
@@ -816,6 +838,8 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
       // Reflect the stored metadata + version on the active script.
       script.published = stored.published ?? script.published;
       script.version = stored.version ?? script.version;
+      this._usedVersions = [...this._usedVersions, version];
+      this._lastVersion = version;
       bumpScript();
 
       const author = stored.author ?? script.author ?? userState.get().id ?? 'me';
@@ -830,7 +854,7 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
     }
     catch (err)
     {
-      this._error = (err as Error)?.message ?? 'Publishing failed';
+      this._error = errorMessage(err, 'Publishing failed');
     }
     finally
     {
@@ -849,8 +873,8 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
       ...editData,
       published: {
         ...(editData.published ?? {}),
-        title:        this._title.trim() || undefined,
-        description:  this._description.trim() || undefined,
+        title:        editData.name || undefined,
+        description:  editData.description?.trim() || undefined,
         public:       this._public,
         licence:      this._licence as CCLicence,
         validated:    editData.published?.validated ?? false,
@@ -873,7 +897,7 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
     }
     catch (err)
     {
-      this._error = (err as Error)?.message ?? 'Saving failed';
+      this._error = errorMessage(err, 'Saving failed');
     }
     finally
     {

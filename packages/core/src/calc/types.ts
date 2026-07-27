@@ -30,7 +30,7 @@ export interface ComputedFooterRow
     fill?: string;
 }
 
-export type MetricName = 'cost_material' | 'cost_labor' | 'production_time' | 'price_est' | 'price' | 'weight' | 'volume' | 'size' | 'r-value' // TODO: more
+export type MetricName = 'cost_material' | 'cost_labor' | 'production_time' | 'price_est' | 'price' | 'weight' | 'volume' | 'size' | 'r-value' | 'carbon' // TODO: more
 
 /** Metric is a element that outputs data in some way */
 export interface Metric {

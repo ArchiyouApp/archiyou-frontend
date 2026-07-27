@@ -189,6 +189,23 @@ export async function syncSaveNow(script: Script): Promise<void> {
   }
 }
 
+/** Every concrete version string this file already used server-side (shared AND
+ *  published — `(fileId, version)` is unique across both). The share/publish
+ *  menus need it to suggest a version that can't collide. Empty when anonymous
+ *  or when the file is not on the server (yet). */
+export async function fetchFileVersions(fileId: string): Promise<string[]> {
+  if (!authed() || !fileId) return [];
+  const user = handle();
+  if (!user) return [];
+  try {
+    const versions = await api.get<Array<{ version: string | null }>>(`/scripts/${user}/${fileId}/versions`);
+    return versions.map((v) => v.version).filter((v): v is string => !!v);
+  } catch (err) {
+    console.warn('scripts-sync: version list failed', err);
+    return [];
+  }
+}
+
 /** Delete a file server-side. */
 export async function syncDelete(fileId: string): Promise<void> {
   if (!authed() || !fileId) return;

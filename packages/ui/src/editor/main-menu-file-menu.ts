@@ -51,17 +51,25 @@ export class MainMenuFileMenu extends LitElement
         <wa-dropdown-item value="export">
           <wa-icon slot="icon" library="lucide" name="file-output"></wa-icon>
           ${msg('Export to...')}
-          <wa-dropdown-item slot="submenu" value="export-gltf">
+          <wa-dropdown-item slot="submenu" value="export-glb">
             <wa-icon slot="icon" library="lucide" name="boxes"></wa-icon>
-            GLTF
+            GLB 3D
           </wa-dropdown-item>
           <wa-dropdown-item slot="submenu" value="export-stl">
             <wa-icon slot="icon" library="lucide" name="scan-search"></wa-icon>
-            STL
+            STL 3D
           </wa-dropdown-item>
-          <wa-dropdown-item slot="submenu" value="export-obj">
+          <wa-dropdown-item slot="submenu" value="export-amf">
             <wa-icon slot="icon" library="lucide" name="package"></wa-icon>
-            OBJ
+            AMF 3D
+          </wa-dropdown-item>
+          <wa-dropdown-item slot="submenu" value="export-dae">
+            <wa-icon slot="icon" library="lucide" name="box"></wa-icon>
+            DAE 3D
+          </wa-dropdown-item>
+          <wa-dropdown-item slot="submenu" value="export-svg">
+            <wa-icon slot="icon" library="lucide" name="spline"></wa-icon>
+            SVG 2D
           </wa-dropdown-item>
           <wa-dropdown-item slot="submenu" value="export-dxf">
             <wa-icon slot="icon" library="lucide" name="pen-tool"></wa-icon>

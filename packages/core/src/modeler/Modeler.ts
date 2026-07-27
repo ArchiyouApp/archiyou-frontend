@@ -38,6 +38,7 @@ import { validate, optional } from "../decorators";
 import { type AnyShape, isAnyShape } from "./types";
 
 import { buildDXF, type toDXFOptions } from "./DXFExporter";
+import { buildDAE, type toDAEOptions } from "./DAEExporter";
 
 // Meshup namespace — imported as value (for instanceof) and type
 import * as meshup from 'meshup/src/index'
@@ -750,9 +751,134 @@ export class Modeler
     }
 
 
-    toSVG(): string
+    /** Export the scene's 2D shapes to an SVG string. Returns null when the scene
+     *  has no 2D geometry, so exporters don't hand the user an empty drawing. */
+    toSVG(): string | null
     {
+        const has2D = this.scene().shapes().toArray().some((s:any) => s?.is2D?.())
+        if (!has2D)
+        {
+            console.warn('Modeler::toSVG(): No 2D shapes in scene. Nothing to export.')
+            return null
+        }
         return this.scene().toSVG()
+    }
+
+    /** Export all Meshes in the scene to one binary STL. Non-mesh shapes (curves,
+     *  polygons, vertices) are skipped. Returns null when the scene has no meshes.
+     *  The per-mesh binary STLs are merged by concatenating their triangle records
+     *  (binary STL = 80 byte header + uint32 count + 50 bytes per triangle). */
+    toSTL(): Uint8Array | null
+    {
+        const meshes = this._sceneMeshes('toSTL')
+        if (meshes.length === 0) return null
+
+        const TRI_BYTES = 50;
+        const triangleChunks:Array<Uint8Array> = []
+        let numTriangles = 0;
+
+        meshes.forEach((mesh) =>
+        {
+            const stl = mesh.toSTLBinary?.() as Uint8Array | undefined
+            if (!stl || stl.byteLength < 84) return;
+
+            const view = new DataView(stl.buffer, stl.byteOffset, stl.byteLength);
+            const count = view.getUint32(80, true);
+            if (count === 0) return;
+
+            // Guard against a truncated/invalid record block
+            const avail = Math.min(count, Math.floor((stl.byteLength - 84) / TRI_BYTES));
+            if (avail === 0) return;
+
+            triangleChunks.push(stl.subarray(84, 84 + avail * TRI_BYTES));
+            numTriangles += avail;
+        })
+
+        if (numTriangles === 0)
+        {
+            console.warn('Modeler::toSTL(): Meshes in scene produced no triangles.')
+            return null
+        }
+
+        const out = new Uint8Array(84 + numTriangles * TRI_BYTES);
+        // Header (80 bytes, zero-filled except a short signature) + triangle count
+        new TextEncoder().encodeInto('Archiyou binary STL export', out.subarray(0, 80));
+        new DataView(out.buffer).setUint32(80, numTriangles, true);
+
+        let offset = 84;
+        triangleChunks.forEach((chunk) => { out.set(chunk, offset); offset += chunk.byteLength; })
+
+        return out
+    }
+
+    /** All Meshes in the scene, in scene order. Warns (with the calling method's name)
+     *  and returns [] when the scene holds no 3D geometry. */
+    private _sceneMeshes(method: string): Array<any>
+    {
+        const meshes = this.scene().shapes().toArray()
+            .filter((s:any) => s?.type === 'Mesh') as Array<any>
+
+        if (meshes.length === 0)
+        {
+            console.warn(`Modeler::${method}(): No Meshes in scene. Nothing to export.`)
+        }
+        return meshes
+    }
+
+    /** AMF unit name for the modeler's current units. AMF 1.1 only knows
+     *  micron/millimeter/centimeter/inch/feet/meter — anything else falls back to millimeter. */
+    private _amfUnit(): string
+    {
+        const AMF_UNITS: Record<string, string> = {
+            mm: 'millimeter', cm: 'centimeter', m: 'meter', inch: 'inch', feet: 'feet',
+        };
+        return AMF_UNITS[this.units()] ?? 'millimeter';
+    }
+
+    /** Export all Meshes in the scene to one AMF document (XML string). Each mesh becomes
+     *  its own <object> in a shared <amf> root; non-mesh shapes are skipped. Returns null
+     *  when the scene has no meshes.
+     *  NOTE: the kernel emits one single-object document per mesh, so the objects are
+     *  lifted out of those documents and renumbered into one document here. */
+    toAMF(): string | null
+    {
+        const meshes = this._sceneMeshes('toAMF')
+        if (meshes.length === 0) return null
+
+        const unit = this._amfUnit()
+        const objects: Array<string> = []
+
+        meshes.forEach((mesh, i) =>
+        {
+            const doc = mesh.toAMF?.(mesh.name?.() ?? `object${i}`, unit) as string | undefined
+            if (!doc) return;
+
+            // Lift the <object …>…</object> block out of the single-object document
+            const start = doc.indexOf('<object');
+            const end = doc.lastIndexOf('</object>');
+            if (start === -1 || end === -1) return;
+
+            const object = doc.slice(start, end + '</object>'.length)
+                // AMF ids must be integers — the kernel writes the object name there
+                .replace(/^<object\s+id="[^"]*"/, `<object id="${objects.length}"`);
+
+            objects.push(object);
+        })
+
+        if (objects.length === 0)
+        {
+            console.warn('Modeler::toAMF(): Meshes in scene produced no AMF geometry.')
+            return null
+        }
+
+        return [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            `<amf unit="${unit}" version="1.1">`,
+            '  <metadata type="producer">Archiyou</metadata>',
+            ...objects,
+            '</amf>',
+            '',
+        ].join('\n')
     }
 
     /** Export the whole scene's 2D shapes (and all dimension annotations) to a DXF
@@ -764,6 +890,15 @@ export class Modeler
         const shapes = this.scene().shapes().toArray()
         const annotations = this._modules?.annotator?.getAnnotations?.() ?? []
         return buildDXF(shapes as any, annotations, { units: this.units(), ...(options ?? {}) })
+    }
+
+    /** Export the whole scene to a COLLADA (.dae) document. Unlike the other exporters this
+     *  takes the scene ROOT, not a flat shape list — the node hierarchy is preserved as
+     *  nested COLLADA <node>s. Meshes keep their n-gon faces and are welded; Curves become
+     *  <lines>. Returns null when the scene holds no exportable geometry. */
+    async toDAE(options?: toDAEOptions): Promise<string | null>
+    {
+        return buildDAE(this.scene(), { units: this.units(), ...(options ?? {}) })
     }
 
     /** Build the ArchiyouStateData payload (scenegraph + annotations + managedHandles) used by

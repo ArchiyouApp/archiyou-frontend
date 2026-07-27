@@ -25,8 +25,9 @@
         "textures": {
           "sides": {
             "image": "./textures/concrete_sides.jpg",
-            "realWidth": 300,
-            "realHeight": 300
+            "realWidth": 3000,
+            "realHeight": 3000,
+            "repeat": false
           }
         }
       },
@@ -34,10 +35,10 @@
         "reinforced concrete"
       ],
       "carbon": {
-        "value": 0.15,
+        "value": 0.0817,
         "unit": "kgCO2e/kg",
-        "source": "ICE database v3",
-        "description": "Embodied carbon for typical general purpose concrete."
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT b3fb0ba9-2376-49bf-b21a-7f7a5cd97233"
       },
       "compressive": {
         "value": 30,
@@ -68,6 +69,109 @@
         "unit": "W/mK",
         "source": "Engineering ToolBox",
         "description": "Thermal conductivity for normal-weight concrete."
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "m3",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 2400,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 196,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A4": {
+            "value": 4.35,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 0.874,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "B1": {
+            "value": -14,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C1": {
+            "value": 3.32,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 10.3,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 5.05,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -12.1,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.335,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A4": {
+            "value": 0.0155,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 0.012,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "B1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C1": {
+            "value": 0.0115,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0.0371,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 0.0505,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -0.106,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "b3fb0ba9-2376-49bf-b21a-7f7a5cd97233",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/b3fb0ba9-2376-49bf-b21a-7f7a5cd97233?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2028"
+        }
       }
     },
     {
@@ -89,8 +193,9 @@
         "textures": {
           "sides": {
             "image": "./textures/cement_sides.jpg",
-            "realWidth": 300,
-            "realHeight": 300
+            "realWidth": 3000,
+            "realHeight": 3000,
+            "repeat": false
           }
         }
       },
@@ -100,16 +205,44 @@
         "binder"
       ],
       "carbon": {
-        "value": 0.86,
+        "value": 0.665,
         "unit": "kgCO2e/kg",
-        "source": "ICE database v3",
-        "description": "Embodied carbon for Ordinary Portland Cement (OPC)."
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 87371640-546c-4d9c-84cc-c13b6be94146"
       },
       "thermalConductivity": {
         "value": 0.7,
         "unit": "W/mK",
         "source": "Engineering ToolBox",
         "description": "Thermal conductivity of hardened cement paste."
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "kg",
+        "declaredUnitValue": 1000,
+        "modules": {
+          "A1A3": {
+            "value": 665,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.855,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "87371640-546c-4d9c-84cc-c13b6be94146",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/87371640-546c-4d9c-84cc-c13b6be94146?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2027"
+        }
       }
     },
     {
@@ -131,8 +264,9 @@
         "textures": {
           "sides": {
             "image": "./textures/sand_sides.jpg",
-            "realWidth": 300,
-            "realHeight": 300
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -141,10 +275,10 @@
         "construction sand"
       ],
       "carbon": {
-        "value": 0.002,
+        "value": 0.0027,
         "unit": "kgCO2e/kg",
-        "source": "ICE database v3",
-        "description": "Embodied carbon for aggregates (sand and gravel)."
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 286b0072-1001-4e5f-baa2-282230755243"
       },
       "recyclability": {
         "value": 1,
@@ -157,6 +291,79 @@
         "unit": "W/mK",
         "source": "Engineering ToolBox",
         "description": "Thermal conductivity for dry sand."
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "kg",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 1350,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 0.0027386873388177,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C1": {
+            "value": 0.000302139657545658,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.00426009080011634,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 0.00710354789079605,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": -0.0015722714568952,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": -0.0000336275026795061,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C1": {
+            "value": 0.00000192531758548693,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.0000216260876698418,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 0.0000313199807090042,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": 0.0000243916153438805,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "286b0072-1001-4e5f-baa2-282230755243",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/286b0072-1001-4e5f-baa2-282230755243?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -178,8 +385,9 @@
         "textures": {
           "sides": {
             "image": "./textures/gravel_sides.jpg",
-            "realWidth": 300,
-            "realHeight": 300
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -188,10 +396,10 @@
         "crushed stone"
       ],
       "carbon": {
-        "value": 0.008,
+        "value": 0.0027,
         "unit": "kgCO2e/kg",
-        "source": "ICE database v3",
-        "description": "Embodied carbon from extraction, crushing, and transport."
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT d35a5f2a-d72c-41a3-9f64-ea1b1ec066d1"
       },
       "compressive": {
         "value": 100,
@@ -216,6 +424,79 @@
         "unit": "W/mK",
         "source": "The Engineering ToolBox",
         "description": "Thermal conductivity for dry gravel."
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "kg",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 1850,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 0.0027386873388177,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C1": {
+            "value": 0.000302139657545658,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.00426009080011634,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 0.00710354789079605,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": -0.0015722714568952,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": -0.0000336275026795061,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C1": {
+            "value": 0.00000192531758548693,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.0000216260876698418,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 0.0000313199807090042,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": 0.0000243916153438805,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "d35a5f2a-d72c-41a3-9f64-ea1b1ec066d1",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/d35a5f2a-d72c-41a3-9f64-ea1b1ec066d1?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -236,8 +517,9 @@
         "textures": {
           "sides": {
             "image": "./textures/stone_sides.jpg",
-            "realWidth": 300,
-            "realHeight": 300
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -275,6 +557,84 @@
         "value": 3,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "qm",
+        "declaredUnitValue": 1,
+        "modules": {
+          "A1A3": {
+            "value": 6.06357479470414,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": 28.4225806495542,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0.0628450487694968,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.8860988864242,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 1.47753796128558,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": -0.327032463034201,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.0385812218292351,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": -0.00865499802004194,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0.000400466057781281,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.00449822623532709,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0.00651455598747288,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": 0.00507345599152715,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "f82e3ab8-d7bb-4765-a60c-bfe78ede1565",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/f82e3ab8-d7bb-4765-a60c-bfe78ede1565?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -295,8 +655,9 @@
         "textures": {
           "sides": {
             "image": "./textures/mortar_sides.jpg",
-            "realWidth": 250,
-            "realHeight": 250
+            "realWidth": 1000,
+            "realHeight": 1000,
+            "repeat": false
           }
         }
       },
@@ -306,9 +667,10 @@
         "masonry mortar"
       ],
       "carbon": {
-        "value": 0.15,
+        "value": 0.564,
         "unit": "kgCO2e/kg",
-        "source": "ICE database v3"
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 7c0535db-e6d1-4342-871d-74cde862d97a"
       },
       "compressive": {
         "value": 10,
@@ -329,6 +691,119 @@
         "value": 0.8,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "kg",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 1000,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 0.564,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "A4": {
+            "value": 0.0129,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "A5": {
+            "value": 0.0318,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "B1": {
+            "value": -0.154,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C1": {
+            "value": 0.000313,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.00637,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C4": {
+            "value": 0.0169,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": -0.0122,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": -0.0193,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "A4": {
+            "value": 0.00000529,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "A5": {
+            "value": 0.0292,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "B1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C1": {
+            "value": -0.00000132,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.00000261,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C4": {
+            "value": -0.000516,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": -0.0000872,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "7c0535db-e6d1-4342-871d-74cde862d97a",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/7c0535db-e6d1-4342-871d-74cde862d97a?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2029"
+        }
       }
     },
     {
@@ -350,8 +825,9 @@
         "textures": {
           "sides": {
             "image": "./textures/grout_sides.jpg",
-            "realWidth": 250,
-            "realHeight": 250
+            "realWidth": 1000,
+            "realHeight": 1000,
+            "repeat": false
           }
         }
       },
@@ -415,8 +891,9 @@
         "textures": {
           "sides": {
             "image": "./textures/steel_sides.jpg",
-            "realWidth": 200,
-            "realHeight": 200
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -425,9 +902,10 @@
         "mild steel"
       ],
       "carbon": {
-        "value": 1.8,
+        "value": 2.529,
         "unit": "kgCO2e/kg",
-        "source": "ICE database v3"
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 04d1311a-ae38-4bfb-8e11-8992f1ddb14f"
       },
       "compressive": {
         "value": 275,
@@ -453,6 +931,89 @@
         "value": 50,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "kg",
+        "declaredUnitValue": 1000,
+        "density": {
+          "value": 7850,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 2528.98448544598,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C1": {
+            "value": 2.19008386994757,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C2": {
+            "value": 2.51341637274405,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C4": {
+            "value": 0.145067094344954,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "D": {
+            "value": -1467.39377141986,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.402631929490777,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C1": {
+            "value": -0.761221607654565,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C2": {
+            "value": -0.0247189417793992,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C4": {
+            "value": -0.00442186797809064,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "D": {
+            "value": 0.562651707697722,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "04d1311a-ae38-4bfb-8e11-8992f1ddb14f",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/04d1311a-ae38-4bfb-8e11-8992f1ddb14f?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2028"
+        }
       }
     },
     {
@@ -473,8 +1034,9 @@
         "textures": {
           "sides": {
             "image": "./textures/rebar_sides.jpg",
-            "realWidth": 200,
-            "realHeight": 200
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -485,9 +1047,10 @@
         "concrete reinforcement"
       ],
       "carbon": {
-        "value": 1.8,
+        "value": 0.6422,
         "unit": "kgCO2e/kg",
-        "source": "ICE database v3"
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT f6861618-5a92-4c3a-94ba-9f7329b29662"
       },
       "compressive": {
         "value": 420,
@@ -513,6 +1076,79 @@
         "value": 50,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "kg",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 7850,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 0.642238043961809,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C1": {
+            "value": 0.000329431870269309,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.00464540577397512,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": 0.142425458555739,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.00423045593552805,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C1": {
+            "value": 0.00000192531758548693,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.0000216260876698418,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": -0.000192068153078644,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "f6861618-5a92-4c3a-94ba-9f7329b29662",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/f6861618-5a92-4c3a-94ba-9f7329b29662?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -533,8 +1169,9 @@
         "textures": {
           "sides": {
             "image": "./textures/aluminum_sides.jpg",
-            "realWidth": 200,
-            "realHeight": 200
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -542,9 +1179,10 @@
         "aluminium"
       ],
       "carbon": {
-        "value": 6,
+        "value": 10.7707,
         "unit": "kgCO2e/kg",
-        "source": "ICE database v3"
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 143a4df2-563e-4ef9-b75b-90e1cf9f7ef9"
       },
       "compressive": {
         "value": 276,
@@ -570,6 +1208,69 @@
         "value": 205,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "kg",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 2700,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 10.7706954412878,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.00426009080011634,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": -7.51151951503331,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.0436277618731765,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.0000216260876698418,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": -0.0423294480428123,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "143a4df2-563e-4ef9-b75b-90e1cf9f7ef9",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/143a4df2-563e-4ef9-b75b-90e1cf9f7ef9?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -590,8 +1291,9 @@
         "textures": {
           "sides": {
             "image": "./textures/copper_sides.jpg",
-            "realWidth": 200,
-            "realHeight": 200
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -599,9 +1301,10 @@
         "Cu"
       ],
       "carbon": {
-        "value": 4.5,
+        "value": 5.0598,
         "unit": "kgCO2e/kg",
-        "source": "ICE database v3"
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT e5a4ebf9-0e5c-4fd8-bb04-1acb5497312f"
       },
       "elastic": {
         "value": 110,
@@ -622,6 +1325,64 @@
         "value": 401,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "kg",
+        "declaredUnitValue": 1,
+        "modules": {
+          "A1A3": {
+            "value": 5.05984929783852,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.00426009080011634,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": -3.16326074623955,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": -0.0275907446061094,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.0000216260876698418,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": 0.0285199623020994,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "e5a4ebf9-0e5c-4fd8-bb04-1acb5497312f",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/e5a4ebf9-0e5c-4fd8-bb04-1acb5497312f?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -642,8 +1403,9 @@
         "textures": {
           "sides": {
             "image": "./textures/iron_sides.jpg",
-            "realWidth": 200,
-            "realHeight": 200
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -651,9 +1413,10 @@
         "cast iron"
       ],
       "carbon": {
-        "value": 2,
+        "value": 1.39,
         "unit": "kgCO2e/kg",
-        "source": "ICE database v3"
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT aa089b30-7862-4001-9286-9cb41058dba0"
       },
       "compressive": {
         "value": 1000,
@@ -679,6 +1442,89 @@
         "value": 55,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "kg",
+        "declaredUnitValue": 1000,
+        "density": {
+          "value": 20,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 1390,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C1": {
+            "value": 14.2,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C2": {
+            "value": 542,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C3": {
+            "value": 0.0215,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C4": {
+            "value": 0.919,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "D": {
+            "value": 0.138,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 19.3,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C1": {
+            "value": 0.00741,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C2": {
+            "value": 0.551,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C3": {
+            "value": 0.0000233,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C4": {
+            "value": 0.000996,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "D": {
+            "value": -0.00069,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "aa089b30-7862-4001-9286-9cb41058dba0",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/aa089b30-7862-4001-9286-9cb41058dba0?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2028"
+        }
       }
     },
     {
@@ -699,8 +1545,9 @@
         "textures": {
           "sides": {
             "image": "./textures/lead_sides.jpg",
-            "realWidth": 200,
-            "realHeight": 200
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -708,10 +1555,10 @@
         "Pb"
       ],
       "carbon": {
-        "value": 2.5,
+        "value": 1.2625,
         "unit": "kgCO2e/kg",
-        "source": "ICE database v3",
-        "description": "Embodied carbon for primary lead production."
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 8aef9045-4b5f-4362-954f-2edda71f63e6"
       },
       "compressive": {
         "value": 12,
@@ -738,6 +1585,69 @@
         "value": 35,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "kg",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 11342,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 1.26249892902128,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.00371400260976603,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": 1.48053620175922,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.00310911717195489,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.0000172994093894545,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": 0.000906586162829909,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "8aef9045-4b5f-4362-954f-2edda71f63e6",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/8aef9045-4b5f-4362-954f-2edda71f63e6?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -758,8 +1668,9 @@
         "textures": {
           "sides": {
             "image": "./textures/zinc_sides.jpg",
-            "realWidth": 200,
-            "realHeight": 200
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -767,9 +1678,10 @@
         "Zn"
       ],
       "carbon": {
-        "value": 2,
+        "value": 3.3884,
         "unit": "kgCO2e/kg",
-        "source": "ICE database v3"
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 26353b00-6cd3-426d-903b-9fc5b1670398"
       },
       "compressive": {
         "value": 100,
@@ -795,6 +1707,64 @@
         "value": 116,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "kg",
+        "declaredUnitValue": 1,
+        "modules": {
+          "A1A3": {
+            "value": 3.3883650833668,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.00371400260976603,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": -2.46702094474344,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.00545795098707148,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.0000172994093894545,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": -0.00953130191705395,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "26353b00-6cd3-426d-903b-9fc5b1670398",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/26353b00-6cd3-426d-903b-9fc5b1670398?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -815,8 +1785,9 @@
         "textures": {
           "sides": {
             "image": "./textures/wire_sides.jpg",
-            "realWidth": 200,
-            "realHeight": 200
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -873,8 +1844,9 @@
         "textures": {
           "sides": {
             "image": "./textures/bricks_sides.jpg",
-            "realWidth": 250,
-            "realHeight": 250
+            "realWidth": 1000,
+            "realHeight": 1000,
+            "repeat": false
           }
         }
       },
@@ -882,9 +1854,10 @@
         "brick"
       ],
       "carbon": {
-        "value": 0.3,
+        "value": 0.1965,
         "unit": "kgCO2e/kg",
-        "source": "ICE database v3"
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 30514538-fcb4-483b-b5d5-c108d2037536"
       },
       "compressive": {
         "value": 15,
@@ -905,6 +1878,109 @@
         "value": 0.7,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "m3",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 575,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 113,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A4": {
+            "value": 4.15,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 0.824,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C1": {
+            "value": 0.352,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0.942,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": -10.1,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C4": {
+            "value": 0.5,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -1.06,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.18,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A4": {
+            "value": 0.00166,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": -0.0039,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C1": {
+            "value": -0.0156,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0.000377,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": -11.5,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C4": {
+            "value": -0.0429,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -0.00439,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "30514538-fcb4-483b-b5d5-c108d2037536",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/30514538-fcb4-483b-b5d5-c108d2037536?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -925,8 +2001,9 @@
         "textures": {
           "sides": {
             "image": "./textures/blocks_sides.jpg",
-            "realWidth": 250,
-            "realHeight": 250
+            "realWidth": 1000,
+            "realHeight": 1000,
+            "repeat": false
           }
         }
       },
@@ -934,9 +2011,10 @@
         "concrete block"
       ],
       "carbon": {
-        "value": 0.15,
+        "value": 0.126,
         "unit": "kgCO2e/kg",
-        "source": "ICE database v3"
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT cc0d7baa-755a-4a4a-baf3-4fe53d68a041"
       },
       "compressive": {
         "value": 13.1,
@@ -957,6 +2035,119 @@
         "value": 1.1,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "kg",
+        "declaredUnitValue": 1000,
+        "density": {
+          "value": 1800,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 126,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "A4": {
+            "value": 3.93,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "A5": {
+            "value": 3.04,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "B1": {
+            "value": -47.5,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C1": {
+            "value": 0.612,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C2": {
+            "value": 1.64,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C4": {
+            "value": 14,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "D": {
+            "value": -2.71,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.00665,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "A4": {
+            "value": 0.00157,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "A5": {
+            "value": -0.00781,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "B1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C1": {
+            "value": -0.027,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C2": {
+            "value": 0.000656,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "C4": {
+            "value": -1.2,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          },
+          "D": {
+            "value": 0.0169,
+            "unit": "kgCO2e",
+            "description": "per 1000 kg"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "cc0d7baa-755a-4a4a-baf3-4fe53d68a041",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/cc0d7baa-755a-4a4a-baf3-4fe53d68a041?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -977,8 +2168,9 @@
         "textures": {
           "sides": {
             "image": "./textures/granite_sides.jpg",
-            "realWidth": 300,
-            "realHeight": 300
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -1014,6 +2206,84 @@
         "value": 3,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "qm",
+        "declaredUnitValue": 1,
+        "modules": {
+          "A1A3": {
+            "value": 6.06357479470414,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": 28.4225806495542,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0.0628450487694968,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.8860988864242,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 1.47753796128558,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": -0.327032463034201,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.0385812218292351,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": -0.00865499802004194,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0.000400466057781281,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.00449822623532709,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0.00651455598747288,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": 0.00507345599152715,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "f82e3ab8-d7bb-4765-a60c-bfe78ede1565",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/f82e3ab8-d7bb-4765-a60c-bfe78ede1565?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -1034,8 +2304,9 @@
         "textures": {
           "sides": {
             "image": "./textures/marble_sides.jpg",
-            "realWidth": 300,
-            "realHeight": 300
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -1072,6 +2343,84 @@
         "value": 2.5,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "qm",
+        "declaredUnitValue": 1,
+        "modules": {
+          "A1A3": {
+            "value": 15.04626743616,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": 7.75180960892434,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0.0171304572540041,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.241561100246706,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0.402816840441806,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": -0.0748392424455142,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.0327768998681228,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": -0.00216374950501048,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0.00010011651444532,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.00112455655883177,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0.00162863899686822,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": 0.00126836399788179,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "03ed395a-bc7b-4287-9013-8ba3ac1a2900",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/03ed395a-bc7b-4287-9013-8ba3ac1a2900?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -1092,8 +2441,9 @@
         "textures": {
           "sides": {
             "image": "./textures/limestone_sides.jpg",
-            "realWidth": 300,
-            "realHeight": 300
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -1126,6 +2476,84 @@
         "value": 1.8,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "qm",
+        "declaredUnitValue": 1,
+        "modules": {
+          "A1A3": {
+            "value": 15.1890137265956,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": 14.2112903247771,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0.0314225243847484,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.4430494432121,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0.738768980642789,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": -0.1635162315171,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.0457611913626567,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": -0.00432749901002097,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0.00020023302889064,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.00224911311766355,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0.00325727799373644,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": 0.00253672799576358,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "b3e4257b-bdb7-4da2-9c33-990243dd4aa8",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/b3e4257b-bdb7-4da2-9c33-990243dd4aa8?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -1146,8 +2574,9 @@
         "textures": {
           "sides": {
             "image": "./textures/sandstone_sides.jpg",
-            "realWidth": 300,
-            "realHeight": 300
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -1180,6 +2609,84 @@
         "value": 2.5,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "qm",
+        "declaredUnitValue": 1,
+        "modules": {
+          "A1A3": {
+            "value": 15.1890137265956,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": 14.2112903247771,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0.0314225243847484,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.4430494432121,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0.738768980642789,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": -0.1635162315171,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.0457611913626567,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": -0.00432749901002097,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0.00020023302889064,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.00224911311766355,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0.00325727799373644,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": 0.00253672799576358,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "b3e4257b-bdb7-4da2-9c33-990243dd4aa8",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/b3e4257b-bdb7-4da2-9c33-990243dd4aa8?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -1200,8 +2707,9 @@
         "textures": {
           "sides": {
             "image": "./textures/slate_sides.jpg",
-            "realWidth": 300,
-            "realHeight": 300
+            "realWidth": 1500,
+            "realHeight": 2625,
+            "repeat": false
           }
         }
       },
@@ -1238,6 +2746,74 @@
         "value": 2,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "qm",
+        "declaredUnitValue": 1,
+        "modules": {
+          "A1A3": {
+            "value": 15.6124070794204,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0.00906418972636973,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.12780272400349,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0.213106436723881,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": -0.0471681437068559,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.25664415772328,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0.0000577595275646078,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.000648782630095253,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0.000939599421270129,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": 0.000731748460316415,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "909a1f8a-00d8-436f-86f9-77e0ee840a88",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/909a1f8a-00d8-436f-86f9-77e0ee840a88?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -1259,8 +2835,9 @@
         "textures": {
           "sides": {
             "image": "./textures/glass_sides.jpg",
-            "realWidth": 250,
-            "realHeight": 250
+            "realWidth": 2000,
+            "realHeight": 3000,
+            "repeat": false
           }
         }
       },
@@ -1296,6 +2873,179 @@
         "value": 1,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "qm",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 2500,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 4.74,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": 0.32,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A5": {
+            "value": 0.0681,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "B1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "B2": {
+            "value": 0.00483,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "B3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "B4": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "B5": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "B6": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "B7": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.0304,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0.0446,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C4": {
+            "value": 0.0334,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": -0.27,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.0127,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": -0.00338,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A5": {
+            "value": 0.0628,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "B1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "B2": {
+            "value": 0.0000223,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "B3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "B4": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "B5": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "B6": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "B7": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": -0.000323,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0.000369,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C4": {
+            "value": -0.000873,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": -0.000995,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "a835bc20-b9fe-4112-bf74-32caa85712c8",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/a835bc20-b9fe-4112-bf74-32caa85712c8?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2029"
+        }
       }
     },
     {
@@ -1316,8 +3066,9 @@
         "textures": {
           "sides": {
             "image": "./textures/terracotta_sides.jpg",
-            "realWidth": 250,
-            "realHeight": 250
+            "realWidth": 1000,
+            "realHeight": 1000,
+            "repeat": false
           }
         }
       },
@@ -1349,6 +3100,109 @@
         "value": 0.8,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "qm",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 2020,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 12.329,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": 0.787,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A5": {
+            "value": 0.261,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.0656,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0.1,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C4": {
+            "value": 0.041,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": -0.158,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": -0.1077783,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": 0.000315,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A5": {
+            "value": 0.123,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.0000262,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0.000191,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C4": {
+            "value": 0.00301,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": -0.000687,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "a6d60a75-7a4e-4dfc-87cc-fd40f68d279a",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/a6d60a75-7a4e-4dfc-87cc-fd40f68d279a?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
       }
     },
     {
@@ -1370,13 +3224,14 @@
         "textures": {
           "sides": {
             "image": "./textures/softwood_sides.jpg",
-            "realWidth": 562,
-            "realHeight": 1000
+            "realWidth": 500,
+            "realHeight": 875,
+            "repeat": false
           },
           "section": {
             "image": "./textures/softwood_section.jpg",
-            "realWidth": 400,
-            "realHeight": 400,
+            "realWidth": 500,
+            "realHeight": 500,
             "repeat": false
           }
         }
@@ -1386,10 +3241,10 @@
         "spruce"
       ],
       "carbon": {
-        "value": 0.4,
+        "value": -1.4748,
         "unit": "kgCO2e/kg",
-        "source": "ICE database v3",
-        "description": "Embodied carbon for sawn softwood, including processing."
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 7aba3603-0689-4da5-8d24-fd92ae398d07"
       },
       "compressive": {
         "value": 40,
@@ -1420,6 +3275,109 @@
         "unit": "W/mK",
         "source": "Engineering ToolBox",
         "description": "Thermal conductivity for typical softwood."
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "m3",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 492.92,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1": {
+            "value": -768.7481780840219,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A2": {
+            "value": 9.519960129816685,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A3": {
+            "value": 32.249980829661475,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A1A3": {
+            "value": -726.9782371245437,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 5.577078090786692,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0.641411784519627,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 815.9838066041344,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -12.873201788590272,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "biogenic": {
+          "A1": {
+            "value": -806.025,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A2": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A3": {
+            "value": -3.608757587696562,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A1A3": {
+            "value": -809.6337575876966,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 3.608757587696562,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 806.025,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "7aba3603-0689-4da5-8d24-fd92ae398d07",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/7aba3603-0689-4da5-8d24-fd92ae398d07?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2028"
+        }
       }
     },
     {
@@ -1451,13 +3409,14 @@
         "textures": {
           "sides": {
             "image": "./textures/hardwood_sides.jpg",
-            "realWidth": 562,
-            "realHeight": 1000
+            "realWidth": 500,
+            "realHeight": 875,
+            "repeat": false
           },
           "section": {
             "image": "./textures/hardwood_section.jpg",
-            "realWidth": 400,
-            "realHeight": 400,
+            "realWidth": 500,
+            "realHeight": 500,
             "repeat": false
           }
         },
@@ -1466,6 +3425,115 @@
           "roughness": 0.7,
           "metallic": 0
         }
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "m3",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 761.6,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1": {
+            "value": -1234.3707979676826,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A2": {
+            "value": 11.1473748662059,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A3": {
+            "value": 87.08733283761966,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A1A3": {
+            "value": -1136.136090263857,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 6.384361484586354,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0.990546912131675,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 1256.6254732708012,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -20.391998913951486,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "biogenic": {
+          "A1": {
+            "value": -1246.6666666666667,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A2": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A3": {
+            "value": -5.730035105756097,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A1A3": {
+            "value": -1252.3967017724228,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 5.730035105756097,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 1246.6666666666667,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "e131431f-4d99-4d7a-ae0a-744a06de3524",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/e131431f-4d99-4d7a-ae0a-744a06de3524?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2028"
+        }
+      },
+      "carbon": {
+        "value": -1.4918,
+        "unit": "kgCO2e/kg",
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT e131431f-4d99-4d7a-ae0a-744a06de3524"
       }
     },
     {
@@ -1502,13 +3570,14 @@
         "textures": {
           "sides": {
             "image": "./textures/douglas_sides.jpg",
-            "realWidth": 562,
-            "realHeight": 1000
+            "realWidth": 500,
+            "realHeight": 875,
+            "repeat": false
           },
           "section": {
             "image": "./textures/douglas_section.jpg",
-            "realWidth": 400,
-            "realHeight": 400,
+            "realWidth": 500,
+            "realHeight": 500,
             "repeat": false
           }
         },
@@ -1517,6 +3586,115 @@
           "roughness": 0.72,
           "metallic": 0
         }
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "m3",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 484.51,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1": {
+            "value": -778.6093368027252,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A2": {
+            "value": 7.987770027886886,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A3": {
+            "value": 29.369618981734188,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A1A3": {
+            "value": -741.2519477931041,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 4.644432090423722,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0.630148071645649,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 803.040473270801,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -12.83099489060442,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "biogenic": {
+          "A1": {
+            "value": -793.0816666666666,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A2": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A3": {
+            "value": -3.1998843217735717,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A1A3": {
+            "value": -796.2815509884401,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 3.1998843217735717,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 793.0816666666666,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "2bd4c91f-16e5-4e01-b8b5-0c01aac363ce",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/2bd4c91f-16e5-4e01-b8b5-0c01aac363ce?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2028"
+        }
+      },
+      "carbon": {
+        "value": -1.5299,
+        "unit": "kgCO2e/kg",
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 2bd4c91f-16e5-4e01-b8b5-0c01aac363ce"
       }
     },
     {
@@ -1546,13 +3724,14 @@
         "textures": {
           "sides": {
             "image": "./textures/plywood_sides.jpg",
-            "realWidth": 562,
-            "realHeight": 1000
+            "realWidth": 500,
+            "realHeight": 875,
+            "repeat": false
           },
           "section": {
             "image": "./textures/plywood_section.jpg",
-            "realWidth": 400,
-            "realHeight": 400,
+            "realWidth": 500,
+            "realHeight": 500,
             "repeat": false
           }
         },
@@ -1561,6 +3740,115 @@
           "roughness": 0.7,
           "metallic": 0
         }
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "m3",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 823.93,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1": {
+            "value": -1137.5101900191921,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A2": {
+            "value": 13.09165386599843,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A3": {
+            "value": 234.98710984313766,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A1A3": {
+            "value": -889.4314263100562,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 5.415403696285816,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0.83376499425915,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 1258.804639510579,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -18.87813026139009,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "biogenic": {
+          "A1": {
+            "value": -1246.6666666666667,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A2": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A3": {
+            "value": -4.800525253850883,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A1A3": {
+            "value": -1251.4671919205177,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 4.800525253850883,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 1246.6666666666667,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "6bb6bd94-d9a8-4174-a8f3-f1625cbeb118",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/6bb6bd94-d9a8-4174-a8f3-f1625cbeb118?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
+      },
+      "carbon": {
+        "value": -1.0795,
+        "unit": "kgCO2e/kg",
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 6bb6bd94-d9a8-4174-a8f3-f1625cbeb118"
       }
     },
     {
@@ -1589,16 +3877,106 @@
         "textures": {
           "sides": {
             "image": "./textures/osb_sides.jpg",
-            "realWidth": 562,
-            "realHeight": 1000
+            "realWidth": 500,
+            "realHeight": 875,
+            "repeat": false
           },
           "section": {
             "image": "./textures/osb_section.jpg",
-            "realWidth": 400,
-            "realHeight": 400,
+            "realWidth": 500,
+            "realHeight": 500,
             "repeat": false
           }
         }
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "m3",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 611,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": -805.367358948675,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 2.40329901983044,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 996.236359813723,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C4": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -475.125557253014,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": -977.920121823849,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0.00633928856491964,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 992.053606207742,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C4": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -2.43346835237422,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "766ea5bd-3f0f-4d48-a399-9c4a372524d8",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/766ea5bd-3f0f-4d48-a399-9c4a372524d8?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2029"
+        }
+      },
+      "carbon": {
+        "value": -1.3181,
+        "unit": "kgCO2e/kg",
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 766ea5bd-3f0f-4d48-a399-9c4a372524d8"
       }
     },
     {
@@ -1639,16 +4017,126 @@
         "textures": {
           "sides": {
             "image": "./textures/glulam_sides.jpg",
-            "realWidth": 562,
-            "realHeight": 1000
+            "realWidth": 500,
+            "realHeight": 875,
+            "repeat": false
           },
           "section": {
             "image": "./textures/glulam_section.jpg",
-            "realWidth": 400,
-            "realHeight": 400,
+            "realWidth": 500,
+            "realHeight": 500,
             "repeat": false
           }
         }
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "m3",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 507.11,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1": {
+            "value": -763.8334814227853,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A2": {
+            "value": 37.5306786472961,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A3": {
+            "value": 58.11971586181548,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A1A3": {
+            "value": -668.1830869136738,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 5.13897858267999,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0.671131950135097,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 825.6271399374679,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -12.919425554372722,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "biogenic": {
+          "A1": {
+            "value": -815.6683333333334,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A2": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A3": {
+            "value": -3.4391161255,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A1A3": {
+            "value": -819.1074494588335,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 3.4391161255,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 815.6683333333334,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "78bfe151-3cf3-46cb-a1a5-61a79bbd5476",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/78bfe151-3cf3-46cb-a1a5-61a79bbd5476?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2028"
+        }
+      },
+      "carbon": {
+        "value": -1.3176,
+        "unit": "kgCO2e/kg",
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 78bfe151-3cf3-46cb-a1a5-61a79bbd5476"
       }
     },
     {
@@ -1683,16 +4171,126 @@
         "textures": {
           "sides": {
             "image": "./textures/clt_sides.jpg",
-            "realWidth": 562,
-            "realHeight": 1000
+            "realWidth": 500,
+            "realHeight": 875,
+            "repeat": false
           },
           "section": {
             "image": "./textures/clt_section.jpg",
-            "realWidth": 400,
-            "realHeight": 400,
+            "realWidth": 500,
+            "realHeight": 500,
             "repeat": false
           }
         }
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "m3",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 489.41,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1": {
+            "value": -731.0156953238699,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A2": {
+            "value": 9.11908009785155,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A3": {
+            "value": 52.281109489663635,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A1A3": {
+            "value": -669.6155057363546,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 1.76738043960864,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0.641032817810208,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 798.7138066041346,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -11.181779346679177,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "biogenic": {
+          "A1": {
+            "value": -788.7550000000001,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A2": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A1A3": {
+            "value": -788.7550000000001,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 788.7550000000001,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "8c4eb262-9ae6-4ace-8f3d-0b06f2007f3e",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/8c4eb262-9ae6-4ace-8f3d-0b06f2007f3e?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2028"
+        }
+      },
+      "carbon": {
+        "value": -1.3682,
+        "unit": "kgCO2e/kg",
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 8c4eb262-9ae6-4ace-8f3d-0b06f2007f3e"
       }
     },
     {
@@ -1723,13 +4321,14 @@
         "textures": {
           "sides": {
             "image": "./textures/bamboo_sides.jpg",
-            "realWidth": 562,
-            "realHeight": 1000
+            "realWidth": 500,
+            "realHeight": 875,
+            "repeat": false
           },
           "section": {
             "image": "./textures/bamboo_section.jpg",
-            "realWidth": 400,
-            "realHeight": 400,
+            "realWidth": 500,
+            "realHeight": 500,
             "repeat": false
           }
         }
@@ -1766,10 +4365,75 @@
         "textures": {
           "sides": {
             "image": "./textures/pvc_sides.jpg",
-            "realWidth": 200,
-            "realHeight": 200
+            "realWidth": 1000,
+            "realHeight": 1750,
+            "repeat": false
           }
         }
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "kg",
+        "declaredUnitValue": 1,
+        "modules": {
+          "A1A3": {
+            "value": 2.12686007521244,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.00426009080011634,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 2.25350607781064,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": -0.596308502265591,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": -0.0355535232845701,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.0000216260876698418,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 0.00147639952957679,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": -0.00420551314026388,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "0c97fb5f-67df-495e-bac5-f5d931f58a90",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/0c97fb5f-67df-495e-bac5-f5d931f58a90?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
+      },
+      "carbon": {
+        "value": 2.1269,
+        "unit": "kgCO2e/kg",
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 0c97fb5f-67df-495e-bac5-f5d931f58a90"
       }
     },
     {
@@ -1798,10 +4462,130 @@
         "textures": {
           "sides": {
             "image": "./textures/hdpe_sides.jpg",
-            "realWidth": 200,
-            "realHeight": 200
+            "realWidth": 1000,
+            "realHeight": 1750,
+            "repeat": false
           }
         }
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "kg",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 950,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1": {
+            "value": 2.3668666732929,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "A2": {
+            "value": 0.0982526656183418,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "A3": {
+            "value": 0.0796910256599798,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "A1A3": {
+            "value": 2.5448103645712217,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C1": {
+            "value": 0.357700403585084,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.0189091877016336,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 2.27656459999999,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C4": {
+            "value": 0.014841,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": -0.796915363655735,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "biogenic": {
+          "A1": {
+            "value": 0.0045038062951756,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "A2": {
+            "value": 0.0000428831632528,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "A3": {
+            "value": -0.0526225460147109,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "A1A3": {
+            "value": -0.0480758565562825,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C1": {
+            "value": 0.0000994511572545,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C2": {
+            "value": 0.0000087221807574,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C3": {
+            "value": 0.0003463,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "C4": {
+            "value": 0.0000114,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          },
+          "D": {
+            "value": -0.001124494822184,
+            "unit": "kgCO2e",
+            "description": "per 1 kg"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "937cf1c5-c813-4778-90e2-6f1ae84c4aa7",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/937cf1c5-c813-4778-90e2-6f1ae84c4aa7?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2029"
+        }
+      },
+      "carbon": {
+        "value": 2.5448,
+        "unit": "kgCO2e/kg",
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 937cf1c5-c813-4778-90e2-6f1ae84c4aa7"
       }
     },
     {
@@ -1831,10 +4615,110 @@
         "textures": {
           "sides": {
             "image": "./textures/eps_sides.jpg",
-            "realWidth": 250,
-            "realHeight": 250
+            "realWidth": 1200,
+            "realHeight": 1644,
+            "repeat": false
           }
         }
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "m3",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 20,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 59.806,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 0.39,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0.0604,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 67.2,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C4": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -27.8,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.208759,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 0.108,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0.000222,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 0.0037,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C4": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -0.127,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "757297f1-9325-4df4-af51-96510be76bf3",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/757297f1-9325-4df4-af51-96510be76bf3?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2027"
+        }
+      },
+      "carbon": {
+        "value": 2.9903,
+        "unit": "kgCO2e/kg",
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 757297f1-9325-4df4-af51-96510be76bf3"
       }
     },
     {
@@ -1863,10 +4747,80 @@
         "textures": {
           "sides": {
             "image": "./textures/xps_sides.jpg",
-            "realWidth": 250,
-            "realHeight": 250
+            "realWidth": 1200,
+            "realHeight": 2100,
+            "repeat": false
           }
         }
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "m3",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 32,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 102.019470065136,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0.136322905603723,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 118.126266986859,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -44.2517528799954,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": 0.430084069509508,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0.000692034805434935,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C3": {
+            "value": 0.00587342426676152,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -0.315238128213221,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "c4ddfdbc-ee2b-4dd5-a754-b317cf06470a",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/c4ddfdbc-ee2b-4dd5-a754-b317cf06470a?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2026"
+        }
+      },
+      "carbon": {
+        "value": 3.1881,
+        "unit": "kgCO2e/kg",
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT c4ddfdbc-ee2b-4dd5-a754-b317cf06470a"
       }
     },
     {
@@ -1897,10 +4851,100 @@
         "textures": {
           "sides": {
             "image": "./textures/mineralwool_sides.jpg",
-            "realWidth": 250,
-            "realHeight": 250
+            "realWidth": 1200,
+            "realHeight": 2100,
+            "repeat": false
           }
         }
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "m3",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 152,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 177.281536724966,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A4": {
+            "value": 3.31870052276103,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 22.2282884696402,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": 0.460930628161254,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C4": {
+            "value": 3.84689926095253,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -6.96228542089643,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": -11.8191978233122,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A4": {
+            "value": -0.00552027311471101,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "A5": {
+            "value": 12.847219248833,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C2": {
+            "value": -0.000766704599265412,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "C4": {
+            "value": 1.53484017027585,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          },
+          "D": {
+            "value": -0.0163331797788863,
+            "unit": "kgCO2e",
+            "description": "per 1 m3"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "155a3b83-ed73-4462-a4f1-69ce64e24981",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/155a3b83-ed73-4462-a4f1-69ce64e24981?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2028"
+        }
+      },
+      "carbon": {
+        "value": 1.1663,
+        "unit": "kgCO2e/kg",
+        "description": "Embodied carbon, cradle to gate (A1-A3), GWP-total",
+        "source": "ÖKOBAUDAT 155a3b83-ed73-4462-a4f1-69ce64e24981"
       }
     },
     {
@@ -1922,8 +4966,9 @@
         "textures": {
           "sides": {
             "image": "./textures/sprayfoam_sides.jpg",
-            "realWidth": 250,
-            "realHeight": 250
+            "realWidth": 1200,
+            "realHeight": 1644,
+            "repeat": false
           }
         }
       },
@@ -1975,8 +5020,9 @@
         "textures": {
           "sides": {
             "image": "./textures/drywall_sides.jpg",
-            "realWidth": 300,
-            "realHeight": 300
+            "realWidth": 1000,
+            "realHeight": 1000,
+            "repeat": false
           }
         }
       },
@@ -2013,6 +5059,109 @@
         "value": 0.16,
         "unit": "W/mK",
         "source": "Engineering ToolBox"
+      },
+      "lca": {
+        "standard": "EN 15804+A2",
+        "indicator": "GWP-total",
+        "declaredUnit": "qm",
+        "declaredUnitValue": 1,
+        "density": {
+          "value": 680,
+          "unit": "kg/m3",
+          "description": "gross density declared by the EPD"
+        },
+        "modules": {
+          "A1A3": {
+            "value": 1.0138704404845,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": 0.115680993791439,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A5": {
+            "value": 0.0010112032249956,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.0628701053214343,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C4": {
+            "value": 0.722615477694245,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "biogenic": {
+          "A1A3": {
+            "value": -0.554784715029117,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A4": {
+            "value": 0.0050882549228696,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "A5": {
+            "value": 0.0000033547608252749,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C1": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C2": {
+            "value": 0.00276535593634218,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C3": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "C4": {
+            "value": 0.0516843269918321,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          },
+          "D": {
+            "value": 0,
+            "unit": "kgCO2e",
+            "description": "per 1 qm"
+          }
+        },
+        "source": {
+          "dataset": "ÖKOBAUDAT",
+          "uuid": "0773f90c-78ef-4727-a966-3b005c1a1469",
+          "version": "1.1",
+          "url": "https://oekobaudat.de/OEKOBAU.DAT/resource/processes/0773f90c-78ef-4727-a966-3b005c1a1469?format=html",
+          "retrieved": "2026-07-27",
+          "validUntil": "2027"
+        }
       }
     }
   ]

@@ -167,7 +167,7 @@ export async function applyAnnotations(
   // would otherwise desaturate the color toward gray.
   const lineMat = new THREE.LineBasicMaterial({ color: DIMENSION_LINE_COLOR, toneMapped: false });
   const coneMat = new THREE.MeshBasicMaterial({ color: DIMENSION_LINE_COLOR, toneMapped: false });
-  const coneGeo = new THREE.ConeGeometry(arrowRad, arrowLen, 12);
+  const coneGeo = new THREE.ConeGeometry(arrowRad, arrowLen, 8); // 8 segments — matches the gizmo's arrowhead cones
 
   dims.forEach((d, i) =>
   {

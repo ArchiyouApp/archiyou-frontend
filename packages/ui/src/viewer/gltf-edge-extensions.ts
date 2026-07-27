@@ -206,15 +206,18 @@ function _resolveLineMaterial(
         gltfMat?.pbrMetallicRoughness?.baseColorFactor ?? [0, 0, 0, 1];
 
     const color   = new THREE.Color(baseColor[0], baseColor[1], baseColor[2]);
+    // Alpha carries the line opacity (materials draw their outline at <1 by default).
+    const opacity: number = baseColor[3] ?? 1;
+    const transparent     = opacity < 1;
     const width: number   = bentley?.width   ?? 1;
     const pattern: number = bentley?.pattern ?? 0xFFFF;
 
     if (width <= 1 && pattern === 0xFFFF)
     {
-        return new THREE.LineBasicMaterial({ color });
+        return new THREE.LineBasicMaterial({ color, opacity, transparent });
     }
 
-    const mat = new LineMaterial({ color: color.getHex(), linewidth: width });
+    const mat = new LineMaterial({ color: color.getHex(), linewidth: width, opacity, transparent });
     if (pattern !== 0xFFFF) _applyDashPattern(mat, pattern);
     return mat;
 }

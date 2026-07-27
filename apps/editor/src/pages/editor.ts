@@ -12,6 +12,8 @@ import '../plugins/plugin-part-frame';
 
 import { createExecutionFailureResult, runScript, warmupWorker } from '../services/execution-service';
 
+import '@awesome.me/webawesome/dist/components/icon/icon.js';
+
 import '@archiyou/ui/editor/main-menu.js';
 import '@archiyou/ui/editor/codebox.js';
 import '@archiyou/ui/viewer/model-viewer.js';
@@ -33,10 +35,14 @@ import '@archiyou/ui/editor/publish-script-menu.js';
 import '@archiyou/ui/editor/manage-configurators-menu.js';
 import type { ToolDef } from '@archiyou/ui/editor/toolbar.js';
 
-import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, openSharedScript, deleteScriptById, importScriptFromData, isReadOnly, selectedPath, scriptUnitSystem, ensureScriptUnitSystem, perStatement, autoRun } from '../state/workspace';
+import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, openSharedScript, deleteScriptById, importScriptFromData, isReadOnly, isScriptNameTaken, selectedPath, scriptUnitSystem, ensureScriptUnitSystem, perStatement, autoRun, wasActiveScriptRestored } from '../state/workspace';
+import { editorPathFor, resolveScriptLink } from '../services/script-links';
 import { registerScheduleExecution, triggerResetCamera } from '../state/viewer';
 import { RunnerScriptExecutionRequest } from '@archiyou/core/src/runner/types';
 import type { ScriptData, ScriptParamData } from '@archiyou/core/src/execution/types';
+
+/** Model formats offered in the main menu ▸ Export to… (see _exportModel()) */
+type ExportModelFormat = 'glb'|'stl'|'amf'|'dae'|'svg'|'dxf';
 
 @customElement('page-editor')
 export class PageEditor extends SignalWatcher(LitElement)
@@ -67,6 +73,14 @@ export class PageEditor extends SignalWatcher(LitElement)
         @menu-action=${this._handleMenuAction}
         @menu-select=${this._handleMenuSelect}
       ></editor-main-menu>
+      ${this._linkError ? html`
+        <div class="link-error" role="alert">
+          <wa-icon library="lucide" name="link-2-off"></wa-icon>
+          <span class="link-error-text">${this._linkError}</span>
+          <button class="link-error-close" title="Dismiss" @click=${() => (this._linkError = '')}>
+            <wa-icon library="lucide" name="x"></wa-icon>
+          </button>
+        </div>` : ''}
       <wa-split-panel
             position="50"
             snap="25% 50% 75%"
@@ -147,6 +161,8 @@ export class PageEditor extends SignalWatcher(LitElement)
   @state() private _showManageConfigurators = false;
   // Non-null → the publish menu opens in edit mode for this published version.
   @state() private _editConfigurator: ScriptData | null = null;
+  // Why a /editor/{…} deep link could not be opened (empty = no problem).
+  @state() private _linkError = '';
 
   // Plugin mode (isolated session; personal scripts untouched)
   @state() private _pluginSchema: ScriptParamData[] | null = null;
@@ -170,6 +186,7 @@ export class PageEditor extends SignalWatcher(LitElement)
     if (sceneTool) this._activeTools = [sceneTool];
 
     this._consumeNewQueryParam();
+    void this._consumeScriptLink();
 
     console.info('Editor::connectedCallback(): Warming up worker…');
     warmupWorker()
@@ -190,11 +207,17 @@ export class PageEditor extends SignalWatcher(LitElement)
   {
     // Also handle in-place navigation to /editor?new (Vaadin Router may
     // re-resolve the route without a full re-mount).
-    if (changed.has('location')) this._consumeNewQueryParam();
+    if (changed.has('location'))
+    {
+      this._consumeNewQueryParam();
+      void this._consumeScriptLink();
+    }
   }
 
   override updated()
   {
+    this._reflectScriptUrl();
+
     // Persist a default (metric) unit system onto any script that has none, so
     // every script carries an explicit setting. Idempotent — runs once per script.
     ensureScriptUnitSystem();
@@ -215,6 +238,91 @@ export class PageEditor extends SignalWatcher(LitElement)
 
   private _pendingUnitSystem: string | null = null;
   private _lastUnitSystem: string | null = null;
+
+  // ── Script deep links (/editor/{name}[:{version}], /editor/{author}/{name}[:{version}]) ──
+
+  /** The link currently being (or already) resolved — guards against re-resolving
+   *  the same URL on every `location` update, and against the URL reflection
+   *  below racing an in-flight resolution. */
+  private _resolvedLink: string | null = null;
+  private _resolvingLink = false;
+
+  /** What the editor is showing instead, for a failed deep link — the load
+   *  never touches the active script, so this is always still accurate. */
+  private _fallbackStateMessage(): string
+  {
+    const name = editorScript.get()?.name ?? 'untitled';
+    return wasActiveScriptRestored
+      ? `The editor kept the script that was already open, “${name}”.`
+      : `The editor started a new script, “${name}” (nothing was saved in this browser yet).`;
+  }
+
+  /** Open the script addressed by the URL, if any. Failures leave the current
+   *  script alone and show a dismissible popup. */
+  private async _consumeScriptLink()
+  {
+    const params = (this.location?.params ?? {}) as Record<string, string>;
+    const scriptAndVersion = params.scriptAndVersion;
+    const author = params.author ?? null;
+    if (!scriptAndVersion) { this._resolvedLink = null; return; }
+
+    const key = author ? `${author}/${scriptAndVersion}` : scriptAndVersion;
+    if (this._resolvedLink === key) return;   // already handled this URL
+    this._resolvedLink = key;
+    this._linkError = '';
+    this._resolvingLink = true;
+
+    try
+    {
+      const result = await resolveScriptLink(author, scriptAndVersion);
+      if (!result.ok)
+      {
+        this._linkError = `${result.message} ${this._fallbackStateMessage()}`;
+        console.warn(`Editor: script link "${key}" — ${result.reason}: ${result.message}`);
+        return;
+      }
+      // Canonicalise the URL now (e.g. ":latest" → the version actually loaded)
+      // rather than waiting for the next render.
+      this._resolvingLink = false;
+      this._reflectScriptUrl();
+      triggerResetCamera();
+      void this._handleExecute();
+    }
+    catch (err)
+    {
+      this._linkError = `Could not open “${key}”: ${(err as Error)?.message ?? err} ${this._fallbackStateMessage()}`;
+    }
+    finally
+    {
+      this._resolvingLink = false;
+    }
+  }
+
+  /** Keep the address bar on the active script so the URL is always copy-able.
+   *  Own scripts link by name only (their working copy is the latest); a name
+   *  shared by several local scripts would be ambiguous, so those stay on the
+   *  bare /editor path. `replaceState` — no history entry, no re-navigation. */
+  private _reflectScriptUrl()
+  {
+    if (this._resolvingLink) return;
+
+    const script = editorScript.get();
+    const name = script?.name;
+
+    // Ambiguous own name (e.g. several "untitled") → don't advertise a link
+    // that could resolve to a different script later.
+    const ambiguous = !!name && !isReadOnly.get() && isScriptNameTaken(name, script?.fileId);
+    const target = ambiguous ? '/editor' : editorPathFor(script);
+
+    if (window.location.pathname === target) return;
+    if (!window.location.pathname.startsWith('/editor')) return;   // navigated away
+
+    history.replaceState(null, '', `${target}${window.location.search}`);
+    // Mirror the router's (decoded) param form so this URL isn't resolved again.
+    this._resolvedLink = target === '/editor'
+      ? null
+      : target.slice('/editor/'.length).split('/').map(decodeURIComponent).join('/');
+  }
 
   /** If the URL has a `new` query param, archive the active script,
    *  create a fresh one, then clean the URL so a refresh doesn't repeat. */
@@ -452,9 +560,9 @@ export class PageEditor extends SignalWatcher(LitElement)
       return;
     }
 
-    if (value === 'export-dxf')
+    if (value.startsWith('export-') && value !== 'export-script-data')
     {
-      void this._exportModelAsDXF();
+      void this._exportModel(value.replace('export-', '') as ExportModelFormat);
       return;
     }
 
@@ -732,48 +840,66 @@ export class PageEditor extends SignalWatcher(LitElement)
     const script = editorScript.get();
     if (!script) return;
 
-    const js = script.toScriptJs();
-    const blob = new Blob([js], { type: 'text/javascript' });
-    const url = URL.createObjectURL(blob);
-    const filename = script.name ? `${script.name}.js` : 'script.js';
+    this._downloadFile(script.toScriptJs(), 'js', 'text/javascript');
+  }
 
+  /** Download filename for exports: <scriptname>_<version>.<ext>.
+   *  Unpublished/working scripts have no version yet — those fall back to 0.0.0. */
+  private _exportFilename(ext: string): string
+  {
+    const script = editorScript.get();
+    const name = (script?.name ?? 'model').replace(/[\\/:*?"<>|\s]+/g, '-');
+    const version = script?.version ?? '0.0.0';
+    return `${name}_${version}.${ext}`;
+  }
+
+  private _downloadFile(data: string|Uint8Array|ArrayBuffer, ext: string, mimeType: string)
+  {
+    const blob = new Blob([data as BlobPart], { type: mimeType });
+    const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = filename;
+    anchor.download = this._exportFilename(ext);
     anchor.click();
     URL.revokeObjectURL(url);
   }
 
-  /** Main menu ▸ Export to… ▸ DXF 2D — run a lean export request and download the DXF text.
-   *  `?annotations=true` threads through to Modeler.toDXF() so dimension lines are baked in. */
-  private async _exportModelAsDXF()
+  /** Main menu ▸ Export to… — run a lean export-only request for the given model format
+   *  and download the result as <scriptname>_<version>.<ext>.
+   *  DXF gets `?annotations=true` so Modeler.toDXF() bakes in the dimension lines. */
+  private async _exportModel(format: ExportModelFormat)
   {
-    const requestPath = 'default/model/dxf?annotations=true';
+    const EXPORT_FORMATS: Record<string, { path: string, mimeType: string, emptyMsg: string }> = {
+      glb: { path: 'default/model/glb', mimeType: 'model/gltf-binary', emptyMsg: 'the model produced no geometry.' },
+      stl: { path: 'default/model/stl', mimeType: 'model/stl', emptyMsg: 'the model produced no 3D geometry.' },
+      amf: { path: 'default/model/amf', mimeType: 'application/x-amf', emptyMsg: 'the model produced no 3D geometry.' },
+      dae: { path: 'default/model/dae', mimeType: 'model/vnd.collada+xml', emptyMsg: 'the model produced no geometry.' },
+      svg: { path: 'default/model/svg', mimeType: 'image/svg+xml', emptyMsg: 'the model produced no 2D geometry.' },
+      dxf: { path: 'default/model/dxf?annotations=true', mimeType: 'application/dxf', emptyMsg: 'the model produced no 2D geometry.' },
+    };
+
+    const { path: requestPath, mimeType, emptyMsg } = EXPORT_FORMATS[format];
+
     const result = await runScript(
       this._buildRequest([requestPath], ['error'])
     );
 
-    const dxf = result?.outputs
+    const output = result?.outputs
       ?.find(o => o.path.requestedPath === requestPath)
-      ?.output as string | undefined;
+      ?.output as string|Uint8Array|ArrayBuffer|undefined;
 
-    if (typeof dxf !== 'string' || dxf.length === 0)
+    const size = (typeof output === 'string')
+      ? output.length
+      : ((output as Uint8Array)?.byteLength ?? 0);
+
+    if (!output || size === 0)
     {
-      console.error('DXF export produced no output', result);
-      window.alert('DXF export failed — the model produced no 2D geometry.');
+      console.error(`${format.toUpperCase()} export produced no output`, result);
+      window.alert(`${format.toUpperCase()} export failed — ${emptyMsg}`);
       return;
     }
 
-    const script = editorScript.get();
-    const filename = script?.name ? `${script.name}.dxf` : 'model.dxf';
-
-    const blob = new Blob([dxf], { type: 'application/dxf' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = filename;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    this._downloadFile(output, format, mimeType);
   }
 
   private _handleScriptImporterImport(e: CustomEvent<ScriptData>)
@@ -925,6 +1051,42 @@ export class PageEditor extends SignalWatcher(LitElement)
 
     editor-main-menu { flex-shrink: 0; }
     editor-toolbar    { flex-shrink: 0; }
+
+    /* Deep-link failure notice (/editor/{name} could not be opened) — a
+       floating popup, deliberately taken out of the editor's row-flex layout
+       (position: fixed) so it can never get squeezed into a sidebar-width
+       column by the surrounding flex children. */
+    .link-error {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      width: max-content;
+      max-width: min(480px, calc(100vw - 32px));
+      padding: 10px 12px;
+      background: var(--color-bg, #fff);
+      border: 1px solid color-mix(in srgb, var(--color-alert, #ef4444) 35%, transparent);
+      border-radius: var(--radius-md, 8px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+      color: var(--color-text);
+      font-family: var(--font-sans);
+      font-size: var(--text-sm);
+    }
+    .link-error wa-icon { color: var(--color-alert, #ef4444); flex-shrink: 0; margin-top: 2px; }
+    .link-error-text { flex: 1; min-width: 0; }
+    .link-error-close {
+      display: flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px;
+      flex-shrink: 0;
+      border: none; background: transparent; cursor: pointer;
+      color: var(--color-text-muted, #666);
+      border-radius: var(--radius-sm, 4px);
+    }
+    .link-error-close:hover { background: color-mix(in srgb, var(--color-border) 40%, transparent); }
 
     .viewer-tools-split {
       width: 100%;

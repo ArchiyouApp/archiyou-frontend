@@ -45,6 +45,7 @@
   "dependencies": {
     "@gltf-transform/core": "^4.3.0",
     "@archiyou/gdrr2bp-wasm": "workspace:*",
+    "@archiyou/collada-wasm": "workspace:*",
     "meshup": "workspace:*",
     "@noble/hashes": "^2.0.1",
     "acorn": "^8.16.0",

@@ -27,7 +27,8 @@ import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR, VIEWER_BACKGR
   VIEWER_GRID_TARGET_CELLS, VIEWER_GRID_RECALC_FRACTION,
   VIEWER_GIZMO_AXIS_LENGTH, VIEWER_GIZMO_COLOR_X, VIEWER_GIZMO_COLOR_Y,
   VIEWER_GIZMO_COLOR_Z, VIEWER_GIZMO_COLOR_ORIGIN, VIEWER_GIZMO_LABEL_SIZE,
-  VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE, VIEWER_GIZMO_RECALC_INCREMENT,
+  VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE, VIEWER_GIZMO_RECALC_INCREMENT, VIEWER_GIZMO_MIN_SCALE,
+  VIEWER_GIZMO_ARROW_LENGTH_RATIO, VIEWER_GIZMO_ARROW_RADIUS_RATIO,
   VIEWER_MODEL_COORDSYSTEM, VIEWER_HANDLE_RANGE_LINE_COLOR, VIEWER_HANDLE_RANGE_LINE_WIDTH,
   VIEWER_LIGHT_POSITION } from '@archiyou/editor/src/settings';
 import { THEME_CHANGE_EVENT } from '@archiyou/editor/src/styles/dark-theme.js';
@@ -859,11 +860,12 @@ export class ModelViewer extends SignalWatcher(LitElement)
   }
 
   /** Scale the origin gizmo (axis/origin) to the scene so it stays readable on
-   *  large models. To avoid the gizmo jumping around while a parametric model
-   *  changes by small amounts, the scale is only recomputed when the scene size
-   *  (largest bbox dimension) has moved by more than VIEWER_GIZMO_RECALC_INCREMENT
-   *  since the last recalc. See the settings for the scale-factor formula
-   *  (calibrated for a scene size of 100 → factor 1). */
+   *  large models — and legible (not oversized) on small ones. To avoid the
+   *  gizmo jumping around while a parametric model changes by small amounts,
+   *  the scale is only recomputed when the scene size (largest bbox dimension)
+   *  has moved by more than VIEWER_GIZMO_RECALC_INCREMENT since the last recalc.
+   *  See the settings for the scale-factor formula (calibrated for a scene
+   *  size of 100 → factor 1; scales proportionally both above and below that). */
   private _updateGizmoScale()
   {
     if (!this._gizmoGroup) return;
@@ -879,8 +881,12 @@ export class ModelViewer extends SignalWatcher(LitElement)
     }
 
     this._gizmoSceneSize = sceneSize;
-    // Calibrated so scene 100 → 1; clamped to 1 so smaller scenes keep the base size.
-    const scaleFactor = Math.max(1, sceneSize * VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE);
+    // Proportional to scene size in both directions (scene 100 → 1, scene 10 →
+    // 0.1, scene 1000 → 10…). sceneSize is 0 only when no model is loaded yet —
+    // keep the base scale then rather than shrinking the gizmo to nothing.
+    const scaleFactor = sceneSize > 0
+      ? Math.max(VIEWER_GIZMO_MIN_SCALE, sceneSize * VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE)
+      : 1;
     this._gizmoScale = scaleFactor;
     this._gizmoGroup.scale.setScalar(scaleFactor);
   }
@@ -1076,8 +1082,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._gizmoGroup.add(negLine);
 
       // positive arrowhead cone (clickable handle)
-      const coneH = L * 0.18;
-      const coneR = L * 0.055;
+      const coneH = L * VIEWER_GIZMO_ARROW_LENGTH_RATIO;
+      const coneR = L * VIEWER_GIZMO_ARROW_RADIUS_RATIO;
       const coneGeo = new THREE.ConeGeometry(coneR, coneH, 8);
       const coneMat = new THREE.MeshBasicMaterial({ color, depthTest: false });
       const cone = new THREE.Mesh(coneGeo, coneMat);
@@ -1338,6 +1344,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
     {
       this._scene.environment = null;
     }
+    // Dial the IBL down so it fills without washing surfaces toward flat white.
+    this._scene.environmentIntensity = style.environmentIntensity ?? 1;
 
     // Lighting
     this._applyLightConfig(this._ambientLight, style.ambientLight);
@@ -1530,6 +1538,11 @@ export class ModelViewer extends SignalWatcher(LitElement)
           gapSize: 'gapSize' in mat ? mat.gapSize : undefined,
         });
         if (style.lines.color !== undefined) mat.color.setHex(style.lines.color);
+        if (style.lines.opacity !== undefined)
+        {
+          mat.opacity = style.lines.opacity;
+          mat.transparent = style.lines.transparent ?? style.lines.opacity < 1;
+        }
         if (style.lines.strokeWidth !== undefined && 'linewidth' in mat) mat.linewidth = style.lines.strokeWidth;
         if (style.lines.strokeDash !== undefined)
         {
@@ -1786,7 +1799,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
     // extras for standalone .glb loads. Dimensions become 3D arrows + HTML
     // overlay value text; labels become HTML overlay elements.
     const anns = executionResult.get()?.state?.annotations as any[] | undefined;
-    const { htmlLabels } = await applyAnnotations(gltf, model, anns);
+    // Same scene-size scale factor as the origin gizmo (computed just above),
+    // so dimension arrows stay proportionally legible across model sizes too.
+    const { htmlLabels } = await applyAnnotations(gltf, model, anns, this._gizmoScale || 1);
     this._htmlLabels = htmlLabels;
     const overlay = this.renderRoot.querySelector('viewer-labels-overlay') as ViewerLabelsOverlay | null;
     if (overlay)

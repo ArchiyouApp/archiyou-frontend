@@ -52,8 +52,18 @@ export const routes: Route[] = [
         component: 'page-browser',
         action: async () => { await import('../../pages/browser.js'); },
       },
+      // Script deep links (see services/script-links.ts):
+      //   /editor/{author}/{name}[:{version}]  someone else's shared script
+      //   /editor/{name}[:{version|latest}]    one of my own
+      // The two-segment form is registered first so it wins over the optional
+      // single-segment one.
       {
-        path: 'editor/:scriptId?',
+        path: 'editor/:author/:scriptAndVersion',
+        component: 'page-editor',
+        action: async () => { await import('../../pages/editor.js'); },
+      },
+      {
+        path: 'editor/:scriptAndVersion?',
         component: 'page-editor',
         action: async () => { await import('../../pages/editor.js'); },
       },

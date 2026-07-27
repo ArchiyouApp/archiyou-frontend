@@ -1,0 +1,16 @@
+{
+  "name": "@archiyou/collada-wasm",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "main": "ts/index.ts",
+  "types": "ts/index.ts",
+  "scripts": {
+    "build:wasm": "tsx buildscripts/build-wasm.ts",
+    "rust:check": "cargo check --target wasm32-unknown-unknown",
+    "rust:test": "cargo test"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.3"
+  }
+}

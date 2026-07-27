@@ -32,11 +32,30 @@ import {
   SCRIPT_PREDEFINED_TAGS,
 } from '@archiyou/editor/src/settings';
 
+import { fetchSharedScript } from '@archiyou/editor/src/services/sharing';
+import { fetchPublishedScript } from '@archiyou/editor/src/services/publishing';
+
+import { configuratorUrl } from './publish-constants';
+
+/** Parse "X.Y…" → [major, minor]; defaults to [0, 0] when unparseable. */
+function parseMajorMinor(v: string | null | undefined): [number, number] {
+  const m = /^(\d+)\.(\d+)/.exec((v ?? '').trim());
+  return m ? [Number(m[1]), Number(m[2])] : [0, 0];
+}
+
+/** True when `a` is strictly greater than `b` on (major, minor). */
+function isHigherVersion(a: string, b: string): boolean {
+  const [amaj, amin] = parseMajorMinor(a);
+  const [bmaj, bmin] = parseMajorMinor(b);
+  return amaj > bmaj || (amaj === bmaj && amin > bmin);
+}
+
 // ── Field help explanations — edit here to update all tooltips ────────────────
 
 const FIELD_HELP: Record<string, string> = {
   name:        'The script identifier (lowercase). Used when referencing this script from other scripts or the API.',
   version:     'Automatically set when the script is published. Read-only — use the Publish action to update it.',
+  links:       'Public URLs for this script, once shared or published as a configurator.',
   description: 'A one- or two-sentence summary shown in listings and search results.',
   details:     'Full documentation: purpose, usage instructions, parameter notes and any technical background.',
   tags:        'Searchable keywords. Only predefined tags are allowed to keep the catalogue consistent.',
@@ -94,6 +113,12 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
                 title=${displayName}
                 @dblclick=${(e: Event) => { if (readOnly) return; e.stopPropagation(); this._startNameEdit(displayName); }}
               >${displayName}</span>
+
+              ${script?.version
+                ? html`<span class="script-version">v${script.version}</span>`
+                : this._fallbackVersion()
+                  ? html`<span class="script-version" title="Last shared/published version — this working copy has unsaved changes since">v${this._fallbackVersion()}</span>`
+                  : nothing}
 
               ${readOnly
                 ? html`
@@ -176,7 +201,8 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
   private _renderBody()
   {
     const script  = editorScript.get();
-    const version = script?.version ?? '—';
+    const fallbackVersion = this._fallbackVersion();
+    const version = script?.version ?? (fallbackVersion ? `${fallbackVersion} (last shared/published — unsaved changes since)` : '—');
 
     return html`
       <div class="body">
@@ -211,6 +237,8 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
               disabled
             />
           `)}
+
+          ${this._renderField('links', this._renderLinks())}
 
           ${this._renderField('units', this._renderUnitToggle())}
 
@@ -308,6 +336,67 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
     `;
   }
 
+  /** The public editor URL for the latest shared version of this script. There is
+   *  no stored `shared.url` on the wire (unlike `published.url`), so it is built
+   *  the same way editor deep links are: /editor/{author}/{name}:{version}. Falls
+   *  back to the last-known shared library version when the working copy's own
+   *  `version` has reset to null (see `_lastSharedVersion`). */
+  private _sharedUrl(): string | null
+  {
+    const script = editorScript.get();
+    const version = script?.version ?? this._lastSharedVersion;
+    if (!script?.shared || !script.author || !script.name || !version) return null;
+    const base = (typeof window !== 'undefined' && window.location?.origin) || '';
+    return `${base}/editor/${encodeURIComponent(script.author)}/${encodeURIComponent(script.name)}:${encodeURIComponent(version)}`;
+  }
+
+  /** The higher of the last shared/published version — shown in the header and
+   *  Version field when the working copy's own `version` has reset to null. */
+  private _fallbackVersion(): string | null
+  {
+    const shared    = this._lastSharedVersion;
+    const published = this._lastPublishedVersion?.version ?? null;
+    if (shared && published) return isHigherVersion(shared, published) ? shared : published;
+    return shared ?? published;
+  }
+
+  /** Public URLs for the latest shared/published version of this script — shown
+   *  under the Links field. Neither shared nor published ⇒ a hint to do so. */
+  private _renderLinks()
+  {
+    const script = editorScript.get();
+    const sharedUrl = this._sharedUrl();
+
+    const publishedVersion = script?.version ?? this._lastPublishedVersion?.version ?? null;
+    const publishedUrl = (script?.published || this._lastPublishedVersion) && script?.author && script?.name && publishedVersion
+      ? (script?.published?.url ?? this._lastPublishedVersion?.url ?? configuratorUrl(script!.author!, script!.name!, publishedVersion))
+      : null;
+
+    if (!sharedUrl && !publishedUrl)
+    {
+      return html`<span class="links-empty">Please share or publish to generate share links</span>`;
+    }
+
+    return html`
+      <div class="links-list">
+        ${sharedUrl
+          ? html`
+              <div class="link-row">
+                <span class="link-label">Shared</span>
+                <a class="link-url" href=${sharedUrl} target="_blank" rel="noopener">${sharedUrl}</a>
+              </div>`
+          : nothing}
+        ${publishedUrl
+          ? html`
+              <div class="link-row">
+                <span class="link-label">Configurator</span>
+                <a class="link-url" href=${publishedUrl} target="_blank" rel="noopener">${publishedUrl}</a>
+              </div>`
+          : nothing}
+      </div>
+    `;
+  }
+
   /** Metric / Imperial segmented control — sets the script's main unit system.
    *  Always shows exactly one option as active. */
   private _renderUnitToggle()
@@ -371,6 +460,17 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
   @state() private _nameErrorAnchor: 'header' | 'form' = 'header';
   private _nameErrorTimer: number | null = null;
 
+  /** The active script's own `version` resets to null on every ordinary save
+   *  ("reset-on-save" — see ScriptStore), so a working copy that was shared or
+   *  published in the past looks unversioned again on reload even though a
+   *  concrete version still exists in the shared/published library. These hold
+   *  that last-known library version (fetched separately) so the header, the
+   *  Version field and the Links section can still show it. Null when the
+   *  script's own `version` is already concrete (nothing to look up), or when
+   *  the file has never been shared/published. */
+  @state() private _lastSharedVersion: string | null = null;
+  @state() private _lastPublishedVersion: { version: string; url?: string } | null = null;
+
   /** Tracks the fileId of the script the form is currently bound to,
    *  so we can re-populate when the active script changes (e.g. after
    *  Open Script). */
@@ -433,7 +533,33 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
         clearTimeout(this._nameErrorTimer);
         this._nameErrorTimer = null;
       }
+      void this._loadLastLibraryVersions(script, fid);
     }
+  }
+
+  /** Look up the last shared/published version of the active file when its own
+   *  `version` is null (see the field comment on `_lastSharedVersion`). Guards
+   *  against a stale response landing after the user has already switched to a
+   *  different script. */
+  private async _loadLastLibraryVersions(
+    script: ReturnType<typeof editorScript.get>,
+    fid: string | null,
+  )
+  {
+    this._lastSharedVersion    = null;
+    this._lastPublishedVersion = null;
+    if (!script || script.version || !script.author || !script.name) return;
+
+    const [shared, published] = await Promise.all([
+      fetchSharedScript(script.author, script.name),
+      fetchPublishedScript(script.author, script.name),
+    ]);
+    if (this._activeFileId !== fid) return; // stale — active script has changed
+
+    this._lastSharedVersion    = shared?.version ?? null;
+    this._lastPublishedVersion = published?.version
+      ? { version: published.version, url: published.published?.url ?? undefined }
+      : null;
   }
 
   // ── 4. Behaviour ───────────────────────────────────────────────────────────
@@ -646,16 +772,31 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
       border-bottom: none;
     }
 
+    /* Name + version are separate items of the centered header row, so they only
+       line up when their line boxes match: same font-size AND same line-height.
+       (With 12px next to 14px the header centers the two boxes, which leaves
+       their text baselines apart and the version riding high.) The version stays
+       secondary through its muted color and regular weight. */
     .script-name
     {
       font-weight: 500;
       color: color-mix(in srgb, var(--color-primary) 68%, var(--color-text) 32%);
       font-size: var(--text-sm);
+      line-height: 20px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
       max-width: 160px;
       cursor: default;
+    }
+
+    .script-version
+    {
+      font-size: var(--text-sm);
+      line-height: 20px;
+      color: var(--color-gray-dark, #666);
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .name-input
@@ -710,6 +851,7 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
     {
       display: inline-flex;
       align-items: stretch;
+      height: 22px;
       border: 1px solid var(--color-border);
       border-radius: var(--radius-sm, 3px);
       overflow: hidden;
@@ -720,17 +862,19 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
 
     .unit-quick span
     {
-      padding: 1px 8px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 8px;
       color: var(--color-text-muted, #888);
-      background: var(--color-bg-elevated);
+      background: var(--color-white, #fff);
       cursor: pointer;
       white-space: nowrap;
     }
 
     .unit-quick span.on
     {
-      color: var(--color-bg);
-      background: var(--color-gray-dark);
+      color: var(--color-text);
+      background: var(--color-border);
     }
 
     /* Read-only badge (foreign shared script) */
@@ -739,7 +883,8 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      padding: 1px 8px;
+      height: 22px;
+      padding: 0 8px;
       border-radius: var(--radius-sm, 4px);
       background: color-mix(in srgb, var(--color-warning, #d97706) 16%, transparent);
       color: var(--color-warning, #d97706);
@@ -756,7 +901,8 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      padding: 3px 10px;
+      height: 22px;
+      padding: 0 10px;
       border: 1px solid var(--color-primary);
       border-radius: var(--radius-sm, 4px);
       background: var(--color-primary);
@@ -838,6 +984,51 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
       opacity: 0.5;
       cursor: default;
     }
+
+    /* ── Links field ── */
+
+    .links-empty
+    {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      opacity: 0.7;
+      font-style: italic;
+    }
+
+    .links-list
+    {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .link-row
+    {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .link-label
+    {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      flex-shrink: 0;
+    }
+
+    .link-url
+    {
+      font-size: var(--text-sm);
+      color: var(--color-gray-dark, #666);
+      text-decoration: none;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+
+    .link-url:hover { color: var(--color-primary); }
 
     /* ── Unit-system segmented control ── */
 

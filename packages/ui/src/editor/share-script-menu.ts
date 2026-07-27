@@ -2,10 +2,12 @@
  * <share-script-menu> — modal for sharing (or re-sharing) the active script.
  *
  * Sharing publishes a versioned copy to the community/shared library. The menu
- * collects a version (prefilled with a +0.1 bump over the last shared version),
- * description, licence, an optional "dev" access flag, and an optional list of
- * users to restrict access to. Prefills every field from the last shared
- * version when one exists.
+ * collects a version (prefilled with a +0.1 bump over the highest version the
+ * file already used — shared OR published, since `(fileId, version)` is unique
+ * server-side), licence, an optional "dev" access flag, and an optional list of
+ * users to restrict access to. Prefills every field from the last shared version
+ * when one exists. There is no description field: the script carries its own
+ * (edited in <file-info>).
  *
  * Emits:
  *   share-script-done   CustomEvent<ScriptData>  — after a successful share
@@ -30,8 +32,10 @@ import { editorScript, userState, bumpScript } from '@archiyou/editor/src/state/
 import {
   shareScript,
   fetchSharedScript,
+  fetchSharedVersions,
   searchUsers,
 } from '@archiyou/editor/src/services/sharing';
+import { fetchFileVersions } from '@archiyou/editor/src/services/scripts-sync';
 import { OVERLAY_MENU_WIDTH } from '@archiyou/editor/src/settings';
 
 /** Friendly labels for the SPDX licence ids. */
@@ -67,6 +71,22 @@ function isHigher(a: string, b: string): boolean {
   return amaj > bmaj || (amaj === bmaj && amin > bmin);
 }
 
+/** True when both strings denote the same (major, minor) release. */
+function isSameVersion(a: string, b: string): boolean {
+  return parseMajorMinor(a).join('.') === parseMajorMinor(b).join('.');
+}
+
+/** The highest of `versions` on (major, minor), or null when empty. */
+function highestVersion(versions: string[]): string | null {
+  return versions.reduce<string | null>((max, v) => (max === null || isHigher(v, max) ? v : max), null);
+}
+
+/** Server error text (`{ success, error }` body of a 4xx) when there is one. */
+function errorMessage(err: unknown, fallback: string): string {
+  const body = (err as { body?: { error?: string } } | undefined)?.body;
+  return body?.error ?? (err as Error)?.message ?? fallback;
+}
+
 @customElement('share-script-menu')
 export class ShareScriptMenu extends SignalWatcher(LitElement)
 {
@@ -74,7 +94,6 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
 
   // ── Form state ──
   @state() private _version     = '0.1';
-  @state() private _description = '';
   @state() private _licence     = DEFAULT_LICENCE;
   @state() private _dev         = false;
   @state() private _selectedUsers: PublicUser[] = [];
@@ -86,6 +105,9 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
 
   // ── Prefill / submit ──
   @state() private _lastVersion: string | null = null;
+  /** Every version this file already used server-side (shared or published) —
+   *  the server rejects a re-use, so the menu must never suggest one. */
+  @state() private _usedVersions: string[] = [];
   @state() private _loading     = false;
   @state() private _submitting  = false;
   @state() private _error       = '';
@@ -137,34 +159,25 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
                 .value=${this._version}
                 @input=${(e: InputEvent) => { this._version = (e.target as HTMLInputElement).value; this._error = ''; }}
               />
-              ${this._lastVersion ? nothing : html`<span class="hint">(new share)</span>`}
+              <span class="hint">${this._lastVersion
+                ? html`Last shared version was <strong>${this._lastVersion}</strong>`
+                : '(new share)'}</span>
             </div>
-            ${this._lastVersion
-              ? html`<span class="hint">Last shared version was <strong>${this._lastVersion}</strong></span>`
-              : nothing}
-          </div>
-
-          <!-- Description -->
-          <div class="field">
-            <label class="field-label">Description</label>
-            <textarea
-              class="text-input desc-input"
-              rows="3"
-              placeholder="What does this script do?"
-              .value=${this._description}
-              @input=${(e: InputEvent) => (this._description = (e.target as HTMLTextAreaElement).value)}
-            ></textarea>
           </div>
 
           <!-- Licence -->
           <div class="field">
             <label class="field-label">Licence</label>
+            <!-- The selected attribute on the option (not .value on the select) is
+                 what makes wa-select show a preselected licence: a value set before
+                 the options are slotted is cleared again. And "change" is the event
+                 WebAwesome 3 emits — "wa-change" never fires. -->
             <wa-select
-              .value=${this._licence}
-              @wa-change=${(e: Event) => (this._licence = (e.target as HTMLSelectElement).value)}
+              class="licence-select"
+              @change=${(e: Event) => (this._licence = String((e.target as HTMLElement & { value: string }).value ?? ''))}
             >
               ${CC_LICENCES.map(l => html`
-                <wa-option value=${l}>${LICENCE_LABELS[l] ?? l}</wa-option>`)}
+                <wa-option value=${l} ?selected=${l === this._licence}>${LICENCE_LABELS[l] ?? l}</wa-option>`)}
             </wa-select>
           </div>
 
@@ -269,6 +282,11 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
   {
     // Don't prefetch shared data for an anonymous user (no handle to query).
     if (changed.has('open') && this.open && !userState.get().anonymous) void this._prefill();
+
+    // Keep the licence dropdown in sync once it has options (its value lags the
+    // slotted options on first paint, and prefill arrives after the fetch).
+    const select = this.renderRoot?.querySelector('.licence-select') as (HTMLElement & { value: string | string[] | null }) | null;
+    if (select && select.value !== this._licence) select.value = this._licence;
   }
 
   // ── Behaviour ──
@@ -281,25 +299,32 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
     this._userQuery = '';
     this._userResults = [];
     this._selectedUsers = [];
-    this._description = '';
     this._licence = DEFAULT_LICENCE;
     this._dev = false;
     this._lastVersion = null;
+    this._usedVersions = [];
 
     const script = editorScript.get();
     if (!script) { this._version = '0.1'; return; }
 
     const author = script.author ?? userState.get().id ?? null;
     const name = script.name ?? null;
+    const fileId = script.fileId ?? null;
 
     if (!author || !name) { this._version = '0.1'; return; }
 
     this._loading = true;
     try {
-      const prev = await fetchSharedScript(author, name);
+      // The shared script gives the metadata to prefill; the version lists give
+      // the numbers. `prev.version` alone is not enough: an unversioned working
+      // copy can be the newest shared row (saves inherit the shared metadata).
+      const [prev, sharedVersions, fileVersions] = await Promise.all([
+        fetchSharedScript(author, name),
+        fetchSharedVersions(author, name),
+        fileId ? fetchFileVersions(fileId) : Promise.resolve<string[]>([]),
+      ]);
+
       if (prev?.shared) {
-        this._lastVersion = prev.version ?? null;
-        this._description = prev.shared.description ?? '';
         this._licence     = prev.shared.licence ?? DEFAULT_LICENCE;
         this._dev         = prev.shared.dev ?? false;
         // Resolve onlyUsers ids into display chips (ids are handles).
@@ -307,11 +332,26 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
           id => ({ id, email: null, name: null, avatarUrl: null, emailVerified: true }),
         );
       }
+
+      this._lastVersion = highestVersion(sharedVersions) ?? prev?.version ?? null;
+      // Versions of *this file* (shared + published) — the server's uniqueness
+      // is per (fileId, version), so a version published earlier is taken too.
+      this._usedVersions = [...new Set([...fileVersions, ...sharedVersions])]
+        .sort((a, b) => (isHigher(a, b) ? 1 : -1));
     } finally {
       this._loading = false;
     }
 
-    this._version = bumpVersion(this._lastVersion);
+    this._version = this._nextFreeVersion();
+  }
+
+  /** A +0.1 bump over the highest version this file ever used (shared, published
+   *  or the last shared one), so the suggestion can never collide server-side. */
+  private _nextFreeVersion(): string
+  {
+    const known = [...this._usedVersions];
+    if (this._lastVersion) known.push(this._lastVersion);
+    return bumpVersion(highestVersion(known));
   }
 
   private _onUserQueryInput(value: string)
@@ -360,6 +400,11 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
       this._error = `Version must be higher than the last shared version (${this._lastVersion})`;
       return;
     }
+    // A version is unique per file server-side, across sharing AND publishing.
+    if (this._usedVersions.some(v => isSameVersion(v, version))) {
+      this._error = `Version ${version} is already used by this script — try ${this._nextFreeVersion()}`;
+      return;
+    }
 
     const script = editorScript.get();
     if (!script) { this._error = 'No active script'; return; }
@@ -368,7 +413,6 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
     script.version = version;
     script.shared = {
       created:     new Date().toISOString(),
-      description: this._description.trim() || undefined,
       onlyUsers:   this._selectedUsers.length ? this._selectedUsers.map(u => u.id) : undefined,
       dev:         this._dev || undefined,
       licence:     this._licence as CCLicence,
@@ -381,12 +425,14 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
       // Reflect the stored shared metadata + version on the active script.
       script.shared = stored.shared ?? script.shared;
       script.version = stored.version ?? script.version;
+      this._usedVersions = [...this._usedVersions, version];
+      this._lastVersion = version;
       bumpScript();
       this.dispatchEvent(new CustomEvent<ScriptData>('share-script-done', {
         detail: stored, bubbles: true, composed: true,
       }));
     } catch (err) {
-      this._error = (err as Error)?.message ?? 'Sharing failed';
+      this._error = errorMessage(err, 'Sharing failed');
     } finally {
       this._submitting = false;
     }
@@ -518,7 +564,6 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
     .text-input:focus { border-color: var(--color-primary); }
     .version-input { max-width: 140px; }
     .version-row { display: flex; align-items: center; gap: 8px; }
-    .desc-input { font-size: var(--text-xs); }
 
     /* Licence dropdown — smaller option text */
     wa-select { font-size: var(--text-xs); }

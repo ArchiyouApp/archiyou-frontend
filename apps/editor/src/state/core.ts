@@ -50,6 +50,12 @@ function _freshScript(): Script
   return fallback;
 }
 
+/** Whether the active script at startup came from localStorage (a returning
+ *  browser) vs. the built-in starter (a fresh one). Snapshotted once at
+ *  module load — used to explain deep-link failures to the user (see
+ *  `wasActiveScriptRestored`). */
+let _restoredFromStorage = false;
+
 /** Load the persisted active script from localStorage (handles legacy shapes). */
 function _loadPersistedScript(): Script
 {
@@ -57,6 +63,7 @@ function _loadPersistedScript(): Script
   {
     const raw = localStorage.getItem(SCRIPT_STORAGE_KEY);
     if (!raw) return _freshScript();
+    _restoredFromStorage = true;
 
     const data = JSON.parse(raw);
 
@@ -158,6 +165,11 @@ export const userState = computed<UserState>(() => {
 // the on-disk collection's possibly-stale twin gets corrected on next save.
 const _initialScripts = _loadPersistedScripts();
 const _initialActive  = _loadPersistedScript();
+
+/** True when this browser already had a saved script (the editor is showing
+ *  it — deep-link failures leave it untouched). False on a fresh browser,
+ *  where the editor is instead showing the built-in starter script. */
+export const wasActiveScriptRestored = _restoredFromStorage;
 {
   // Keep the "active is represented in the collection" invariant — but not for a
   // foreign (read-only) script restored as active, which must stay out of "My

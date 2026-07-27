@@ -29,7 +29,9 @@ export class NavBar extends SignalWatcher(LitElement)
 
     return html`
       <span class="brand" @click=${() => Router.go('/editor')}>
-        <img src="img/ay_logo_white.png" alt="Archiyou">
+        <!-- Absolute: the editor is served from nested paths too
+             (/editor/{author}/{name}), where a relative src would 404. -->
+        <img src="/img/ay_logo_white.png" alt="Archiyou">
       </span>
 
       <div class="spacer"></div>
@@ -52,7 +54,7 @@ export class NavBar extends SignalWatcher(LitElement)
     const label = user.name || user.email || msg('Account');
     return html`
       <wa-dropdown placement="bottom-end" @wa-select=${this._onMenuSelect}>
-        <wa-button slot="trigger" appearance="plain" class="account" with-caret>
+        <wa-button slot="trigger" appearance="plain" class="account signed-in" with-caret>
           <wa-icon slot="start" library="lucide" name="circle-user"></wa-icon>
           <span class="account-label">${label}</span>
         </wa-button>
@@ -146,6 +148,17 @@ export class NavBar extends SignalWatcher(LitElement)
     }
 
     .account { --wa-color-text-link: var(--color-text); }
+
+    /* Signed-in account label — white text, accent-colored icon.
+       appearance="plain" buttons read --wa-color-on-quiet (not --wa-color-text-link)
+       for their slotted text/icon color; the icon is overridden separately below. */
+    .account.signed-in { --wa-color-on-quiet: var(--color-white, #ffffff); }
+    .account.signed-in wa-icon[slot='start'] { color: var(--color-accent, #ffe200); }
+
+    .account::part(base):hover {
+      color: var(--color-accent, #ffe200);
+      background-color: var(--color-secondary);
+    }
     .account-label {
       max-width: 160px;
       overflow: hidden;
@@ -158,7 +171,7 @@ export class NavBar extends SignalWatcher(LitElement)
       opacity: 0.85;
     }
 
-    .theme-toggle { color: var(--color-text-muted); }
+    .theme-toggle { color: var(--color-text-muted); margin-right: var(--space-xs, 4px); }
   `;
 }
 

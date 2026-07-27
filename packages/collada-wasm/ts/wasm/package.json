@@ -1,0 +1,17 @@
+{
+  "name": "collada-wasm",
+  "type": "module",
+  "description": "WebAssembly COLLADA (.dae) writer built on a vendored copy of 5mattmatt1/collada_io",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "collada_wasm_bg.wasm",
+    "collada_wasm.js",
+    "collada_wasm.d.ts"
+  ],
+  "main": "collada_wasm.js",
+  "types": "collada_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

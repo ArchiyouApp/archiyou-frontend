@@ -17,7 +17,7 @@ export class PageForgotPassword extends LitElement
   {
     return html`
       <div class="card">
-        <div class="logo"><img src="img/archiyou_logo_header.png" alt="Archiyou" /></div>
+        <div class="logo"><img src="/img/archiyou_logo_header.png" alt="Archiyou" /></div>
 
         ${this._sent ? this._renderSent() : this._renderForm()}
       </div>

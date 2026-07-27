@@ -23,7 +23,7 @@ export class PageLogin extends LitElement
     return html`
       <div class="card">
         <div class="logo">
-          <img src="img/archiyou_logo_header.png" alt="Archiyou" />
+          <img src="/img/archiyou_logo_header.png" alt="Archiyou" />
         </div>
 
         <h1>${isRegister ? msg('Create your account') : msg('Welcome back')}</h1>

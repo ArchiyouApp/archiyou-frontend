@@ -2,10 +2,13 @@
  * ScriptStore — the single `script_versions` table (rows ARE ScriptData).
  *
  * Ownership is by `author` (the user's handle from the JWT). Each save appends
- * a new row (Script.id = version) sharing the file's fileId; "latest" is the
- * newest `updated` per fileId. `shared` is the ScriptShared metadata object (or
- * null) carried on ScriptData, toggled via its own endpoint. `version` resets to
- * null on every save (a concrete semver is assigned only when publishing/sharing).
+ * a new row (Script.id = version) sharing the file's fileId; a file's "latest" is
+ * the newest `updated` per fileId, but a LIBRARY's latest is its newest released
+ * version (see compareLibraryRows — saves inherit `shared`, so a shared file also
+ * keeps an unversioned working copy in the library, reachable as `:dev`).
+ * `shared` is the ScriptShared metadata object (or null) carried on ScriptData,
+ * toggled via its own endpoint. `version` resets to null on every save (a concrete
+ * semver is assigned only when publishing/sharing, and is unique per file).
  */
 
 import { eq, and, desc, isNotNull, sql, type AnyColumn } from 'drizzle-orm';
@@ -26,6 +29,7 @@ export class ScriptStoreError extends Error {
 
 export interface VersionMeta {
   id: string;
+  version: string | null; // the concrete semver (set on share/publish), else null
   created: number; // epoch ms
   updated: number;
 }
@@ -129,13 +133,40 @@ export class ScriptStore {
   // and /scripts/shared/* + the core LibraryConnector. One generalized impl
   // backs both; pass the column (scriptVersions.published | .shared).
 
+  /** Rank library rows "latest first": released rows (a concrete `version`) always
+   *  beat unversioned ones, highest semver first; unversioned rows (the working
+   *  copies that inherit `shared` on every save — they power `:dev`) sort last by
+   *  newest `updated`. Without the version-first rule the newest working copy
+   *  would masquerade as the library's latest release. */
+  private compareLibraryRows(a: ScriptVersionRow, b: ScriptVersionRow): number {
+    const av = a.version ? semver.coerce(a.version) : null;
+    const bv = b.version ? semver.coerce(b.version) : null;
+    if (av && bv) {
+      const cmp = semver.rcompare(av, bv);
+      if (cmp !== 0) return cmp;
+    } else if (av) return -1;
+    else if (bv) return 1;
+    return b.updated.getTime() - a.updated.getTime();
+  }
+
+  /** Reduce library rows to one per fileId — the latest per `compareLibraryRows`
+   *  (i.e. the newest released version, not the unversioned working copy). */
+  private latestReleasePerFile(rows: ScriptVersionRow[]): ScriptVersionRow[] {
+    const byFile = new Map<string, ScriptVersionRow>();
+    for (const r of rows) {
+      const cur = byFile.get(r.fileId);
+      if (!cur || this.compareLibraryRows(r, cur) < 0) byFile.set(r.fileId, r);
+    }
+    return [...byFile.values()].sort((a, b) => b.updated.getTime() - a.updated.getTime());
+  }
+
   /** All rows in a library (col non-null), optionally by author, latest per file. */
   private libraryList(col: AnyColumn, author?: string): ScriptData[] {
     const cond = author
       ? and(eq(scriptVersions.author, author.toLowerCase()), isNotNull(col))
       : isNotNull(col);
     const rows = db.select().from(scriptVersions).where(cond).orderBy(desc(scriptVersions.updated)).all();
-    return this.latestPerFile(rows).map((r) => this.rowToData(r));
+    return this.latestReleasePerFile(rows).map((r) => this.rowToData(r));
   }
 
   /** All rows in a library for an author/name (any version), newest first. */
@@ -169,13 +200,9 @@ export class ScriptStore {
       return row ? this.rowToData(row) : null;
     }
 
-    // Latest: highest semver when versions are present, else newest updated.
-    const sorted = [...rows].sort((a, b) => {
-      const av = semver.coerce(a.version ?? '');
-      const bv = semver.coerce(b.version ?? '');
-      if (av && bv) return semver.rcompare(av, bv);
-      return b.updated.getTime() - a.updated.getTime();
-    });
+    // Latest: the newest released version; only an entirely unreleased file falls
+    // back to its newest working copy (see compareLibraryRows).
+    const sorted = [...rows].sort((a, b) => this.compareLibraryRows(a, b));
     return this.rowToData(sorted[0]);
   }
 
@@ -254,7 +281,7 @@ export class ScriptStore {
     return this.libraryGet(scriptVersions.shared, author, name, version);
   }
 
-  /** All shared files (latest version each) whose shared metadata carries the row. */
+  /** All shared files (latest released version each) whose shared metadata carries the row. */
   private sharedLatestPerFile(): ScriptVersionRow[] {
     const rows = db
       .select()
@@ -262,7 +289,7 @@ export class ScriptStore {
       .where(isNotNull(scriptVersions.shared))
       .orderBy(desc(scriptVersions.updated))
       .all();
-    return this.latestPerFile(rows);
+    return this.latestReleasePerFile(rows);
   }
 
   /** Community-shared scripts: shared with no `onlyUsers` restriction. */
@@ -304,7 +331,12 @@ export class ScriptStore {
   listVersions(author: string, fileId: string): VersionMeta[] {
     const rows = this.fileRows(author, fileId);
     if (rows.length === 0) throw new ScriptStoreError('not_found', `Script ${fileId} not found`);
-    return rows.map((r) => ({ id: r.id, created: r.created.getTime(), updated: r.updated.getTime() }));
+    return rows.map((r) => ({
+      id: r.id,
+      version: r.version ?? null,
+      created: r.created.getTime(),
+      updated: r.updated.getTime(),
+    }));
   }
 
   getVersion(author: string, fileId: string, versionId: string): ScriptData {

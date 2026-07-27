@@ -18,6 +18,7 @@
 
 import * as meshup from 'meshup/src/index'
 import { buildDXF, type toDXFOptions } from './DXFExporter'
+import { buildDAE, type toDAEOptions } from './DAEExporter'
 import type { DimensionOptions, LabelOptions } from '../annotator/types'
 
 //// TYPE AUGMENTATION (declaration merging) ////
@@ -38,6 +39,8 @@ declare module 'meshup/src/Shape' {
         material(name?: string): any
         /** Mass/weight in the active unit system. Shortcut for material().weight(). */
         weight(): number | undefined
+        /** Embodied carbon (kgCO2e) of this shape. Defaults to cradle-to-gate A1-A3. */
+        carbon(modules?: any): number | undefined
         /** True when this shape is currently selected (clicked) in the viewer. */
         selected(): boolean
         /** Make this shape clickable in the viewer and react to selection. */
@@ -51,6 +54,14 @@ declare module 'meshup/src/SceneNode' {
     interface SceneNode {
         /** Export this subtree's 2D shapes (+ linked dimension lines) to DXF. */
         toDXF(options?: toDXFOptions): string | null
+        /** Export this subtree to COLLADA (.dae), preserving the node hierarchy. */
+        toDAE(options?: toDAEOptions): Promise<string | null>
+        /** Total mass (kg) of the materialized shapes in this subtree. */
+        weight(): number | undefined
+        /** Total embodied carbon (kgCO2e) of the materialized shapes in this subtree. */
+        carbon(): number | undefined
+        /** Per-material mass/carbon breakdown — feed to calc.table('carbon', …). */
+        materialTotals(): any
     }
 }
 
@@ -58,6 +69,12 @@ declare module 'meshup/src/ShapeCollection' {
     interface ShapeCollection {
         /** Export the 2D shapes in this collection (+ linked dimension lines) to DXF. */
         toDXF(options?: toDXFOptions): string | null
+        /** Total mass (kg) of the materialized shapes in this collection. */
+        weight(): number | undefined
+        /** Total embodied carbon (kgCO2e) of the materialized shapes in this collection. */
+        carbon(): number | undefined
+        /** Per-material mass/carbon breakdown — feed to calc.table('carbon', …). */
+        materialTotals(): any
     }
 }
 
@@ -116,6 +133,11 @@ ShapeProto.weight = function (this: any): number | undefined {
     return this.material()?.weight?.()
 }
 
+/** Embodied carbon (kgCO2e) of this shape, from its material's EN 15804 data. */
+ShapeProto.carbon = function (this: any, modules?: any): number | undefined {
+    return this.material()?.carbon?.(modules)
+}
+
 /** True when this shape is currently selected (clicked) in the viewer. Selection identity is
  *  the scene path, so the shape must be in the scene. */
 ShapeProto.selected = function (this: any): boolean {
@@ -169,12 +191,52 @@ function linkedAnnotations(modeler: any, shapes: Array<any>): Array<any> {
     return buildDXF(shapes, linkedAnnotations(modeler, shapes), { units: modeler?.units?.(), ...options })
 }
 
+;(meshup.SceneNode.prototype as any).toDAE = function (this: any, options: toDAEOptions = {}): Promise<string | null> {
+    // Takes `this` (the node) rather than a flat shape list — the hierarchy is the point.
+    const modeler = this.shapes().toArray()[0]?._modeler
+    return buildDAE(this, { units: modeler?.units?.(), ...options })
+}
+
 ;(meshup.ShapeCollection.prototype as any).toDXF = function (this: any, options: toDXFOptions = {}): string | null {
     const shapes = this._shapes
     const linked = linkedAnnotations(this._modeler, shapes)
     const local = Array.isArray(this.annotations) ? this.annotations : []
     const annotations = [...new Set([...linked, ...local])]
     return buildDXF(shapes, annotations, { units: this._modeler?.units?.(), ...options })
+}
+
+//// COLLECTION / SCENE AGGREGATION ////
+
+/** The MaterialManager reachable from a set of shapes (they all share one modeler). */
+function materialsOf(shapes: Array<any>): any {
+    for (const s of shapes) { const m = s?._ay?.materials; if (m) return m }
+    return null
+}
+
+/** Sum a per-shape material read-out over a list of shapes, skipping what it cannot know. */
+function sumOver(shapes: Array<any>, pick: (t: any) => number | undefined): number | undefined {
+    const materials = materialsOf(shapes)
+    if (!materials) return undefined
+    const totals = materials.totals(shapes)
+    return pick(totals)
+}
+
+for (const Proto of [meshup.ShapeCollection.prototype, meshup.SceneNode.prototype] as Array<any>) {
+    /** Total mass (kg) of every shape in here that carries a material. */
+    Proto.weight = function (this: any): number | undefined {
+        return sumOver(this.shapes?.().toArray?.() ?? this._shapes ?? [], (t) => t.total.mass)
+    }
+
+    /** Total embodied carbon (kgCO2e) of every shape in here that carries a material. */
+    Proto.carbon = function (this: any): number | undefined {
+        return sumOver(this.shapes?.().toArray?.() ?? this._shapes ?? [], (t) => t.total.carbon)
+    }
+
+    /** Per-material breakdown of mass and carbon — feed to calc.table('carbon', …). */
+    Proto.materialTotals = function (this: any): any {
+        const shapes = this.shapes?.().toArray?.() ?? this._shapes ?? []
+        return materialsOf(shapes)?.totals(shapes) ?? null
+    }
 }
 
 export {} // module marker

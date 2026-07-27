@@ -137,4 +137,6 @@ export const authService = {
 };
 
 // Restore the session on load (validates the persisted token in the background).
-void authService.refresh();
+// Exposed as a promise so callers that need the handle (e.g. resolving a script
+// deep link on a cold load) can await the restore instead of racing it.
+export const authReady: Promise<PublicUser | null> = authService.refresh();

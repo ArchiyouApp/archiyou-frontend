@@ -18,7 +18,21 @@ export const PartsRowSchema = Type.Object({
     quantity: Type.Number(),
 })   // TypeBox Object allows extra props by default → footer/extra columns pass
 
+/** One row of a `carbon` table (as emitted by MaterialManager.totals().byMaterial).
+ *  `carbon` is optional on purpose: a material with no usable EPD data yields an
+ *  undefined impact, which must stay distinguishable from a genuine zero. */
+export const CarbonRowSchema = Type.Object({
+    name:    Type.String(),
+    group:   Type.String(),
+    count:   Type.Number(),
+    volume:  Type.Number(),
+    mass:    Type.Number(),
+    carbon:  Type.Optional(Type.Number()),
+    partial: Type.Optional(Type.Boolean()),
+})
+
 /** Registry of standard schemas, addressable by name: table.schema('parts') */
 export const STANDARD_SCHEMAS:Record<string, TSchema> = {
     parts: PartsRowSchema,
+    carbon: CarbonRowSchema,
 }

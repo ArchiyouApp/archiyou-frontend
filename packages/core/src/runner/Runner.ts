@@ -1816,8 +1816,8 @@ ${contextLines.join('\n')}
                     }
                     break;
 
-                case 'svg': // 2D SVG export
-                    outp = (scope.exporter as any).exportToSVG();
+                case 'svg': // 2D SVG export (via the new Modeler pipeline)
+                    outp = scope.modeler.toSVG();
                     if(outp)
                     {
                         outputs.push({
@@ -1849,8 +1849,19 @@ ${contextLines.join('\n')}
                     }
                     break;
 
-                case 'stl':
-                    outp = await (scope.exporter as any).exportToSTL();
+                case 'amf': // AMF document of all scene meshes (via the new Modeler pipeline)
+                    outp = scope.modeler.toAMF();
+                    if(outp)
+                    {
+                        outputs.push({
+                            path: outputPathData,
+                            output: outp
+                        } as ScriptOutputData);
+                    }
+                    break;
+
+                case 'stl': // binary STL of all scene meshes (via the new Modeler pipeline)
+                    outp = scope.modeler.toSTL();
                     if(outp)
                     {
                         outputs.push({
@@ -1860,8 +1871,18 @@ ${contextLines.join('\n')}
                     }
                     break;
 
+                case 'dae': // COLLADA of the whole scene graph (via the new Modeler pipeline)
+                    outp = await scope.modeler.toDAE(outputPath?.formatOptions as any);
+                    if(outp)
+                    {
+                        outputs.push({
+                            path: outputPathData,
+                            output: outp
+                        } as ScriptOutputData);
+                    }
+                    break;
+
                 // Using external services
-                case 'dae':
                 case 'obj':
                     if(!(await scope.ay.services.isUp()))
                     {

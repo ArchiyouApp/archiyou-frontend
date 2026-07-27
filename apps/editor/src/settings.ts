@@ -18,14 +18,28 @@ import type { ScriptData } from '@archiyou/core/src/execution/types';
 export const EDITOR_START_SCRIPT: ScriptData = 
 {
   name: 'untitled',
-  code: `// Welcome to Archiyou!
+  code: `// Welcome to Archiyou
+
+// Make a Box and subtract another from it
 myMainBox = box($SIZE).color('red');
 myMainBox.subtract(
       box($SIZE*0.5).color('blue')
+        .name('subBox')
         .moveTo(myMainBox.bbox().corner('leftfronttop'))
         .hide()
     )
 
+// Make its volume a metric - open metric tool to view
+calc.metric('Volume', Math.round(myMainBox.volume()), 
+            { unit: 'mm2', icon: 'box' }) // some styling
+
+// Generate a simple table with shape name and volume - open data tool to view
+calc.table('testTable', 
+            all().map((s) => {
+              return { name: s.name(), volume: Math.round(s.volume())}
+            })); 
+
+// Make a document for it with a isometric view - open documents tool to view
 doc.create('myDoc')
 .pipeline(() => {
   iso = myMainBox.iso();
@@ -34,7 +48,7 @@ doc.create('myDoc')
 .page('myPage')
 .view('isometry')
 .shapes('iso')
-.text('MyText')
+.text('MyText');
 `,
   params: {
     SIZE: {
@@ -64,15 +78,6 @@ export const VIEWER_MODEL_COORDSYSTEM = { up: 'z', forward: 'y', right: 'x' } as
 export const VIEWER_BACKGROUND_COLOR = 0xf1f5f9; // scene + renderer clear color (light theme)
 export const VIEWER_BACKGROUND_COLOR_DARK = 0x0f172a; // scene + renderer clear color (dark theme)
 export const VIEWER_AUTO_FRAME_ON_FIRST_LOAD = true;
-
-// Dimension lines (3D viewer) — the in-scene line + arrowhead cones.
-// Sizes are world units in viewer/model space.
-// The value text is an HTML overlay label, styled via CSS in
-// `viewer-labels-overlay` (not configured here).
-export const DIMENSION_LINE_COLOR       = 0x222222; // line + arrowheads
-export const DIMENSION_ARROW_LENGTH     = 30;     // arrowhead cone length in model units
-export const DIMENSION_ARROW_RADIUS     = 10;    // arrowhead cone base radius in model units
-
 
 // 3D viewer helpers. VIEWER_SCENE_SIZE is the ground-plane size in world units.
 export const VIEWER_SCENE_SIZE = 5000;
@@ -107,13 +112,32 @@ export const VIEWER_GIZMO_COLOR_Z        = 0x0000FF; // blue  (+Z)
 export const VIEWER_GIZMO_COLOR_ORIGIN   = 0xFFFFFF; // origin sphere at (0,0,0)
 export const VIEWER_GIZMO_LABEL_SIZE     = 10;   // world units
 
+// Gizmo arrowhead cone shape, as a fraction of the axis arm length — e.g. an
+// axis arm of 20 gives a cone height of 20×0.18=3.6 and radius 20×0.055=1.1.
+// Dimension-line arrowheads (below) reuse these same ratios so both kinds of
+// arrow look identical, just scaled by their own base length.
+export const VIEWER_GIZMO_ARROW_LENGTH_RATIO = 0.18;
+export const VIEWER_GIZMO_ARROW_RADIUS_RATIO = 0.055;
+
 // Gizmo auto-scaling: scaleFactor = sceneSize * VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE
 // (sceneSize = largest bbox dimension). Calibrated for scene 100 → factor 1
-// (scene 1000 → 10×). Clamped to a minimum of 1.
+// (scene 1000 → 10×, scene 10 → 0.1×…). Also drives the dimension-line arrow
+// scale (see applyAnnotations' arrowScale). Floored at VIEWER_GIZMO_MIN_SCALE
+// so a vanishingly small model doesn't shrink the gizmo/arrows to nothing.
 export const VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE = 0.01;
+export const VIEWER_GIZMO_MIN_SCALE = 0.1;
 // Only recompute the gizmo scale when the scene size changed by more than this
 // (world units) since the last recalc, so small parametric tweaks don't resize it.
 export const VIEWER_GIZMO_RECALC_INCREMENT = 250;
+
+// Dimension lines (3D viewer) — the in-scene line + arrowhead cones.
+// Sizes are world units in viewer/model space, same shape ratios as the gizmo
+// arrowheads (VIEWER_GIZMO_ARROW_*_RATIO) so both read as the same arrow.
+// The value text is an HTML overlay label, styled via CSS in
+// `viewer-labels-overlay` (not configured here).
+export const DIMENSION_LINE_COLOR       = 0x222222; // line + arrowheads
+export const DIMENSION_ARROW_LENGTH     = VIEWER_GIZMO_AXIS_LENGTH * VIEWER_GIZMO_ARROW_LENGTH_RATIO; // = 3.6
+export const DIMENSION_ARROW_RADIUS     = VIEWER_GIZMO_AXIS_LENGTH * VIEWER_GIZMO_ARROW_RADIUS_RATIO; // = 1.1
 
 // Interaction handles
 export const VIEWER_HANDLE_DEFAULT_ICON   = 'move';

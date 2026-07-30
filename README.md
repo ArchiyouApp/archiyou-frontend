@@ -75,12 +75,32 @@ The editor's API base URL is baked in **at build time** — see
 
 ### A note on typechecking
 
-`tsc --noEmit` does not currently pass across the repo (~2000 errors,
-overwhelmingly in `packages/core`, which predates the strict config, plus a
-resolution quirk where `tsc` cannot follow `@archiyou/core`'s exports map even
-though Vite and `tsx` can). CI therefore gates on **build + tests**, not types.
-Individual packages expose a `typecheck` script if you want to look. Cleaning
-this up is an open issue and a good first contribution.
+`tsc --noEmit` does not currently pass, so CI gates on **build + tests**, not
+types. Individual packages expose a `typecheck` script. The shape of the problem,
+since the raw error counts are misleading:
+
+- **`packages/core` reports 260 errors against its own config** (which sets
+  `strict: false`). Running `tsc` from `apps/editor` instead reports ~2000,
+  because the editor's config applies `strict` + `noUnusedLocals` to core's
+  sources. Same code, different lens — the 260 is the real number.
+- Most are mechanical: ~74 are BREP types (`Vector`, `Point`, `Edge`,
+  `PointLike`, `AnyShape`) used without being imported, a leftover from when they
+  were ambient globals. `src/annotator/AnnotatorDimensionLine.ts` alone accounts
+  for 57.
+- **`tsc` cannot follow `@archiyou/core`'s `"./src/*": "./src/*"` exports map**,
+  so `apps/server` sees 36 unresolved imports. That is not merely cosmetic:
+  unresolved modules are typed as `any`, which *hides* errors. Making resolution
+  work (via `paths`, or by mapping the export to `./src/*.ts`) drops those 36 to
+  1 and reveals 238 genuine type errors underneath.
+  Note that changing the exports map to `./src/*.ts` **breaks the Vite build**,
+  because consumers also import with explicit `.js` suffixes — use tsconfig
+  `paths` instead, which only affects `tsc`.
+- Excluding `src/modeler/brep` from the program does *not* help (260 → 236); it
+  is pulled in transitively by imports regardless.
+
+So this is a real cleanup task rather than a config tweak, and it should be done
+boundary by boundary — fix resolution first, then the errors it uncovers. Tracked
+as an open issue; good first contributions welcome.
 
 ## Configuration
 

@@ -13,7 +13,7 @@ import { signal, computed } from '@lit-labs/signals';
 
 import { ScriptParam } from '@archiyou/core/src/execution/ScriptParam';
 import type { ScriptParamType, ScriptParamData, ParamOperation } from '@archiyou/core/src/execution/types';
-import type { SmartSceneNodeData } from '@archiyou/core/src/modeler/types';
+import type { SceneNodeData } from '@archiyou/core/src/modeler/types';
 import { deepEqual } from '@archiyou/core/src/utils';
 
 import { editorScript, bumpScript, saveCore } from './core';
@@ -27,7 +27,7 @@ import type { ScriptMetadata, ScriptPreset } from './types';
  *  on every new execution we reconcile against this snapshot so toggled
  *  nodes that still exist by path keep their visibility. `equals: () => false`
  *  so in-place node mutations broadcast to watchers. */
-export const scenegraph        = signal<SmartSceneNodeData | null>(null, { equals: () => false });
+export const scenegraph        = signal<SceneNodeData | null>(null, { equals: () => false });
 
 /** Currently selected scene path (single-select), or null. Set by clicking a
  *  shape in the 3D viewer or a row in the scene explorer; identity is the
@@ -110,14 +110,14 @@ export function clearUserVisibilityOverrides(): void
 
 /** Walk a scenegraph by `/`-joined path. Empty path returns the root. */
 export function findNodeByPath(
-  root: SmartSceneNodeData,
+  root: SceneNodeData,
   path: string,
-): SmartSceneNodeData | null
+): SceneNodeData | null
 {
   if (!path) return root;
   const parts = path.split('/').map(_decodeScenegraphSegment);
   if (parts[0] !== root.name) return null;
-  let cur: SmartSceneNodeData = root;
+  let cur: SceneNodeData = root;
   for (let i = 1; i < parts.length; i++)
   {
     const next = cur.children.find(c => c.name === parts[i]);
@@ -127,8 +127,8 @@ export function findNodeByPath(
   return cur;
 }
 
-/** Deep-clone a SmartSceneNodeData tree (plain structured data, safe). */
-function _cloneNode(n: SmartSceneNodeData): SmartSceneNodeData
+/** Deep-clone a SceneNodeData tree (plain structured data, safe). */
+function _cloneNode(n: SceneNodeData): SceneNodeData
 {
   return {
     name: n.name,
@@ -140,16 +140,16 @@ function _cloneNode(n: SmartSceneNodeData): SmartSceneNodeData
 
 /** Return a new tree with the node at `path` toggled, or `null` if not found. */
 function _toggleNodeVisibilityByPath(
-  root: SmartSceneNodeData,
+  root: SceneNodeData,
   path: string,
-): SmartSceneNodeData | null
+): SceneNodeData | null
 {
   if (!path) return null;
 
   const parts = path.split('/').map(_decodeScenegraphSegment);
   if (parts[0] !== root.name) return null;
 
-  const toggle = (node: SmartSceneNodeData, partIndex: number): SmartSceneNodeData | null =>
+  const toggle = (node: SceneNodeData, partIndex: number): SceneNodeData | null =>
   {
     if (partIndex === parts.length - 1)
     {
@@ -196,9 +196,9 @@ function _toggleNodeVisibilityByPath(
  *  Stale overrides (paths no longer in `incoming`) are purged here to keep the
  *  map bounded. Pure w.r.t. `incoming`: returns a fresh deep clone. */
 export function reconcileScenegraph(
-  _prev: SmartSceneNodeData | null,
-  incoming: SmartSceneNodeData | null,
-): SmartSceneNodeData | null
+  _prev: SceneNodeData | null,
+  incoming: SceneNodeData | null,
+): SceneNodeData | null
 {
   if (!incoming) return null;
   const clone = _cloneNode(incoming);
@@ -208,7 +208,7 @@ export function reconcileScenegraph(
   // Walk the new tree: apply any user override for the path; collect all
   // paths so we can drop stale entries afterwards.
   const seenPaths = new Set<string>();
-  const apply = (n: SmartSceneNodeData, parentPath: string) =>
+  const apply = (n: SceneNodeData, parentPath: string) =>
   {
     const p = buildScenegraphPath(parentPath, n.name);
     seenPaths.add(p);

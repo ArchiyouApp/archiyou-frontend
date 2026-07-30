@@ -14,6 +14,7 @@
     "build:workspace": "APP=workspace vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "typecheck:own": "node ../../scripts/typecheck-own.mjs apps/editor",
     "localize:extract": "lit-localize extract",
     "localize:build": "lit-localize build"
   },

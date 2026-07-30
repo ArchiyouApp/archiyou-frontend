@@ -75,12 +75,11 @@ The editor's API base URL is baked in **at build time** — see
 
 ### A note on typechecking
 
-**`apps/server` is fully typechecked and gated in CI**
-(`pnpm --filter @archiyou/server typecheck:own`). The rest of the repo is not yet
-clean, so CI gates the remainder on **build + tests**.
+**`apps/server`, `apps/editor` and `packages/ui` are fully typechecked and gated
+in CI** (`pnpm --filter <pkg> typecheck:own`). `packages/core` is not yet clean,
+so it stays advisory.
 
-Getting the server there needed two things, both worth knowing if you tackle
-another package:
+Getting there needed two things, worth knowing if you tackle `packages/core`:
 
 1. `tsconfig` **`paths`** pointing `@archiyou/core/*` at core's source. `tsc`
    cannot follow core's `"./src/*": "./src/*"` exports map, and unresolved
@@ -91,14 +90,28 @@ another package:
 2. `"lib": ["ES2022", "DOM"]`, since shared browser/Node code in core and meshup
    references `window`/`document`/`WebAssembly` behind feature detection.
 
-That left 2 genuine bugs in server code, both now fixed — a JWT payload union
-that was never extended when email-verification tokens were added, and hydrated
-`ScriptParam` instances being assigned where plain `ScriptParamData` was
-expected, leaking internal fields into published payloads.
+Between them those two changes exposed a handful of genuine defects that had been
+invisible, all now fixed:
 
-`typecheck:own` compiles core for real (so every cross-boundary call is checked)
-but only *fails* on diagnostics in `apps/server/src`, ignoring core's own
-backlog. Delete it once core is clean and gate on `tsc` directly.
+- a JWT payload union never extended when email-verification tokens were added
+- hydrated `ScriptParam` instances assigned where plain `ScriptParamData` was
+  expected, leaking internal fields into published payloads
+- TypeBox unions built as `Type.Union(CONSTS.map(c => Type.Literal(c)))`. `.map()`
+  widens a const array to an array rather than a tuple, and `Static<>` over a
+  non-tuple union resolves to `never` — so the runtime schema was fine while every
+  field typed by it (licences, fulfillment delivery, material group) was unusable
+  in typed code
+- four `import type` statements with a stray `../` prefix, so the types were
+  silently `any` (type-only imports are erased by Vite, so the build never
+  complained)
+- `SmartSceneNodeData`, a type that exists nowhere, imported in three files — a
+  leftover from the SmartShapes refactor. The correct `SceneNodeData` also fixed
+  eleven implicit-`any` callbacks for free.
+
+`scripts/typecheck-own.mjs <pkg>` compiles dependencies for real (so every
+cross-package call is checked) but only *fails* on diagnostics in that package's
+own directory. Retire it per package as core is cleaned up, then gate on `tsc`
+directly.
 
 The remaining backlog, since raw error counts are misleading:
 
@@ -114,10 +127,10 @@ The remaining backlog, since raw error counts are misleading:
   *not* help — 260 → 236. It is pulled in transitively by imports regardless of
   `include`/`exclude`, so detaching it means changing code, not config.
 
-Suggested order for whoever takes this on: `packages/ui` and `apps/editor` next,
-using the same `paths` + `lib` recipe as the server, then core's mechanical
-missing imports, and only then consider turning `strict` on for core. Tracked as
-an open issue; good first contributions welcome.
+Suggested order for whoever takes this on: core's mechanical missing imports
+first (they are the bulk and are low-risk), then the genuine type mismatches, and
+only then consider turning `strict` on for core — that is what takes 260 to
+~1900. Tracked as an open issue; good first contributions welcome.
 
 ## Configuration
 

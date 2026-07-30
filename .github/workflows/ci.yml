@@ -57,16 +57,22 @@ jobs:
       - name: Core tests
         run: pnpm --filter @archiyou/core test:runner
 
-      # A real gate: apps/server/src must typecheck against @archiyou/core's
-      # actual types. tsconfig `paths` makes tsc resolve core (its exports map
-      # defeats tsc, which silently typed the whole boundary as `any`), and this
-      # script ignores only core's own pre-existing backlog. New server code
-      # therefore cannot regress. See apps/server/scripts/typecheck-own.mjs.
+      # Real gates. Each package's own source must typecheck against its
+      # dependencies' actual types. tsconfig `paths` makes tsc resolve
+      # @archiyou/core (its exports map defeats tsc, which silently typed those
+      # boundaries as `any`), and scripts/typecheck-own.mjs ignores only core's
+      # pre-existing backlog — so none of these three can regress.
       - name: Typecheck server
         run: pnpm --filter @archiyou/server typecheck:own
 
-      # The rest of the repo is not yet type-clean (~207 errors in packages/core,
-      # which predates the strict config). Advisory only, so the number is visible
+      - name: Typecheck ui
+        run: pnpm --filter @archiyou/ui typecheck:own
+
+      - name: Typecheck editor
+        run: pnpm --filter @archiyou/editor typecheck:own
+
+      # packages/core itself is not yet type-clean (260 errors against its own
+      # config, ~1900 under strict). Advisory only, so the number stays visible
       # and can be driven down. See the README for the breakdown.
       - name: Typecheck core (advisory, never fails the build)
         continue-on-error: true

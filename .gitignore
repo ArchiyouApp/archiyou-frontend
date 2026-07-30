@@ -2,3 +2,21 @@ node_modules
 dist
 *.db*
 /tmp
+
+# Build caches
+.turbo
+
+# Environment files — NEVER commit these. Only *.env.example belongs in git.
+.env
+.env.*
+!.env.example
+
+# Editor/IDE local settings
+.vscode/
+.idea/
+
+# Rust build output (also excluded from the Docker build context)
+target/
+
+# OS cruft
+.DS_Store

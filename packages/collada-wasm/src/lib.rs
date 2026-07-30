@@ -17,7 +17,7 @@
 //! submodule pin, so rebuilding regresses rings/silhouette/reconstruct_ngons. Welding a
 //! buffer we already have in hand is far cheaper than that risk.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use wasm_bindgen::prelude::*;
 
@@ -88,6 +88,38 @@ fn xyz_params() -> Vec<String>
     vec!["X".to_string(), "Y".to_string(), "Z".to_string()]
 }
 
+/// True when a welded face ring encloses no meaningful area.
+///
+/// Catches what a duplicate-vertex pass cannot: a non-adjacent repeat (`0 1 0 2`) or a ring
+/// whose points are all collinear. The Newell normal's length is twice the polygon area, and
+/// it is weighed against the ring's own bounding extent so the test carries no unit
+/// assumption — a millimetre model and a metre model of the same thing get the same answer.
+fn is_degenerate(ring: &[(u32, u32)], positions: &[f32]) -> bool
+{
+    let point = |i: usize| -> [f64; 3] {
+        let p = ring[i].0 as usize * 3;
+        [positions[p] as f64, positions[p + 1] as f64, positions[p + 2] as f64]
+    };
+
+    let (mut nx, mut ny, mut nz) = (0.0f64, 0.0f64, 0.0f64);
+    let mut lo = [f64::MAX; 3];
+    let mut hi = [f64::MIN; 3];
+
+    for i in 0..ring.len()
+    {
+        let a = point(i);
+        let b = point((i + 1) % ring.len());
+        nx += (a[1] - b[1]) * (a[2] + b[2]);
+        ny += (a[2] - b[2]) * (a[0] + b[0]);
+        nz += (a[0] - b[0]) * (a[1] + b[1]);
+        for k in 0..3 { lo[k] = lo[k].min(a[k]); hi[k] = hi[k].max(a[k]); }
+    }
+
+    let extent = (0..3).map(|k| hi[k] - lo[k]).fold(0.0f64, f64::max);
+    // twice the area <= 1e-10 * extent^2; on a 1 m face that is an area under 1e-4 mm^2
+    nx.hypot(ny).hypot(nz) <= 1e-10 * extent * extent
+}
+
 /// The material symbol every primitive declares.
 ///
 /// In COLLADA the symbol is scoped to the geometry and only resolved to a real material at
@@ -95,6 +127,16 @@ fn xyz_params() -> Vec<String>
 /// geometry be instanced twice with different materials — and it is why the primitive needs
 /// a symbol even though the geometry itself has no idea which material it will get.
 const MATERIAL_SYMBOL: &str = "material";
+
+/// Preferred id for the single `<visual_scene>`, uniquified at serialization time.
+///
+/// Every `id` in COLLADA is an `xs:ID`, so `<visual_scene>`, `<node>`, `<geometry>` and
+/// `<material>` all share ONE document-wide namespace. A caller whose root node is also
+/// called "Scene" would otherwise emit the id twice, which both fails schema validation and
+/// makes `<instance_visual_scene url="#Scene">` ambiguous — a strict importer can resolve it
+/// to the `<node>` and find no scene at all. SketchUp validates against the 1.4.1 schema on
+/// import, so this was fatal there while lenient web viewers happily ignored it.
+const VISUAL_SCENE_ID: &str = "Scene";
 
 /// Builds one COLLADA document. See the module docs for the two-phase usage.
 #[wasm_bindgen]
@@ -181,6 +223,9 @@ impl ColladaWriter
     ///
     /// This is the default mesh path: it preserves meshup's n-gon topology, where
     /// `Mesh.toBuffer()` would have flattened it into a triangle soup.
+    ///
+    /// Returns false when nothing survived and no `<geometry>` was emitted, so the caller
+    /// knows not to reference it.
     #[wasm_bindgen(js_name = addPolylistGeometry)]
     pub fn add_polylist_geometry(
         &mut self,
@@ -190,7 +235,7 @@ impl ColladaWriter
         normals: &[f32],
         vcount: &[u32],
         weld_tolerance: f32,
-    )
+    ) -> bool
     {
         let face_vertex_count: u32 = vcount.iter().sum();
         let has_normals = normals.len() >= (face_vertex_count as usize) * 3;
@@ -201,31 +246,66 @@ impl ColladaWriter
         let mut pos_welder = Welder::new(weld_tolerance);
         let mut norm_welder = Welder::new(weld_tolerance);
         let mut primitive: Vec<u32> = Vec::with_capacity(face_vertex_count as usize * 2);
+        let mut out_vcount: Vec<u32> = Vec::with_capacity(vcount.len());
 
-        for i in 0..(face_vertex_count as usize)
+        let mut cursor = 0usize;
+        for &n in vcount
         {
-            let p = i * 3;
-            if p + 2 >= positions.len() { break; }
-            primitive.push(pos_welder.add(positions[p], positions[p + 1], positions[p + 2]));
-            if has_normals
+            // Weld the whole ring first: the duplicate test below has to see POST-weld
+            // identity, since that is what collapses two near-coincident vertices onto one
+            // index (as does the f32 conversion on the way in — at metre-scale coordinates
+            // an f32 only resolves ~0.2 µm).
+            let mut ring: Vec<(u32, u32)> = Vec::with_capacity(n as usize);
+            for k in 0..(n as usize)
             {
-                primitive.push(norm_welder.add(normals[p], normals[p + 1], normals[p + 2]));
+                let p = (cursor + k) * 3;
+                if p + 2 >= positions.len() { break; }
+                let pos = pos_welder.add(positions[p], positions[p + 1], positions[p + 2]);
+                let nor = if has_normals
+                    { norm_welder.add(normals[p], normals[p + 1], normals[p + 2]) } else { 0 };
+                ring.push((pos, nor));
+            }
+            cursor += n as usize;
+
+            // Drop face-vertices that repeat their predecessor, cyclically. Welding a mitred
+            // solid turns its sliver faces into pinched rings like `0 1 2 3 0` (a quad
+            // written as a 5-gon) or outright degenerate ones like `0 0 4 4`. Both are
+            // meaningless, and an importer that builds real faces — SketchUp does — can
+            // refuse the whole file over them.
+            ring.dedup_by(|a, b| a.0 == b.0);
+            if ring.len() > 1 && ring[0].0 == ring[ring.len() - 1].0 { ring.pop(); }
+
+            if ring.len() < 3 { continue; }
+            if is_degenerate(&ring, &pos_welder.data) { continue; }
+
+            out_vcount.push(ring.len() as u32);
+            for (pos, nor) in ring
+            {
+                primitive.push(pos);
+                if has_normals { primitive.push(nor); }
             }
         }
+
+        // Every face was degenerate — emitting an empty <polylist> would leave the caller
+        // pointing at a geometry with nothing in it.
+        if out_vcount.is_empty() { return false; }
 
         let polylist = Polylist {
             vertices: format!("#{}-vertices", id),
             normals: if has_normals { Some(format!("#{}-normals", id)) } else { None },
-            vcount: vcount.to_vec(),
+            vcount: out_vcount,
             primitive,
             material: Some(MATERIAL_SYMBOL.to_string()),
         };
 
         self.push_geometry(id, name, pos_welder, norm_welder, has_normals, Some(polylist), None, None);
+        true
     }
 
     /// Raw indexed triangles -> `<triangles>`. The `ngons: false` fallback path, fed
     /// straight from meshup's `Mesh.toBuffer()`.
+    ///
+    /// Returns false when nothing survived and no `<geometry>` was emitted.
     #[wasm_bindgen(js_name = addMeshGeometry)]
     pub fn add_mesh_geometry(
         &mut self,
@@ -235,7 +315,7 @@ impl ColladaWriter
         normals: &[f32],
         indices: &[u32],
         weld_tolerance: f32,
-    )
+    ) -> bool
     {
         let has_normals = normals.len() >= positions.len();
 
@@ -243,16 +323,36 @@ impl ColladaWriter
         let mut norm_welder = Welder::new(weld_tolerance);
         let mut primitive: Vec<usize> = Vec::with_capacity(indices.len() * 2);
 
-        for index in indices
+        // Triangle at a time, so a corner collapsed by welding takes only its own triangle
+        // out rather than shifting every index after it.
+        for triangle in indices.chunks_exact(3)
         {
-            let p = (*index as usize) * 3;
-            if p + 2 >= positions.len() { continue; }
-            primitive.push(pos_welder.add(positions[p], positions[p + 1], positions[p + 2]) as usize);
-            if has_normals
+            let mut corners: Vec<(u32, u32)> = Vec::with_capacity(3);
+            for index in triangle
             {
-                primitive.push(norm_welder.add(normals[p], normals[p + 1], normals[p + 2]) as usize);
+                let p = (*index as usize) * 3;
+                if p + 2 >= positions.len() { break; }
+                let pos = pos_welder.add(positions[p], positions[p + 1], positions[p + 2]);
+                let nor = if has_normals
+                    { norm_welder.add(normals[p], normals[p + 1], normals[p + 2]) } else { 0 };
+                corners.push((pos, nor));
+            }
+
+            if corners.len() < 3 { continue; }
+            // two corners welded together leaves a line, not a triangle
+            if corners[0].0 == corners[1].0 || corners[1].0 == corners[2].0 || corners[0].0 == corners[2].0
+            {
+                continue;
+            }
+
+            for (pos, nor) in corners
+            {
+                primitive.push(pos as usize);
+                if has_normals { primitive.push(nor as usize); }
             }
         }
+
+        if primitive.is_empty() { return false; }
 
         let triangles = Triangles {
             vertices: format!("#{}-vertices", id),
@@ -263,15 +363,18 @@ impl ColladaWriter
         };
 
         self.push_geometry(id, name, pos_welder, norm_welder, has_normals, None, Some(triangles), None);
+        true
     }
 
     /// A tessellated polyline -> `<lines>`. `positions` is a flat xyz point run; it is
     /// expanded into (n-1) two-index segments.
+    ///
+    /// Returns false when there was no polyline to write and no `<geometry>` was emitted.
     #[wasm_bindgen(js_name = addLinesGeometry)]
-    pub fn add_lines_geometry(&mut self, id: &str, name: &str, positions: &[f32])
+    pub fn add_lines_geometry(&mut self, id: &str, name: &str, positions: &[f32]) -> bool
     {
         let point_count = positions.len() / 3;
-        if point_count < 2 { return; }
+        if point_count < 2 { return false; }
 
         // Curves are welded losslessly (tolerance 0) — collapsing near-coincident points on
         // a polyline would silently drop segments.
@@ -298,6 +401,7 @@ impl ColladaWriter
 
         let norm_welder = Welder::new(0.0);
         self.push_geometry(id, name, pos_welder, norm_welder, false, None, None, Some(lines));
+        true
     }
 
     //// SCENE TREE (library_visual_scenes) ////
@@ -371,18 +475,20 @@ impl ColladaWriter
             ));
         }
 
+        let scene_id = self.unique_visual_scene_id();
+
         let doc = Collada {
             asset: self.asset.clone(),
             effects: if self.effects.is_empty() { None } else { Some(self.effects.clone()) },
             materials: if self.materials.is_empty() { None } else { Some(self.materials.clone()) },
             geometries: if self.geometries.is_empty() { None } else { Some(self.geometries.clone()) },
             visual_scenes: Some(vec![VisualScene {
-                id: "Scene".to_string(),
-                name: "Scene".to_string(),
+                id: scene_id.clone(),
+                name: VISUAL_SCENE_ID.to_string(),
                 nodes: self.roots.clone(),
             }]),
             scene: Some(Scene {
-                visual_scenes: vec!["#Scene".to_string()],
+                visual_scenes: vec![format!("#{}", scene_id)],
             }),
         };
 
@@ -399,6 +505,45 @@ impl ColladaWriter
 // signatures it can map to JS, and these take/return vendored Rust types.
 impl ColladaWriter
 {
+    /// `VISUAL_SCENE_ID`, or the first `Scene-1`, `Scene-2`, … that no other element in the
+    /// document has already claimed. See `VISUAL_SCENE_ID` for why this matters.
+    fn unique_visual_scene_id(&self) -> String
+    {
+        fn collect_node_ids(nodes: &[Node], out: &mut HashSet<String>)
+        {
+            for node in nodes
+            {
+                out.insert(node.id.clone());
+                collect_node_ids(&node.children, out);
+            }
+        }
+
+        let mut used: HashSet<String> = HashSet::new();
+        collect_node_ids(&self.roots, &mut used);
+        for effect in &self.effects { used.insert(effect.id.clone()); }
+        for material in &self.materials { used.insert(material.id.clone()); }
+        for geometry in &self.geometries
+        {
+            if let Some(id) = &geometry.id { used.insert(id.clone()); }
+            used.insert(geometry.mesh.vertices.id.clone());
+            for source in &geometry.mesh.sources
+            {
+                used.insert(source.id.clone());
+                used.insert(source.float_array.id.clone());
+            }
+        }
+
+        if !used.contains(VISUAL_SCENE_ID) { return VISUAL_SCENE_ID.to_string(); }
+
+        let mut n = 1;
+        loop
+        {
+            let candidate = format!("{}-{}", VISUAL_SCENE_ID, n);
+            if !used.contains(&candidate) { return candidate; }
+            n += 1;
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn push_geometry(
         &mut self,

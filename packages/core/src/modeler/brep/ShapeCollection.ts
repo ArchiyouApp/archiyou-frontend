@@ -33,7 +33,7 @@ import { flattenEntitiesToArray, flattenEntities, roundToTolerance } from '.'  /
 
 
 // special libraries
-import { Color } from 'meshup/src/Color'
+import { Color } from '@archiyou/meshup/src/Color'
 //import { packer } from 'guillotine-packer' // see: https://github.com/tyschroed/guillotine-packer
 // import { DxfWriter, Units } from '@tarikjabiri/dxf'; // TODO: after refactor
  

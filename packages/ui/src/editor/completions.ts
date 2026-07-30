@@ -3,10 +3,10 @@
  *
  * Provides completions for:
  *  - top-level Modeler functions (box, sphere, line, sketch, …)
- *  - instance methods on the shapes they return (SmartSolid, SmartMesh, SmartCurve, …)
+ *  - instance methods on the shapes they return (Mesh, Curve, Polygon, ShapeCollection, …)
  *
  * Shape class data is auto-generated — run:
- *   cd devlibs/archiyou-core-next && pnpm run generate:completions
+ *   pnpm --filter @archiyou/core generate:completions
  */
 
 import {
@@ -60,39 +60,41 @@ const modelerFunctions: MethodInfo[] = [...autoModelerFunctions, ...sketchForwar
 /*  Factory → shape class mapping (mesh mode default)                  */
 /* ------------------------------------------------------------------ */
 
-/** Maps every factory function name to its default Smart* class (mesh mode). */
+/** Maps every factory function name to the meshup class it returns (mesh mode).
+ *  Keep in step with the return types in packages/core/src/modeler/Modeler.ts.
+ *  Factories that Modeler declares `: never` (cone, spiral, helix, basePlane — they throw
+ *  via _brepNotWired/not-implemented) are deliberately absent: there is no instance to
+ *  complete on. */
 const FACTORY_RETURN_TYPES: Record<string, string> = {
   // 3D shapes
-  box:          'SmartMesh',
-  cube:         'SmartMesh',
-  boxBetween:   'SmartMesh',
-  sphere:       'SmartMesh',
-  cylinder:     'SmartMesh',
-  cone:         'SmartSolid',
-  // 2D curves / wires
-  line:         'SmartCurve',
-  arc:          'SmartCurve',
-  spline:       'SmartCurve',
-  polyline:     'SmartCurve',
-  spiral:       'SmartCurve',
-  helix:        'SmartCurve',
-  rect:         'SmartCurve',
-  rectBetween:  'SmartCurve',
-  circle:       'SmartCurve',
-  // Faces (brep-only, mesh-mode falls back)
-  plane:        'SmartFace',
-  planeBetween: 'SmartFace',
-  basePlane:    'SmartFace',
+  box:          'Mesh',
+  cube:         'Mesh',
+  boxBetween:   'Mesh',
+  sphere:       'Mesh',
+  cylinder:     'Mesh',
+  // curves / wires
+  line:         'Curve',
+  arc:          'Curve',
+  spline:       'Curve',
+  polyline:     'Curve',
+  rect:         'Curve',
+  rectBetween:  'Curve',
+  circle:       'Curve',
+  // planar faces
+  plane:        'Polygon',
+  planeBetween: 'Polygon',
   // Sketch
   sketch:       'Sketch',
   // Math types
   point:        'Point',
-  vertex:       'Point',
+  vertex:       'Vertex',
   vector:       'Vector',
   // Collections / scene
-  all:          'SmartShapeCollection',
-  collection:   'SmartShapeCollection',
-  layerShapes:  'SmartShapeCollection',
+  all:          'ShapeCollection',
+  collection:   'ShapeCollection',
+  layerShapes:  'ShapeCollection',
+  text:         'ShapeCollection',
+  layer:        'SceneNode',
 };
 
 /**

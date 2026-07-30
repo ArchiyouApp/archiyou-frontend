@@ -28,7 +28,7 @@
 
 import { ArchiyouModules } from '../types';
 
-import { ShapeCollection } from 'meshup/src/index';
+import { ShapeCollection } from '@archiyou/meshup/src/index';
 
 import type { PageOrientation, ScaleInput, ImageOptions, TextOptions,
         ContainerAlignment, ContainerHAlignment, ContainerVAlignment,

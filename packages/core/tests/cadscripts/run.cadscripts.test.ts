@@ -5,7 +5,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import type { RunnerScriptExecutionRequest } from '../../src/runner/types'
 import { Runner } from '../../src/runner/Runner'
 
-import { save } from 'meshup/src/utils';
+import { save } from '@archiyou/meshup/src/utils';
 
 //// SETTINGS ////
 

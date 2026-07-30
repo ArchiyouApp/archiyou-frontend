@@ -11,6 +11,9 @@ importers:
 
   .:
     dependencies:
+      '@archiyou/meshup':
+        specifier: workspace:*
+        version: link:packages/meshup
       '@awesome.me/webawesome':
         specifier: ^3.4.0
         version: 3.4.0(@floating-ui/utils@0.2.11)(@types/react@19.2.14)
@@ -65,9 +68,6 @@ importers:
       lucide-static:
         specifier: ^1.16.0
         version: 1.16.0
-      meshup:
-        specifier: workspace:*
-        version: link:packages/meshup
       oidc-client-ts:
         specifier: ^3.1.0
         version: 3.5.0
@@ -102,6 +102,9 @@ importers:
       '@archiyou/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@archiyou/meshup':
+        specifier: workspace:*
+        version: link:../../packages/meshup
       '@archiyou/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -162,9 +165,6 @@ importers:
       lucide-static:
         specifier: ^1.16.0
         version: 1.16.0
-      meshup:
-        specifier: workspace:*
-        version: link:../../packages/meshup
       n8ao:
         specifier: ^1.10.1
         version: 1.10.1(postprocessing@6.39.1(three@0.171.0))(three@0.171.0)
@@ -311,6 +311,9 @@ importers:
       '@archiyou/gdrr2bp-wasm':
         specifier: workspace:*
         version: link:../gdrr2bp-wasm
+      '@archiyou/meshup':
+        specifier: workspace:*
+        version: link:../meshup
       '@gltf-transform/core':
         specifier: ^4.3.0
         version: 4.3.0
@@ -335,9 +338,6 @@ importers:
       jspdf:
         specifier: ^4.2.1
         version: 4.2.1
-      meshup:
-        specifier: workspace:*
-        version: link:../meshup
       semver:
         specifier: ^7.7.4
         version: 7.7.4
@@ -390,6 +390,9 @@ importers:
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.10)(tsx@4.22.3)(typescript@5.9.3)(yaml@2.9.0)
+      tsx:
+        specifier: ^4.20.0
+        version: 4.22.3
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

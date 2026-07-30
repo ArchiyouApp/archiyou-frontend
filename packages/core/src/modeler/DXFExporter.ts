@@ -20,7 +20,7 @@
  *  SceneNode.toDXF() and Modeler.toDXF() (all via shapeAnnotations.ts).
  */
 
-import type * as meshup from 'meshup/src/index'
+import type * as meshup from '@archiyou/meshup/src/index'
 import type { ModelUnits } from './types'
 import type { AnyShape } from './types'
 

@@ -1,15 +1,15 @@
 import { beforeAll, describe, expect, test } from 'vitest'
 
-import { createNodeIO } from 'meshup/src/GLTFBuilder'
+import { createNodeIO } from '@archiyou/meshup/src/GLTFBuilder'
 
 import { Layouter } from '../../../src/modeler/Layouter'
 import { Modeler } from '../../../src/modeler/Modeler'
-import { SceneNode as SmartSceneNode } from 'meshup/src/index'
+import { SceneNode as SmartSceneNode } from '@archiyou/meshup/src/index'
 
-import type { Mesh as SmartMesh } from 'meshup/src/index'
-import { ShapeCollection as SmartShapeCollection } from 'meshup/src/index'
+import type { Mesh as SmartMesh } from '@archiyou/meshup/src/index'
+import { ShapeCollection as SmartShapeCollection } from '@archiyou/meshup/src/index'
 
-import { save } from 'meshup/src/utils'
+import { save } from '@archiyou/meshup/src/utils'
 
 const TEST_OUTPUTS_PATH = './tests/outputs/layouter/'
 

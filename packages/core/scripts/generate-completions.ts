@@ -8,25 +8,35 @@
  * Run from the archiyou-core-next package root:
  *   pnpm run generate:completions
  *
+ * Scripts now use the meshup classes directly. The SmartShape layer (SmartMixin.ts,
+ * SmartShapes.ts, SmartShapeCollection.ts) was refactored away; the app-level methods it
+ * used to provide (dimension, label, material, onClick, addToScene, toDXF, …) are now
+ * prototype-augmented onto the meshup classes by src/modeler/shapeAnnotations.ts, whose
+ * `declare module` interface blocks are the source of truth for their signatures.
+ *
  * Sources read:
+ *   src/constants.ts                  → MODELER_METHODS_INTO_GLOBAL (which methods go global)
  *   src/modeler/Modeler.ts            → modelerFunctions
- *   src/modeler/SmartMixin.ts         → shapeCommonMembers (mixin methods)
- *   src/modeler/SmartShapes.ts        → per-class own methods
- *   src/modeler/SmartShapeCollection.ts → SmartShapeCollection members
- *   devlibs/meshup/src/Shape.ts       → shared transform/info methods
- *   devlibs/meshup/src/Mesh.ts        → SmartMesh kernel methods
- *   devlibs/meshup/src/Curve.ts       → SmartCurve kernel methods
- *   devlibs/meshup/src/Point.ts       → Point members
- *   devlibs/meshup/src/Vector.ts      → Vector members
- *   devlibs/meshup/src/Bbox.ts        → Bbox members
- *   devlibs/meshup/src/OBbox.ts       → OBbox members
- *   src/modeler/brep/Solid.ts         → SmartSolid kernel methods (brep)
- *   src/modeler/brep/Edge.ts          → SmartEdge kernel methods
- *   src/modeler/brep/Wire.ts          → SmartWire kernel methods
- *   src/modeler/brep/Face.ts          → SmartFace kernel methods
+ *   src/modeler/shapeAnnotations.ts   → annotation methods per augmented meshup class
+ *   ../meshup/src/Shape.ts            → shared transform/info methods
+ *   ../meshup/src/Mesh.ts             → Mesh members
+ *   ../meshup/src/Curve.ts            → Curve members
+ *   ../meshup/src/Polygon.ts          → Polygon members (plane(), planeBetween())
+ *   ../meshup/src/ShapeCollection.ts  → ShapeCollection members
+ *   ../meshup/src/SceneNode.ts        → SceneNode members
+ *   ../meshup/src/Sketch.ts           → Sketch members
+ *   ../meshup/src/Point.ts            → Point members
+ *   ../meshup/src/Vector.ts           → Vector members
+ *   ../meshup/src/Vertex.ts           → Vertex members
+ *   ../meshup/src/Bbox.ts             → Bbox members
+ *   ../meshup/src/OBbox.ts            → OBbox members
+ *
+ * The brep classes (Solid/Edge/Wire/Face) are deliberately NOT emitted: brep mode is not
+ * wired after the SmartShape removal — Modeler._brepNotWired() throws for every brep-only
+ * factory — so offering completions for them would advertise an API that cannot run.
  */
 
-import { Project, SyntaxKind, Scope, type ClassDeclaration, type MethodDeclaration, type GetAccessorDeclaration } from 'ts-morph'
+import { Project, SyntaxKind, Scope, type ClassDeclaration, type MethodDeclaration, type MethodSignature, type GetAccessorDeclaration } from 'ts-morph'
 import { writeFileSync, mkdirSync } from 'fs'
 import { join, dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
@@ -98,7 +108,7 @@ function isPublic(method: MethodDeclaration | GetAccessorDeclaration): boolean
     return scope !== Scope.Private && scope !== Scope.Protected
 }
 
-function formatMethodSignature(method: MethodDeclaration): string
+function formatMethodSignature(method: MethodDeclaration | MethodSignature): string
 {
     const params = method.getParameters().map(p =>
     {
@@ -115,7 +125,7 @@ function formatMethodSignature(method: MethodDeclaration): string
     return `(${params}): ${returnText}`
 }
 
-function getJsDoc(method: MethodDeclaration): string | undefined
+function getJsDoc(method: MethodDeclaration | MethodSignature): string | undefined
 {
     return method.getJsDocs()[0]?.getDescription()?.trim() || undefined
 }
@@ -216,98 +226,87 @@ modelerFunctions.sort((a, b) =>
 })
 
 /* ------------------------------------------------------------------ */
-/*  Extract: SmartMixin public methods                                  */
+/*  Extract: annotation methods added onto the meshup classes           */
 /* ------------------------------------------------------------------ */
 
-// withSmartShape() contains `const Mixed = class extends Base { ... }`.
-// Grab the ClassExpression (SyntaxKind.ClassExpression) inside it.
-const mixinFile = project.getSourceFileOrThrow(join(ROOT, 'src/modeler/SmartMixin.ts'))
-const mixinFn = mixinFile.getFunctionOrThrow('withSmartShape')
-const mixinClassExprs = mixinFn
-    .getBody()!
-    .getDescendantsOfKind(SyntaxKind.ClassExpression)
+// shapeAnnotations.ts patches meshup prototypes at runtime and declares the matching types
+// as module augmentations:
+//     declare module '@archiyou/meshup/src/Shape' { interface Shape { dimension(...): any } }
+// The interface blocks carry the signatures and JSDoc, so read those rather than trying to
+// reverse-engineer the prototype assignments below them.
+const annotationsFile = project.getSourceFileOrThrow(join(ROOT, 'src/modeler/shapeAnnotations.ts'))
 
-const mixinMethods: MethodInfo[] = []
-if (mixinClassExprs.length > 0)
+/** Annotation methods declared for one augmented meshup class, e.g. ('Shape') or ('SceneNode'). */
+function extractAnnotationMethods(interfaceName: string): MethodInfo[]
 {
-    const mixedExpr = mixinClassExprs[0]
+    const results: MethodInfo[] = []
     const seen = new Set<string>()
-    for (const method of mixedExpr.getInstanceMethods())
+
+    for (const mod of annotationsFile.getModules())
     {
-        const name = method.getName()
-        if (name.startsWith('_')) continue
-        if (OBJECT_PROTOTYPE_METHODS.has(name)) continue
-        if (seen.has(name)) continue
-        seen.add(name)
-        mixinMethods.push({
-            label: name,
-            detail: formatMethodSignature(method),
-            info: getJsDoc(method),
-            type: 'function',
-        })
+        for (const iface of mod.getInterfaces())
+        {
+            if (iface.getName() !== interfaceName) continue
+
+            for (const method of iface.getMethods())
+            {
+                const name = method.getName()
+                if (name.startsWith('_')) continue
+                if (OBJECT_PROTOTYPE_METHODS.has(name)) continue
+                if (INTERNAL_NAMES.has(name)) continue
+                if (seen.has(name)) continue
+                seen.add(name)
+
+                results.push({
+                    label: name,
+                    detail: formatMethodSignature(method),
+                    info: getJsDoc(method),
+                    type: 'function',
+                })
+            }
+        }
     }
+
+    if (results.length === 0)
+    {
+        // Loud rather than silently emitting a thinner API than scripts actually have.
+        throw new Error(
+            `No annotation methods found for 'interface ${interfaceName}' in shapeAnnotations.ts. ` +
+            `Did the augmented class or its module specifier change?`,
+        )
+    }
+
+    return results
 }
+
+const shapeAnnotationMethods      = extractAnnotationMethods('Shape')
+const sceneNodeAnnotationMethods  = extractAnnotationMethods('SceneNode')
+const collectionAnnotationMethods = extractAnnotationMethods('ShapeCollection')
 
 /* ------------------------------------------------------------------ */
 /*  Extract: Kernel shape methods from meshup                           */
 /* ------------------------------------------------------------------ */
 
-const meshupShapeMethods = extractPublicMethods(getClass('devlibs/meshup/src/Shape.ts', 'Shape'))
-const meshupMeshMethods  = extractPublicMethods(getClass('devlibs/meshup/src/Mesh.ts',  'Mesh'),  new Set(['type', 'constructor']))
-const meshupCurveMethods = extractPublicMethods(getClass('devlibs/meshup/src/Curve.ts', 'Curve'), new Set(['type', 'constructor']))
-
-/* ------------------------------------------------------------------ */
-/*  Extract: Kernel shape methods from brep                             */
-/* ------------------------------------------------------------------ */
-
-let brepSolidMethods: MethodInfo[] = []
-let brepEdgeMethods:  MethodInfo[] = []
-let brepWireMethods:  MethodInfo[] = []
-let brepFaceMethods:  MethodInfo[] = []
-
-try { brepSolidMethods = extractPublicMethods(getClass('src/modeler/brep/Solid.ts', 'Solid')) } catch { /* brep may not have TS declarations */ }
-try { brepEdgeMethods  = extractPublicMethods(getClass('src/modeler/brep/Edge.ts',  'Edge'))  } catch { /* skip */ }
-try { brepWireMethods  = extractPublicMethods(getClass('src/modeler/brep/Wire.ts',  'Wire'))  } catch { /* skip */ }
-try { brepFaceMethods  = extractPublicMethods(getClass('src/modeler/brep/Face.ts',  'Face'))  } catch { /* skip */ }
-
-/* ------------------------------------------------------------------ */
-/*  Extract: SmartShapes own methods per class                          */
-/* ------------------------------------------------------------------ */
-
-const smartShapesFile = project.getSourceFileOrThrow(join(ROOT, 'src/modeler/SmartShapes.ts'))
-
-function smartOwnMethods(className: string): MethodInfo[]
-{
-    const cls = smartShapesFile.getClass(className)
-    if (!cls) return []
-    return extractPublicMethods(cls, new Set(['from', 'mode']))
-}
-
-const smartMeshOwnMethods      = smartOwnMethods('SmartMesh')
-const smartMeshCurveOwnMethods = smartOwnMethods('SmartMeshCurve')
-const smartBrepSolidOwnMethods = smartOwnMethods('SmartBrepSolid')
-const smartBrepEdgeOwnMethods  = smartOwnMethods('SmartBrepEdge')
-const smartBrepWireOwnMethods  = smartOwnMethods('SmartBrepWire')
-const smartBrepFaceOwnMethods  = smartOwnMethods('SmartBrepFace')
-
-/* ------------------------------------------------------------------ */
-/*  Extract: SmartShapeCollection members                               */
-/* ------------------------------------------------------------------ */
-
-const smartCollectionMethods = extractPublicMethods(
-    getClass('src/modeler/SmartShapeCollection.ts', 'SmartShapeCollection'),
+const meshupShapeMethods      = extractPublicMethods(getClass('../meshup/src/Shape.ts', 'Shape'))
+const meshupMeshMethods       = extractPublicMethods(getClass('../meshup/src/Mesh.ts',    'Mesh'),    new Set(['type', 'constructor']))
+const meshupCurveMethods      = extractPublicMethods(getClass('../meshup/src/Curve.ts',   'Curve'),   new Set(['type', 'constructor']))
+const meshupPolygonMethods    = extractPublicMethods(getClass('../meshup/src/Polygon.ts', 'Polygon'), new Set(['type', 'constructor']))
+const meshupSceneNodeMethods  = extractPublicMethods(getClass('../meshup/src/SceneNode.ts', 'SceneNode'))
+const meshupCollectionMethods = extractPublicMethods(
+    getClass('../meshup/src/ShapeCollection.ts', 'ShapeCollection'),
     new Set(['type', 'isShape', 'isShapeCollection', 'isEmpty', 'children', 'getShapes', 'merge',
-             'toOcCompound', 'getShapesByType', 'getShapesByTypes']),
+             'getShapesByType', 'getShapesByTypes']),
 )
 
 /* ------------------------------------------------------------------ */
 /*  Extract: Math types (Point, Vector, Bbox, OBbox)                    */
 /* ------------------------------------------------------------------ */
 
-const pointMethods  = extractPublicMethods(getClass('devlibs/meshup/src/Point.ts',  'Point'),  new Set(['from', 'type', 'isPoint']))
-const vectorMethods = extractPublicMethods(getClass('devlibs/meshup/src/Vector.ts', 'Vector'), new Set(['from', 'isVector']))
-const bboxMethods   = extractPublicMethods(getClass('devlibs/meshup/src/Bbox.ts',   'Bbox'),   new Set(['from', 'fromMesh']))
-const obboxMethods  = extractPublicMethods(getClass('devlibs/meshup/src/OBbox.ts',  'OBbox'),  new Set(['from', 'fromPoints', 'fromMesh']))
+const pointMethods  = extractPublicMethods(getClass('../meshup/src/Point.ts',  'Point'),  new Set(['from', 'type', 'isPoint']))
+const vectorMethods = extractPublicMethods(getClass('../meshup/src/Vector.ts', 'Vector'), new Set(['from', 'isVector']))
+const vertexMethods = extractPublicMethods(getClass('../meshup/src/Vertex.ts', 'Vertex'), new Set(['from']))
+const bboxMethods   = extractPublicMethods(getClass('../meshup/src/Bbox.ts',   'Bbox'),   new Set(['from', 'fromMesh']))
+const obboxMethods  = extractPublicMethods(getClass('../meshup/src/OBbox.ts',  'OBbox'),  new Set(['from', 'fromPoints', 'fromMesh']))
 
 /* ------------------------------------------------------------------ */
 /*  Extract: Statics for math types                                     */
@@ -326,58 +325,49 @@ function extractStatics(relPath: string, cls: string, includeNames: string[]): M
         }))
 }
 
-const pointStatics  = extractStatics('devlibs/meshup/src/Point.ts',  'Point',  ['from'])
-const vectorStatics = extractStatics('devlibs/meshup/src/Vector.ts', 'Vector', ['from'])
-const bboxStatics   = extractStatics('devlibs/meshup/src/Bbox.ts',   'Bbox',   ['fromMesh'])
-const obboxStatics  = extractStatics('devlibs/meshup/src/OBbox.ts',  'OBbox',  ['fromPoints', 'fromMesh'])
+const pointStatics  = extractStatics('../meshup/src/Point.ts',  'Point',  ['from'])
+const vectorStatics = extractStatics('../meshup/src/Vector.ts', 'Vector', ['from'])
+const bboxStatics   = extractStatics('../meshup/src/Bbox.ts',   'Bbox',   ['fromMesh'])
+const obboxStatics  = extractStatics('../meshup/src/OBbox.ts',  'OBbox',  ['fromPoints', 'fromMesh'])
 
 /* ------------------------------------------------------------------ */
 /*  Assemble: shapeClasses                                              */
 /* ------------------------------------------------------------------ */
 
-// Common members shared by all Smart* shapes = meshup Shape base + mixin
-const shapeCommonMembers = mergeMembers(meshupShapeMethods, mixinMethods)
+// Every meshup shape inherits from Shape, and shapeAnnotations patches Shape.prototype,
+// so both sets are common to Mesh / Curve / Polygon.
+const shapeCommonMembers = mergeMembers(meshupShapeMethods, shapeAnnotationMethods)
 
 const shapeClasses: ShapeClassInfo[] = [
     {
-        label: 'SmartMesh',
-        detail: 'mesh geometry shape',
-        members: mergeMembers(shapeCommonMembers, meshupMeshMethods, smartMeshOwnMethods),
+        label: 'Mesh',
+        detail: 'mesh geometry shape (box, sphere, cylinder, …)',
+        members: mergeMembers(shapeCommonMembers, meshupMeshMethods),
     },
     {
-        label: 'SmartSolid',
-        detail: 'brep Solid shape',
-        members: mergeMembers(shapeCommonMembers, brepSolidMethods, smartBrepSolidOwnMethods),
+        label: 'Curve',
+        detail: 'curve / wire (line, arc, spline, rect, circle, …)',
+        members: mergeMembers(shapeCommonMembers, meshupCurveMethods),
     },
     {
-        label: 'SmartCurve',
-        detail: 'mesh-mode curve / wire',
-        members: mergeMembers(shapeCommonMembers, meshupCurveMethods, smartMeshCurveOwnMethods),
+        label: 'Polygon',
+        detail: 'planar face (plane, planeBetween)',
+        members: mergeMembers(shapeCommonMembers, meshupPolygonMethods),
     },
     {
-        label: 'SmartEdge',
-        detail: 'brep Edge',
-        members: mergeMembers(shapeCommonMembers, brepEdgeMethods, smartBrepEdgeOwnMethods),
+        label: 'ShapeCollection',
+        detail: 'collection of shapes',
+        members: mergeMembers(meshupCollectionMethods, collectionAnnotationMethods),
     },
     {
-        label: 'SmartWire',
-        detail: 'brep Wire',
-        members: mergeMembers(shapeCommonMembers, brepWireMethods, smartBrepWireOwnMethods),
-    },
-    {
-        label: 'SmartFace',
-        detail: 'brep Face',
-        members: mergeMembers(shapeCommonMembers, brepFaceMethods, smartBrepFaceOwnMethods),
-    },
-    {
-        label: 'SmartShapeCollection',
-        detail: 'collection of Smart* shapes',
-        members: smartCollectionMethods,
+        label: 'SceneNode',
+        detail: 'scene graph node / layer',
+        members: mergeMembers(meshupSceneNodeMethods, sceneNodeAnnotationMethods),
     },
     {
         label: 'Sketch',
         detail: '2D sketch on a plane',
-        members: extractPublicMethods(getClass('devlibs/meshup/src/Sketch.ts', 'Sketch'), new Set(['type'])),
+        members: extractPublicMethods(getClass('../meshup/src/Sketch.ts', 'Sketch'), new Set(['type'])),
     },
     {
         label: 'Point',
@@ -390,6 +380,11 @@ const shapeClasses: ShapeClassInfo[] = [
         detail: '3D vector',
         statics: vectorStatics,
         members: vectorMethods,
+    },
+    {
+        label: 'Vertex',
+        detail: '3D vertex (a Point that lives in the scene)',
+        members: vertexMethods,
     },
     {
         label: 'Bbox',
@@ -443,15 +438,15 @@ function renderShapeClass(cls: ShapeClassInfo): string
 
 const OUTPUT_PATH = resolve(
     ROOT,
-    '../../src/components/editor/completions-data.generated.ts',
+    '../ui/src/editor/completions-data.generated.ts',
 )
 
 const header = `\
 /**
  * completions-data.generated.ts
  *
- * AUTO-GENERATED by devlibs/archiyou-core-next/scripts/generate-completions.ts
- * Run: cd devlibs/archiyou-core-next && pnpm run generate:completions
+ * AUTO-GENERATED by packages/core/scripts/generate-completions.ts
+ * Run: pnpm --filter @archiyou/core generate:completions
  *
  * Do NOT edit manually — changes will be overwritten on next generation.
  */

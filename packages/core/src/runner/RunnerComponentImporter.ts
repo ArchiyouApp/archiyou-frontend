@@ -6,8 +6,8 @@ import { ScriptOutputPath } from '../execution/ScriptOutputPath';
 import type { RunnerScriptExecutionRequest, RunnerScriptScope } from './types';
 import { ScriptData } from '../execution/types';
 import { ImportComponentResult, ImportComponentResultPipelines } from './types';
-import { SceneNode } from 'meshup/src/index';
-import type { ComponentGraphNode } from 'meshup/src/index';
+import { SceneNode } from '@archiyou/meshup/src/index';
+import type { ComponentGraphNode } from '@archiyou/meshup/src/index';
 
 
 /**

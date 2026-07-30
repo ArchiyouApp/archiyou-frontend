@@ -1,6 +1,6 @@
 import { Container } from './Container'
 import type { ContainerData, ContainerContent, PageSVGContext } from './types'
-import { Shape, ShapeCollection } from 'meshup/src/index'
+import { Shape, ShapeCollection } from '@archiyou/meshup/src/index'
 import type { AnyShapeOrCollection } from '../modeler/types'
 import { stripOuterSVGTags, getPreserveAspectRatio } from './utils'
 

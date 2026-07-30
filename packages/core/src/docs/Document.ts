@@ -34,7 +34,7 @@ import { Table } from './Table'
 import { Image } from './Image'
 import { Graphic } from './Graphic'
 
-import { ShapeCollection } from 'meshup/src/index'
+import { ShapeCollection } from '@archiyou/meshup/src/index'
 
 import { ScriptParam } from '../execution/ScriptParam'
 import type { ScriptParamData } from '../execution/types'

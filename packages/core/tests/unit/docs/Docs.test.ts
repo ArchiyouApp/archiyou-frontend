@@ -5,13 +5,13 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 
-import { save } from 'meshup/src/utils'
+import { save } from '@archiyou/meshup/src/utils'
 import { DOC_DEFAULT_SVG_FONT_FAMILY, DOC_TEXT_HEIGHT_TO_FONT_SIZE_FACTOR } from '../../../src/constants'
 
 import { Modeler } from '../../../src/modeler/Modeler'
 import { Docs } from '../../../src/docs/Docs'
 import { pointsToMm, mmToPoints } from '../../../src/docs/utils'
-import { ShapeCollection as SmartShapeCollection } from 'meshup/src/index'
+import { ShapeCollection as SmartShapeCollection } from '@archiyou/meshup/src/index'
 
 const TEST_OUTPUTS_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '../../outputs/docs')
 

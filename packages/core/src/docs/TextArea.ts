@@ -2,7 +2,7 @@ import { Container } from './Container'
 import type { ContainerContent, TextAreaAlign, TextAreaOptions, PageSVGContext } from './types'
 import { isTextAreaAlign } from './typeguards'
 import { convertSizeUnitsToFontPoints, convertTextHeightUnitsToFontPoints, pointsToMm, escapeXml, wrapTextToTspans, SVG_TEXT_FONT_FAMILY } from './utils'
-import { Color } from 'meshup/src/Color'
+import { Color } from '@archiyou/meshup/src/Color'
 
 
 

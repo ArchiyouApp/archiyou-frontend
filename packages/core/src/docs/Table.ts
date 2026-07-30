@@ -2,7 +2,7 @@ import { Container } from './Container'
 import type { ContainerData, ContainerContent, TableContainerOptions, PageSVGContext } from './types'
 import type { DataRows, DataRowsColumnValue } from '../calc/types'
 import { convertSizeUnitsToFontPoints, convertTextHeightUnitsToFontPoints, pointsToMm, escapeXml, SVG_TEXT_FONT_FAMILY } from './utils'
-import { Color } from 'meshup/src/Color'
+import { Color } from '@archiyou/meshup/src/Color'
 
 //// MAIN CLASS ////
 

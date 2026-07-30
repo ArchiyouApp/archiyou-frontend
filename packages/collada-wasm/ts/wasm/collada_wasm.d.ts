@@ -10,8 +10,10 @@ export class ColladaWriter {
     /**
      * A tessellated polyline -> `<lines>`. `positions` is a flat xyz point run; it is
      * expanded into (n-1) two-index segments.
+     *
+     * Returns false when there was no polyline to write and no `<geometry>` was emitted.
      */
-    addLinesGeometry(id: string, name: string, positions: Float32Array): void;
+    addLinesGeometry(id: string, name: string, positions: Float32Array): boolean;
     /**
      * Register a material. `id` is what `attach_geometry()` references. RGBA is 0..1.
      */
@@ -19,16 +21,21 @@ export class ColladaWriter {
     /**
      * Raw indexed triangles -> `<triangles>`. The `ngons: false` fallback path, fed
      * straight from meshup's `Mesh.toBuffer()`.
+     *
+     * Returns false when nothing survived and no `<geometry>` was emitted.
      */
-    addMeshGeometry(id: string, name: string, positions: Float32Array, normals: Float32Array, indices: Uint32Array, weld_tolerance: number): void;
+    addMeshGeometry(id: string, name: string, positions: Float32Array, normals: Float32Array, indices: Uint32Array, weld_tolerance: number): boolean;
     /**
      * N-gon faces -> `<polylist>`. `positions`/`normals` are per face-vertex (interleaved
      * xyz, unwelded, in face order); `vcount[i]` is the vertex count of face i.
      *
      * This is the default mesh path: it preserves meshup's n-gon topology, where
      * `Mesh.toBuffer()` would have flattened it into a triangle soup.
+     *
+     * Returns false when nothing survived and no `<geometry>` was emitted, so the caller
+     * knows not to reference it.
      */
-    addPolylistGeometry(id: string, name: string, positions: Float32Array, normals: Float32Array, vcount: Uint32Array, weld_tolerance: number): void;
+    addPolylistGeometry(id: string, name: string, positions: Float32Array, normals: Float32Array, vcount: Uint32Array, weld_tolerance: number): boolean;
     /**
      * Attach an `<instance_geometry>` (optionally material-bound) to the open node.
      */
@@ -64,10 +71,10 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_colladawriter_free: (a: number, b: number) => void;
-    readonly colladawriter_addLinesGeometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+    readonly colladawriter_addLinesGeometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly colladawriter_addMaterial: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
-    readonly colladawriter_addMeshGeometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => void;
-    readonly colladawriter_addPolylistGeometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => void;
+    readonly colladawriter_addMeshGeometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => number;
+    readonly colladawriter_addPolylistGeometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => number;
     readonly colladawriter_attachGeometry: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly colladawriter_beginNode: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly colladawriter_endNode: (a: number) => void;

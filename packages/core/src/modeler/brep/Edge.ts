@@ -10,7 +10,7 @@
  *      - Circle 
  */
 
-import { Color } from 'meshup/src/Color'
+import { Color } from '@archiyou/meshup/src/Color'
 // import { DxfBlock, point3d } from '@tarikjabiri/dxf'
 
 // types

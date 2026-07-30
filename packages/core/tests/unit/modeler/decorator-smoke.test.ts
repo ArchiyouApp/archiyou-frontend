@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { Modeler } from '../../../src/modeler/Modeler'
-import { ShapeCollection as SmartShapeCollection } from 'meshup/src/index'
+import { ShapeCollection as SmartShapeCollection } from '@archiyou/meshup/src/index'
 
 describe('scene-decorator smoke', () =>
 {

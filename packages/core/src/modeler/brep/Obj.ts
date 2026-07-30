@@ -11,7 +11,7 @@
  *
  */
 
-import { Color } from 'meshup/src/Color'
+import { Color } from '@archiyou/meshup/src/Color'
 
 import { Vector } from './Vector'
 import { Shape } from './Shape'

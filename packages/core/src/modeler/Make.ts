@@ -9,9 +9,9 @@
 
 import { ArchiyouModules } from '../types';
 import type { Modeler } from './Modeler';
-import { ShapeCollection } from 'meshup/src/index';
-import type { Polygon } from 'meshup/src/index';
-import type { Mesh } from 'meshup/src/index';
+import { ShapeCollection } from '@archiyou/meshup/src/index';
+import type { Polygon } from '@archiyou/meshup/src/index';
+import type { Mesh } from '@archiyou/meshup/src/index';
 import { Table } from '../calc/Table';
 
 import { BinPacker } from '@archiyou/gdrr2bp-wasm/ts/BinPacker';

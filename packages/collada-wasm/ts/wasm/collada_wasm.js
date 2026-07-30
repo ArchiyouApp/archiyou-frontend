@@ -17,9 +17,12 @@ export class ColladaWriter {
     /**
      * A tessellated polyline -> `<lines>`. `positions` is a flat xyz point run; it is
      * expanded into (n-1) two-index segments.
+     *
+     * Returns false when there was no polyline to write and no `<geometry>` was emitted.
      * @param {string} id
      * @param {string} name
      * @param {Float32Array} positions
+     * @returns {boolean}
      */
     addLinesGeometry(id, name, positions) {
         const ptr0 = passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -28,7 +31,8 @@ export class ColladaWriter {
         const len1 = WASM_VECTOR_LEN;
         const ptr2 = passArrayF32ToWasm0(positions, wasm.__wbindgen_malloc);
         const len2 = WASM_VECTOR_LEN;
-        wasm.colladawriter_addLinesGeometry(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
+        const ret = wasm.colladawriter_addLinesGeometry(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
+        return ret !== 0;
     }
     /**
      * Register a material. `id` is what `attach_geometry()` references. RGBA is 0..1.
@@ -49,12 +53,15 @@ export class ColladaWriter {
     /**
      * Raw indexed triangles -> `<triangles>`. The `ngons: false` fallback path, fed
      * straight from meshup's `Mesh.toBuffer()`.
+     *
+     * Returns false when nothing survived and no `<geometry>` was emitted.
      * @param {string} id
      * @param {string} name
      * @param {Float32Array} positions
      * @param {Float32Array} normals
      * @param {Uint32Array} indices
      * @param {number} weld_tolerance
+     * @returns {boolean}
      */
     addMeshGeometry(id, name, positions, normals, indices, weld_tolerance) {
         const ptr0 = passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -67,7 +74,8 @@ export class ColladaWriter {
         const len3 = WASM_VECTOR_LEN;
         const ptr4 = passArray32ToWasm0(indices, wasm.__wbindgen_malloc);
         const len4 = WASM_VECTOR_LEN;
-        wasm.colladawriter_addMeshGeometry(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, weld_tolerance);
+        const ret = wasm.colladawriter_addMeshGeometry(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, weld_tolerance);
+        return ret !== 0;
     }
     /**
      * N-gon faces -> `<polylist>`. `positions`/`normals` are per face-vertex (interleaved
@@ -75,12 +83,16 @@ export class ColladaWriter {
      *
      * This is the default mesh path: it preserves meshup's n-gon topology, where
      * `Mesh.toBuffer()` would have flattened it into a triangle soup.
+     *
+     * Returns false when nothing survived and no `<geometry>` was emitted, so the caller
+     * knows not to reference it.
      * @param {string} id
      * @param {string} name
      * @param {Float32Array} positions
      * @param {Float32Array} normals
      * @param {Uint32Array} vcount
      * @param {number} weld_tolerance
+     * @returns {boolean}
      */
     addPolylistGeometry(id, name, positions, normals, vcount, weld_tolerance) {
         const ptr0 = passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -93,7 +105,8 @@ export class ColladaWriter {
         const len3 = WASM_VECTOR_LEN;
         const ptr4 = passArray32ToWasm0(vcount, wasm.__wbindgen_malloc);
         const len4 = WASM_VECTOR_LEN;
-        wasm.colladawriter_addPolylistGeometry(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, weld_tolerance);
+        const ret = wasm.colladawriter_addPolylistGeometry(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, weld_tolerance);
+        return ret !== 0;
     }
     /**
      * Attach an `<instance_geometry>` (optionally material-bound) to the open node.

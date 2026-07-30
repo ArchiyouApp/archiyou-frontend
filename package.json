@@ -18,10 +18,10 @@
     "dev:server": "turbo dev --filter=@archiyou/server",
     "test": "turbo test",
     "build:wasm": "turbo build:wasm",
-    "build:meshup": "pnpm --filter meshup build",
-    "watch:meshup": "pnpm --filter meshup build -- --watch",
+    "build:meshup": "pnpm --filter @archiyou/meshup build",
+    "watch:meshup": "pnpm --filter @archiyou/meshup build -- --watch",
     "test:core": "pnpm --filter @archiyou/core test",
-    "test:meshup": "pnpm --filter meshup test",
+    "test:meshup": "pnpm --filter @archiyou/meshup test",
     "localize:extract": "lit-localize extract",
     "localize:build": "lit-localize build"
   },
@@ -44,7 +44,7 @@
     "json5": "^2.2.3",
     "lit": "^3.2.0",
     "lucide-static": "^1.16.0",
-    "meshup": "workspace:*",
+    "@archiyou/meshup": "workspace:*",
     "oidc-client-ts": "^3.1.0",
     "three": "^0.171.0"
   },

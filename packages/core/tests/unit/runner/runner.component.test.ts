@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 
 import { Runner } from '../../../src/runner/Runner'
 import { Script } from '../../../src/Script'
-import { save } from 'meshup/src/utils'
+import { save } from '@archiyou/meshup/src/utils'
 import type { SmartSceneNodeData } from '../../../src/modeler/types'
 
 /**

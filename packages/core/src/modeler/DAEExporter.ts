@@ -13,11 +13,14 @@
  *      triangle soup Mesh.toBuffer() produces. Welding happens in the WASM writer.
  */
 
-import * as meshup from 'meshup/src/index'
-import { Color } from 'meshup/src/Color'
-import { Style } from 'meshup/src/Style'
+import * as meshup from '@archiyou/meshup/src/index'
+import { Color } from '@archiyou/meshup/src/Color'
+import { Style } from '@archiyou/meshup/src/Style'
 
-import { createColladaWriter, type ColladaWriter, DEFAULT_WELD_TOLERANCE } from '@archiyou/collada-wasm/ts'
+import {
+    createColladaWriter, type ColladaWriter, DEFAULT_WELD_TOLERANCE,
+    GEOMETRY_DERIVED_ID_SUFFIXES, MATERIAL_DERIVED_ID_SUFFIXES,
+} from '@archiyou/collada-wasm/ts'
 import { MM_PER_UNIT } from '../units/UnitConverter'
 import type { ModelUnits } from './types'
 
@@ -49,18 +52,42 @@ const DEFAULT_RGB: [number, number, number] = [204, 204, 204]
 //// SMALL UTILS ////
 
 /**
+ *  Sanitize to an XML NCName, WITHOUT uniquifying — for `name` attributes.
+ *
+ *  In COLLADA 1.4.1 every `name` attribute is typed xs:NCName (it only became a free-form
+ *  xs:token in 1.5), so no spaces, no ':' and no leading digit. A layer called 'my walls',
+ *  a shape called 'Mesh:Box' or a material called 'Beton C30/37' makes the whole document
+ *  schema-invalid — which lenient web viewers ignore but SketchUp, which validates against
+ *  the 1.4.1 schema on import, rejects the file for.
+ */
+function ncnameLabel(raw: string): string
+{
+    let label = (raw || 'node').replace(/[^A-Za-z0-9_.-]/g, '_')
+    if (!/^[A-Za-z_]/.test(label)) label = `_${label}`
+    return label
+}
+
+/**
  *  Sanitize to a unique XML NCName. COLLADA ids must be NCNames, but the natural identity
  *  here — SceneNode.path(), e.g. 'Scene/walls/Box%5B0%5D' — contains '/' and '%'.
+ *
+ *  `derivedSuffixes` are ids the WASM writer will mint off this one (`geom_Box-positions`
+ *  and friends). They live in the same xs:ID namespace, so they are reserved here too and
+ *  a candidate whose derived names are already taken is skipped.
  */
-function ncname(raw: string, used: Set<string>): string
+function ncname(raw: string, used: Set<string>, derivedSuffixes: readonly string[] = []): string
 {
-    let base = (raw || 'node').replace(/[^A-Za-z0-9_.-]/g, '_')
-    if (!/^[A-Za-z_]/.test(base)) base = `_${base}`
+    const base = ncnameLabel(raw)
 
     let id = base
     let n = 1
-    while (used.has(id)) { id = `${base}_${n++}` }
+    while (used.has(id) || derivedSuffixes.some(suffix => used.has(id + suffix)))
+    {
+        id = `${base}_${n++}`
+    }
+
     used.add(id)
+    for (const suffix of derivedSuffixes) { used.add(id + suffix) }
     return id
 }
 
@@ -126,8 +153,8 @@ function resolveMaterial(
     if (hit) return hit
 
     const resolved: ResolvedMaterial = {
-        id: ncname(`mat_${name}`, usedIds),
-        name,
+        id: ncname(`mat_${name}`, usedIds, MATERIAL_DERIVED_ID_SUFFIXES),
+        name: ncnameLabel(name),
         rgba: [r, g, b, a],
     }
     writer.addMaterial(resolved.id, resolved.name, r, g, b, a)
@@ -197,11 +224,12 @@ function addPolylistMesh(writer: ColladaWriter, mesh: any, id: string, name: str
 
     if (!vcount.length) return false
 
-    writer.addPolylistGeometry(
+    // The writer has the last word: it drops faces that welding leaves degenerate, and says
+    // so when that empties the mesh out entirely.
+    return writer.addPolylistGeometry(
         id, name,
         Float32Array.from(positions), Float32Array.from(normals), Uint32Array.from(vcount),
         weld)
-    return true
 }
 
 /** Emit a mesh as indexed triangles — the `ngons: false` fallback. */
@@ -210,12 +238,11 @@ function addTriangleMesh(writer: ColladaWriter, mesh: any, id: string, name: str
     const buffer = mesh.toBuffer?.()
     if (!buffer || !buffer.indices?.length) return false
 
-    writer.addMeshGeometry(
+    return writer.addMeshGeometry(
         id, name,
         Float32Array.from(buffer.positions), Float32Array.from(buffer.normals),
         Uint32Array.from(buffer.indices),
         weld)
-    return true
 }
 
 /** Emit a curve as a tessellated polyline. */
@@ -224,8 +251,7 @@ function addCurve(writer: ColladaWriter, curve: any, id: string, name: string): 
     const points: Float32Array = curve.toBuffer?.()
     if (!points || points.length < 6) return false // need at least 2 points
 
-    writer.addLinesGeometry(id, name, points)
-    return true
+    return writer.addLinesGeometry(id, name, points)
 }
 
 //// MAIN ////
@@ -262,8 +288,8 @@ export async function buildDAE(root: meshup.SceneNode, opts: toDAEOptions = {}):
             const shapeId: string | undefined = shape.id?.()
             if (shapeId && geometryIds.has(shapeId)) return geometryIds.get(shapeId)!
 
-            const name: string = shape.name?.() || shape.type || 'shape'
-            const id = ncname(`geom_${name}`, usedIds)
+            const name: string = ncnameLabel(shape.name?.() || shape.type || 'shape')
+            const id = ncname(`geom_${name}`, usedIds, GEOMETRY_DERIVED_ID_SUFFIXES)
 
             let ok = false
             try
@@ -314,8 +340,11 @@ export async function buildDAE(root: meshup.SceneNode, opts: toDAEOptions = {}):
         {
             if (!options.all && !isVisible(node)) return // whole subtree drops out
 
-            const nodeId = ncname(node.path?.() ?? node.name ?? 'node', usedIds)
-            writer.beginNode(nodeId, node.name ?? nodeId)
+            // The `node_` prefix keeps node ids in their own corner of the single xs:ID
+            // namespace, alongside `geom_` and `mat_` — without it the root node's path
+            // ('Scene') collides with the `<visual_scene id="Scene">` the writer emits.
+            const nodeId = ncname(`node_${node.path?.() ?? node.name ?? 'node'}`, usedIds)
+            writer.beginNode(nodeId, ncnameLabel(node.name ?? nodeId))
 
             const shape = node.shape?.()
             if (shape && (options.all || isVisible(shape)))

@@ -16,14 +16,14 @@
  *  Import this module for its side effects once, before any script runs (see Modeler.ts).
  */
 
-import * as meshup from 'meshup/src/index'
+import * as meshup from '@archiyou/meshup/src/index'
 import { buildDXF, type toDXFOptions } from './DXFExporter'
 import { buildDAE, type toDAEOptions } from './DAEExporter'
 import type { DimensionOptions, LabelOptions } from '../annotator/types'
 
 //// TYPE AUGMENTATION (declaration merging) ////
 
-declare module 'meshup/src/Shape' {
+declare module '@archiyou/meshup/src/Shape' {
     interface Shape {
         /** Kernel a shape belongs to. meshup shapes are always the mesh kernel. */
         readonly mode: 'mesh'
@@ -50,7 +50,7 @@ declare module 'meshup/src/Shape' {
     }
 }
 
-declare module 'meshup/src/SceneNode' {
+declare module '@archiyou/meshup/src/SceneNode' {
     interface SceneNode {
         /** Export this subtree's 2D shapes (+ linked dimension lines) to DXF. */
         toDXF(options?: toDXFOptions): string | null
@@ -65,7 +65,7 @@ declare module 'meshup/src/SceneNode' {
     }
 }
 
-declare module 'meshup/src/ShapeCollection' {
+declare module '@archiyou/meshup/src/ShapeCollection' {
     interface ShapeCollection {
         /** Export the 2D shapes in this collection (+ linked dimension lines) to DXF. */
         toDXF(options?: toDXFOptions): string | null

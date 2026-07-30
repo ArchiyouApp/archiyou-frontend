@@ -41,20 +41,23 @@ import { buildDXF, type toDXFOptions } from "./DXFExporter";
 import { buildDAE, type toDAEOptions } from "./DAEExporter";
 
 // Meshup namespace — imported as value (for instanceof) and type
-import * as meshup from 'meshup/src/index'
+import * as meshup from '@archiyou/meshup/src/index'
 
 // Side-effect import: augments meshup Shape/SceneNode/ShapeCollection prototypes with the
 // visual/app methods (dimension, label, material, onClick, addToScene, toDXF, …). Must load
 // before any script runs so those methods exist on the meshup shapes the modeler returns.
 import './shapeAnnotations'
 
-import type { Meshup } from 'meshup/src/index'
 import type { Brep } from './brep/index'
+
+/** The meshup module namespace as a type. meshup no longer exports this alias itself:
+ *  a self-referential `typeof import('./index')` inside its barrel broke its dts rollup. */
+type Meshup = typeof import('@archiyou/meshup/src/index')
 
 // Brep is loaded lazily in _loadBrep() to avoid pulling in the OpenCascade WASM at startup
 let brep: Brep | null = null;
 import { defaultTextFont, getFont, registerFont, fetchFont } from "./TextFonts";
-import { SceneNodeGraphNode, isPointLike } from "meshup/src/types";
+import { SceneNodeGraphNode, isPointLike } from "@archiyou/meshup/src/types";
 import { Layouter } from "./Layouter";
 import { GLTFBuilder } from "../GLTFBuilder";
 import { Make } from './Make';
@@ -212,7 +215,7 @@ export class Modeler
     {
         console.info('Modeler: Loading Meshup kernel...');
         const t = performance.now();
-        this._kernels.mesh = (await import('meshup/src/index')) as Meshup;
+        this._kernels.mesh = (await import('@archiyou/meshup/src/index')) as Meshup;
         await this._kernels.mesh.init(); // load wasm
         console.info(`Modeler: Meshup loaded successfully in ${Math.round(performance.now() - t)} ms.`);
         console.info(`With these methods/classes: "${Object.keys(this._kernels.mesh)}"`);

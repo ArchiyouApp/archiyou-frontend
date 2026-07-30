@@ -145,6 +145,137 @@ fn nodes_nest()
     assert!(outer_instance < inner, "instances must precede child nodes");
 }
 
+/// Welding collapses near-coincident face-vertices onto one index, which turns the sliver
+/// faces of a mitred solid into pinched rings ('0 1 2 3 0' — a quad written as a 5-gon) and
+/// outright degenerate ones ('0 0 4 4'). Both have to be repaired or dropped: an importer
+/// that builds real faces can refuse the whole file over them.
+#[test]
+fn welding_repairs_pinched_rings_and_drops_degenerate_faces()
+{
+    let mut w = writer();
+
+    // A unit quad whose 5th vertex sits a nanometre from the 1st (so it welds onto it),
+    // followed by a face that is really just an edge — both corners doubled.
+    let positions: Vec<f32> = vec![
+        0.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        1.0, 1.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 0.0, 1e-9,   // welds onto vertex 0
+
+        0.0, 0.0, 0.0,    // the degenerate face: two distinct points, each twice
+        0.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+    ];
+    let normals: Vec<f32> = vec![0.0, 0.0, 1.0].repeat(9);
+
+    assert!(w.add_polylist_geometry("mesh", "mesh", &positions, &normals, &[5, 4], 1e-5));
+    w.begin_node("node0", "Mesh");
+    w.attach_geometry("mesh", None);
+    w.end_node();
+
+    let dae = w.to_string_dae().expect("write failed");
+
+    // the 5-gon is back to a quad, and the edge-as-a-face is gone
+    assert!(dae.contains("<vcount>4</vcount>"), "expected a single repaired quad:\n{}", dae);
+    assert!(dae.contains(r##"<polylist material="material" count="1">"##), "{}", dae);
+    assert!(dae.contains("<p>0 0 1 0 2 0 3 0</p>"), "unexpected index stream:\n{}", dae);
+}
+
+/// A mesh with nothing but degenerate faces must report that it wrote no geometry, so the
+/// caller does not leave an `<instance_geometry>` pointing at an id that was never emitted.
+#[test]
+fn a_fully_degenerate_mesh_emits_no_geometry()
+{
+    let mut w = writer();
+
+    let positions: Vec<f32> = vec![
+        0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+    ];
+    let normals: Vec<f32> = vec![0.0, 0.0, 1.0].repeat(4);
+
+    assert!(!w.add_polylist_geometry("mesh", "mesh", &positions, &normals, &[4], 1e-5));
+
+    let dae = w.to_string_dae().expect("write failed");
+    assert!(!dae.contains("<geometry"), "no geometry should have been written:\n{}", dae);
+}
+
+/// Collinear points enclose no area either, and a duplicate-index pass alone cannot see it.
+#[test]
+fn collinear_faces_are_dropped()
+{
+    let mut w = writer();
+
+    let positions: Vec<f32> = vec![
+        0.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        2.0, 0.0, 0.0,
+    ];
+    let normals: Vec<f32> = vec![0.0, 0.0, 1.0].repeat(3);
+
+    assert!(!w.add_polylist_geometry("mesh", "mesh", &positions, &normals, &[3], 1e-5));
+}
+
+/// The triangle path welds too, so it needs the same guard.
+#[test]
+fn triangle_path_drops_collapsed_triangles()
+{
+    let mut w = writer();
+
+    let positions: Vec<f32> = vec![
+        0.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        1.0, 1.0, 0.0,
+        1.0, 0.0, 1e-9, // welds onto vertex 1
+    ];
+    let normals: Vec<f32> = vec![0.0, 0.0, 1.0].repeat(4);
+
+    // triangle 0 is real; triangle 1 has two corners that weld together
+    assert!(w.add_mesh_geometry("mesh", "mesh", &positions, &normals, &[0, 1, 2, 1, 3, 2], 1e-5));
+
+    let dae = w.to_string_dae().expect("write failed");
+    assert!(dae.contains(r##"<triangles material="material" count="1">"##), "{}", dae);
+}
+
+/// `<visual_scene>` and `<node>` share one xs:ID namespace, so the scene id has to give way
+/// when a caller already claimed it — otherwise the document is schema-invalid and
+/// `<instance_visual_scene url="#Scene">` resolves to the node instead of the scene.
+#[test]
+fn visual_scene_id_never_collides_with_a_node()
+{
+    let mut w = writer();
+    add_quad(&mut w, "quad");
+    w.begin_node("Scene", "root");
+    w.attach_geometry("quad", None);
+    w.end_node();
+
+    let dae = w.to_string_dae().expect("write failed");
+
+    assert!(dae.contains(r##"<node id="Scene""##), "the caller keeps its id:\n{}", dae);
+    assert!(dae.contains(r##"<visual_scene id="Scene-1""##), "scene id must move aside:\n{}", dae);
+    assert!(dae.contains(r##"<instance_visual_scene url="#Scene-1" />"##), "scene ref must follow:\n{}", dae);
+    assert_eq!(dae.matches(r##"id="Scene""##).count(), 1, "duplicate xs:ID:\n{}", dae);
+}
+
+/// The uncontested case still uses the plain name every other exporter emits.
+#[test]
+fn visual_scene_keeps_its_default_id_when_free()
+{
+    let mut w = writer();
+    add_quad(&mut w, "quad");
+    w.begin_node("node0", "Quad");
+    w.attach_geometry("quad", None);
+    w.end_node();
+
+    let dae = w.to_string_dae().expect("write failed");
+    assert!(dae.contains(r##"<visual_scene id="Scene" name="Scene">"##), "{}", dae);
+    assert!(dae.contains(r##"<instance_visual_scene url="#Scene" />"##), "{}", dae);
+}
+
 #[test]
 fn materials_are_bound_by_symbol()
 {

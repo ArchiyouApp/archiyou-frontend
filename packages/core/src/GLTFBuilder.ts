@@ -8,9 +8,9 @@ import { Document, Accessor, Animation, AnimationChannel, AnimationSampler, Scen
 
 import {
     createNodeIO,
-} from 'meshup/src/GLTFBuilder'
+} from '@archiyou/meshup/src/GLTFBuilder'
 
-import { GLTFJsonDocumentToString } from 'meshup/src/utils'
+import { GLTFJsonDocumentToString } from '@archiyou/meshup/src/utils'
 import type {
     LayoutAnimationInterpolation,
     LayoutAnimationOptions,

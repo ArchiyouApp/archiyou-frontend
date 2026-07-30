@@ -16,10 +16,7 @@
     "resolveJsonModule": true,
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
-    "types": ["node"],
-    "paths": {
-      "meshup": ["../meshup/src/index.ts"]
-    }
+    "types": ["node"]
   },
   "include": ["src", "tests"],
   "exclude": ["node_modules", "dist"]

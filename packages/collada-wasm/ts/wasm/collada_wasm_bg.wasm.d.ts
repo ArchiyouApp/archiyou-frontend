@@ -2,10 +2,10 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const __wbg_colladawriter_free: (a: number, b: number) => void;
-export const colladawriter_addLinesGeometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+export const colladawriter_addLinesGeometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
 export const colladawriter_addMaterial: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
-export const colladawriter_addMeshGeometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => void;
-export const colladawriter_addPolylistGeometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => void;
+export const colladawriter_addMeshGeometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => number;
+export const colladawriter_addPolylistGeometry: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => number;
 export const colladawriter_attachGeometry: (a: number, b: number, c: number, d: number, e: number) => void;
 export const colladawriter_beginNode: (a: number, b: number, c: number, d: number, e: number) => void;
 export const colladawriter_endNode: (a: number) => void;

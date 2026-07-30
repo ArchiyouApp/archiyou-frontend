@@ -48,6 +48,20 @@ export interface ColladaWriterOptions
 export const DEFAULT_WELD_TOLERANCE = 1e-5;
 
 /**
+ * Id suffixes the writer derives from a geometry id (see `push_geometry` in src/lib.rs).
+ *
+ * Every COLLADA id is an `xs:ID` sharing one document-wide namespace, so a caller minting
+ * geometry ids has to keep these derived names free as well: a shape called
+ * `Mesh-positions` would otherwise claim the source id derived for a shape called `Mesh`.
+ */
+export const GEOMETRY_DERIVED_ID_SUFFIXES = [
+    '-positions', '-positions-array', '-normals', '-normals-array', '-vertices',
+] as const;
+
+/** As above, for the effect id derived from a material id (see `add_material`). */
+export const MATERIAL_DERIVED_ID_SUFFIXES = ['-effect'] as const;
+
+/**
  * Thin TS facade over the wasm-bindgen class: typed options instead of positional
  * arguments, real `Error`s instead of thrown strings, and a `free()` that is safe to
  * call twice.
@@ -77,32 +91,37 @@ export class ColladaWriter
     /**
      * N-gon faces -> `<polylist>`. `positions`/`normals` are per face-vertex (interleaved
      * xyz, in face order); `vcount[i]` is the vertex count of face i. Vertices are welded
-     * on the Rust side.
+     * on the Rust side, which also drops faces that welding leaves degenerate.
+     *
+     * Returns false when every face was degenerate, so no `<geometry>` exists to reference.
      */
     addPolylistGeometry(
         id: string, name: string,
         positions: Float32Array, normals: Float32Array, vcount: Uint32Array,
-        weldTolerance = DEFAULT_WELD_TOLERANCE): this
+        weldTolerance = DEFAULT_WELD_TOLERANCE): boolean
     {
-        this.#inner().addPolylistGeometry(id, name, positions, normals, vcount, weldTolerance);
-        return this;
+        return this.#inner().addPolylistGeometry(id, name, positions, normals, vcount, weldTolerance);
     }
 
-    /** Indexed triangles -> `<triangles>`. The fallback path when n-gons are not wanted. */
+    /**
+     * Indexed triangles -> `<triangles>`. The fallback path when n-gons are not wanted.
+     * Returns false when no triangle survived welding.
+     */
     addMeshGeometry(
         id: string, name: string,
         positions: Float32Array, normals: Float32Array, indices: Uint32Array,
-        weldTolerance = DEFAULT_WELD_TOLERANCE): this
+        weldTolerance = DEFAULT_WELD_TOLERANCE): boolean
     {
-        this.#inner().addMeshGeometry(id, name, positions, normals, indices, weldTolerance);
-        return this;
+        return this.#inner().addMeshGeometry(id, name, positions, normals, indices, weldTolerance);
     }
 
-    /** A tessellated polyline -> `<lines>`, expanded into (n-1) segments. */
-    addLinesGeometry(id: string, name: string, positions: Float32Array): this
+    /**
+     * A tessellated polyline -> `<lines>`, expanded into (n-1) segments.
+     * Returns false when there were fewer than two points to join.
+     */
+    addLinesGeometry(id: string, name: string, positions: Float32Array): boolean
     {
-        this.#inner().addLinesGeometry(id, name, positions);
-        return this;
+        return this.#inner().addLinesGeometry(id, name, positions);
     }
 
     /** Open a `<node>`. Every beginNode() needs a matching endNode(). */

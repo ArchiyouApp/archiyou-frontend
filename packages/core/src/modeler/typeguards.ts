@@ -2,7 +2,7 @@ import type { PointLike, AnyShapeCollection, AnyShapeOrCollection } from './type
 
 // TODO: BREP
 
-import { isPointLike as meshupIsPointLike } from 'meshup/src/types'
+import { isPointLike as meshupIsPointLike } from '@archiyou/meshup/src/types'
 
 export function isPointLike(value: any): value is PointLike
 {

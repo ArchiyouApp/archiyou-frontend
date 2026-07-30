@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 
 import { GLTFBuilder } from '../../src/GLTFBuilder'
 import { Layouter } from '../../src/modeler/Layouter'
-import * as meshup from 'meshup/src/index'
+import * as meshup from '@archiyou/meshup/src/index'
 
 type TestShape = meshup.Mesh | meshup.Curve
 

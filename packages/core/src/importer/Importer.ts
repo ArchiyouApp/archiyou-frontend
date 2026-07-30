@@ -16,8 +16,8 @@
  *  synchronous so the scope-level `$import(url)` needs no `await`.
  */
 
-import { Importer as MeshupImporter, ShapeCollection } from 'meshup/src/index';
-import type { ImportFormat } from 'meshup/src/index';
+import { Importer as MeshupImporter, ShapeCollection } from '@archiyou/meshup/src/index';
+import type { ImportFormat } from '@archiyou/meshup/src/index';
 
 export interface AssetImportOptions
 {

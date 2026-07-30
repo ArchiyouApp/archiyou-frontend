@@ -9,9 +9,9 @@
 
 import { beforeAll, describe, it, expect } from 'vitest'
 
-import { initAsync } from 'meshup/src/index'
-import { Mesh } from 'meshup/src/Mesh'
-import { GLTFBuilder } from 'meshup/src/GLTFBuilder'
+import { initAsync } from '@archiyou/meshup/src/index'
+import { Mesh } from '@archiyou/meshup/src/Mesh'
+import { GLTFBuilder } from '@archiyou/meshup/src/GLTFBuilder'
 
 import { MaterialManager } from '../../../src/materials/MaterialManager'
 import type { ArchiyouModules } from '../../../src/types'

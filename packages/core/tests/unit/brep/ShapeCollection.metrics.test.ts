@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { init } from 'meshup/src/index';
-import { Curve } from 'meshup/src/Curve';
-import { Mesh } from 'meshup/src/Mesh';
-import { ShapeCollection } from 'meshup/src/ShapeCollection';
+import { init } from '@archiyou/meshup/src/index';
+import { Curve } from '@archiyou/meshup/src/Curve';
+import { Mesh } from '@archiyou/meshup/src/Mesh';
+import { ShapeCollection } from '@archiyou/meshup/src/ShapeCollection';
 
 describe('ShapeCollection metrics', () =>
 {

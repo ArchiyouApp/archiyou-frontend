@@ -30,7 +30,22 @@ import { ScriptStoreError } from './services/ScriptStore';
 const EXECUTION_INIT_TIMEOUT_MS = 5000;
 
 export async function serverApiPlugin(fastify: FastifyInstance): Promise<void> {
-  await fastify.register(import('@fastify/cors'), { origin: true });
+  // Explicit origin allowlist (config.corsOrigins = FRONTEND_URL + SERVER_CORS_ORIGINS).
+  // Requests with no Origin header (curl, server-to-server) are allowed through —
+  // CORS is a browser mechanism and blocking them would break API consumers.
+  await fastify.register(import('@fastify/cors'), {
+    origin: (origin, cb) => {
+      if (!origin || config.corsOrigins.includes(origin)) return cb(null, true);
+      cb(new Error('Not allowed by CORS'), false);
+    },
+  });
+
+  // Baseline security headers at the app layer, so they hold however this is
+  // deployed rather than depending on the Caddy vhost in front of it. CSP is set
+  // by Caddy for the frontend; this API serves JSON, so the default CSP here
+  // would only get in the way of the /proxy asset route.
+  await fastify.register(import('@fastify/helmet'), { contentSecurityPolicy: false });
+
   await fastify.register(import('@fastify/jwt'), { secret: config.jwtSecret });
 
   // preHandler that rejects unauthenticated requests.
@@ -93,7 +108,13 @@ function setupErrorHandling(fastify: FastifyInstance): void {
       return reply.code(code).send({ success: false, error: error.message });
     }
     request.log.error(error);
-    return reply.code(error.statusCode || 500).send({ success: false, error: error.message || 'Internal server error' });
+    const status = error.statusCode || 500;
+    // Never echo an unmapped error's message to the client: those come from deep
+    // internals (file paths, SQL, upstream responses) and make a useful recon
+    // oracle. 4xx statuses are ones we set deliberately, so their text is safe.
+    const message = status >= 500 ? 'Internal server error' : (error.message || 'Request failed');
+    if (status >= 500) console.error('Unhandled server error:', error);
+    return reply.code(status).send({ success: false, error: message });
   });
 
   fastify.setNotFoundHandler(async (request, reply) => {

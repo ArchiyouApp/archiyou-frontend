@@ -28,7 +28,9 @@ export class ExecutionBroker
         this.redis = new Redis(
         {
             host: redisConfig?.host || process.env.SERVER_REDIS_HOST || 'localhost',
-            port: redisConfig?.port || 6379,
+            // Was hardcoded to 6379, silently ignoring SERVER_REDIS_PORT — so a
+            // non-default Redis port worked for the worker but not the broker.
+            port: redisConfig?.port || Number(process.env.SERVER_REDIS_PORT) || 6379,
             password: redisConfig?.password || process.env.SERVER_REDIS_PASSWORD || undefined,
             maxRetriesPerRequest: null, // Disable automatic retries
             lazyConnect: true, // Don't connect immediately, we'll do it manually with error handling

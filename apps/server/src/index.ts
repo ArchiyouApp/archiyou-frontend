@@ -19,9 +19,21 @@ import { serverApiPlugin } from './plugin';
 
 async function main(): Promise<void> {
   runMigrations();               // idempotent: brings the SQLite file up to the latest schema
-  await userService.seedTestUser(); // ensure the .env test user exists
 
-  const app = Fastify({ logger: false });
+  // Dev convenience account — never seeded in production unless explicitly asked
+  // for with a real password (see config.seedTestUser).
+  if (config.seedTestUser) {
+    await userService.seedTestUser();
+  }
+
+  const app = Fastify({
+    logger: false,
+    // Honour X-Forwarded-For/Proto from the reverse proxy in front of us (Caddy),
+    // so request.ip is the real client. Without this every request appears to come
+    // from the proxy's container IP, which silently collapses the per-IP rate
+    // limiters (auth + /proxy) into a single shared bucket for all traffic.
+    trustProxy: true,
+  });
 
   // The whole API at the root — one JWT/CORS, one /scripts namespace.
   await app.register(serverApiPlugin);

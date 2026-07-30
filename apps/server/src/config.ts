@@ -47,6 +47,23 @@ export const config = {
   get jwtSecret(): string { return jwtSecret(); },
 
   /**
+   * Browser origins allowed to call this API. `frontendUrl` is always included;
+   * SERVER_CORS_ORIGINS adds more (comma-separated) for extra frontends or API
+   * consumers. Previously this was `origin: true`, which reflected any origin —
+   * so every website on the internet could call every public endpoint.
+   *
+   * In the recommended same-origin deployment (editor and /api behind one host)
+   * no CORS is needed at all and this list is simply unused.
+   */
+  corsOrigins: [
+    process.env.FRONTEND_URL ?? 'http://localhost:5173',
+    ...(process.env.SERVER_CORS_ORIGINS ?? '')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean),
+  ],
+
+  /**
    * Server-side script execution (routes/execute.ts → ExecutionWorker → Runner).
    *
    * ⚠️  SECURITY: the Runner compiles script source with `new AsyncFunction` and
@@ -117,9 +134,15 @@ export const config = {
   },
 
   /**
-   * The single test user (no users table yet). `username` is the script
-   * `author` handle used to scope ownership. Defaults let `pnpm dev` work with
-   * no `.env`; override in `.env` for real credentials.
+   * A convenience development account, seeded on boot by userService.seedTestUser().
+   * `username` is the script `author` handle used to scope ownership. The defaults
+   * let `pnpm dev` work with no `.env` at all.
+   *
+   * ⚠️  NOT seeded in production. Previously this ran unconditionally on every
+   * boot, so a production container came up with a `test` / `test1234` account —
+   * publicly known credentials, and `test` is a plausible script-author handle.
+   * To seed it deliberately in production, set SERVER_SEED_TEST_USER=true AND an
+   * explicit SERVER_TEST_USER_PASSWORD (see `seedTestUser` below).
    */
   testUser: {
     username: (process.env.SERVER_TEST_USER_USERNAME ?? 'test').toLowerCase(),
@@ -127,4 +150,12 @@ export const config = {
     password: process.env.SERVER_TEST_USER_PASSWORD ?? 'test1234',
     name: process.env.SERVER_TEST_USER_NAME ?? 'Test User',
   },
+
+  /**
+   * Whether to seed the account above. Always on outside production; in
+   * production it requires both an explicit opt-in and a real password, so the
+   * default credentials can never reach a live instance.
+   */
+  seedTestUser: !isProduction
+    || (process.env.SERVER_SEED_TEST_USER === 'true' && !!process.env.SERVER_TEST_USER_PASSWORD),
 };

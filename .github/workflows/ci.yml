@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # packages/meshup is a submodule and a workspace dependency of the editor,
+      # core and the root manifest — pnpm install cannot resolve without it.
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # better-sqlite3 is a native module; pnpm-workspace.yaml allowlists its
+      # build script, and node-gyp needs a toolchain to compile the binding.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # No Rust toolchain here on purpose: every WASM artifact is committed
+      # (base64 payloads plus the wasm-bindgen glue), so a clean clone builds
+      # with Node alone. If this step ever fails to resolve a `pkg/` import,
+      # something stopped being tracked.
+      - name: Build editor
+        env:
+          SERVER_API_BASE_URL: /api
+        run: pnpm --filter @archiyou/editor build
+
+      - name: Check build output
+        run: |
+          test -f apps/editor/dist/index.html || { echo "::error::no index.html in build output"; exit 1; }
+          test -d apps/editor/dist/assets    || { echo "::error::no assets/ in build output"; exit 1; }
+
+      - name: Server tests
+        run: pnpm --filter @archiyou/server test
+
+      - name: UI tests
+        run: pnpm --filter @archiyou/ui test
+
+      - name: Core tests
+        run: pnpm --filter @archiyou/core test:runner
+
+      # Typechecking is deliberately NOT a gate: `tsc --noEmit` reports ~2000
+      # pre-existing errors, overwhelmingly in packages/core (which predates the
+      # strict config), plus a quirk where tsc cannot follow @archiyou/core's
+      # exports map even though Vite and tsx can. Recorded here for visibility
+      # so the number can be driven down over time.
+      - name: Typecheck (advisory, never fails the build)
+        continue-on-error: true
+        run: pnpm --filter @archiyou/server typecheck
+
+  # The deployment config is executable, so it gets checked like code: a broken
+  # Caddyfile means the reverse proxy will not start. This caught `auto_https on`,
+  # which was invalid and had gone unnoticed.
+  deploy-config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Validate Caddyfile
+        run: |
+          docker run --rm -v "${{ github.workspace }}/apps/server/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2 caddy validate --config /etc/caddy/Caddyfile
+
+      - name: Validate compose files
+        working-directory: apps/server
+        run: |
+          # `config` renders and schema-checks; the mount source only has to exist.
+          mkdir -p configurator-app/dist ../editor/dist
+          docker compose -f docker-compose.yml config >/dev/null
+          docker compose -f docker-compose.prod.yml config >/dev/null
+
+      # The worker executes unsandboxed user scripts, so a compromise there must
+      # not yield the token-signing key or the mail credentials. Checked against
+      # the rendered config, not the YAML source.
+      - name: Worker must not receive app secrets
+        working-directory: apps/server
+        run: |
+          pip install --quiet pyyaml
+          mkdir -p configurator-app/dist ../editor/dist
+          docker compose -f docker-compose.prod.yml config \
+            | python3 scripts/check-worker-env.py

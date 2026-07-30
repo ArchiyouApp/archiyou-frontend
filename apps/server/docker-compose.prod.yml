@@ -14,11 +14,18 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./caddy/data:/data
       - ./caddy/config:/config
-      # optional: mount a built configurator app to serve as static site
-      - ./configurator-app/dist:/html
+      # The built editor SPA. Build it before `docker compose up`:
+      #   SERVER_API_BASE_URL=/api pnpm --filter @archiyou/editor build
+      - ../../apps/editor/dist:/srv/app:ro
+      # Runtime-loaded editor plugins, served at /plugins/* (see Caddyfile).
+      # Without this the built-in shape-picker 404s in production.
+      - ../../plugins:/srv/plugins:ro
+      # Optional: a separately built configurator app for configure.archiyou.com.
+      # Comment the vhost out in the Caddyfile if you are not serving one.
+      - ./configurator-app/dist:/srv/configurator:ro
     depends_on:
       - api
     networks:

@@ -2,6 +2,7 @@ import { LitElement, html, css, nothing, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 import JSON5 from 'json5';
+import { templateLiteralsToJsonStrings } from './script-data-parse.js';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
@@ -163,12 +164,19 @@ export class ScriptImporter extends SignalWatcher(LitElement)
     }
     catch { /* fall through — may contain template literals */ }
 
-    // Fall back to JS evaluation to support template literals in code fields.
-    // This is intentional: the user is pasting their own script data.
+    // JSON5 cannot read backtick-delimited strings, which script exports use for
+    // multi-line `code` fields. This used to fall back to
+    // `new Function('return (' + text + ')')()`, i.e. arbitrary code execution on
+    // whatever the user pasted — a paste-jacking vector, and the session JWT is
+    // readable from localStorage. Instead, rewrite plain template literals into
+    // ordinary JSON strings and let JSON5 do the parsing.
+    //
+    // A literal containing ${...} interpolation is refused rather than guessed at:
+    // evaluating it is the one case that genuinely needs a JS engine, and is
+    // exactly the case an attacker needs.
     try
     {
-      // eslint-disable-next-line no-new-func
-      return new Function(`return (${stripped})`)();
+      return JSON5.parse(templateLiteralsToJsonStrings(stripped));
     }
     catch (error)
     {

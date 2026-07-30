@@ -23,9 +23,25 @@ import type { ScriptParam } from '@archiyou/core/src/execution/ScriptParam';
 import type { ManagedBehavioursData, ParamBehaviourTarget, ParamBehaviourFn } from '@archiyou/core/src/execution/types';
 import { paramValue } from './types';
 
-/** Re-hydrate a serialized behaviour function source into a callable.
- *  Returns null (and logs) when the source can't be parsed. Trust model: this is
- *  the same user's own script code, already executed in the worker. */
+/**
+ * Re-hydrate a serialized behaviour function source into a callable.
+ * Returns null (and logs) when the source can't be parsed.
+ *
+ * ⚠️  TRUST BOUNDARY. This is `new Function` on script-derived source, evaluated
+ * on the MAIN THREAD — unlike script execution itself, which is confined to the
+ * Web Worker. Main-thread code reaches `document` and `localStorage`, and the
+ * session JWT lives in localStorage, so evaluating a *foreign* author's source
+ * here would hand a malicious published configurator the viewer's token.
+ *
+ * Callers must therefore only hydrate behaviours for scripts the signed-in user
+ * owns; `applyManagedBehaviours` enforces that via its `trusted` argument. The
+ * cost is that dynamic behaviours (enableIf/visibleIf/…) do not animate in a
+ * foreign script — params render in their declared state instead.
+ *
+ * Removing the eval altogether would mean evaluating behaviours in the worker and
+ * shipping results rather than sources; that is the proper fix and is tracked as
+ * a follow-up.
+ */
 export function hydrateBehaviour(src: string): ParamBehaviourFn | null
 {
   try
@@ -43,10 +59,21 @@ export function hydrateBehaviour(src: string): ParamBehaviourFn | null
   }
 }
 
-/** Replace every param's in-memory behaviours with the freshly-declared set from
- *  the latest run (full sync). Hydrates sources to functions; touches nothing
- *  else on the param (no definition fields, no _definedProgrammatically). */
-export function applyManagedBehaviours(script: Script, managed?: ManagedBehavioursData): void
+/**
+ * Replace every param's in-memory behaviours with the freshly-declared set from
+ * the latest run (full sync). Hydrates sources to functions; touches nothing
+ * else on the param (no definition fields, no _definedProgrammatically).
+ *
+ * `trusted` must be false whenever the script belongs to someone other than the
+ * signed-in user (a published configurator or a foreign shared script). Hydration
+ * is `new Function` on the main thread — see hydrateBehaviour — so for untrusted
+ * scripts the behaviours are cleared and simply not installed.
+ */
+export function applyManagedBehaviours(
+  script: Script,
+  managed?: ManagedBehavioursData,
+  trusted = true,
+): void
 {
   if (!script?.params) return;
 
@@ -58,6 +85,20 @@ export function applyManagedBehaviours(script: Script, managed?: ManagedBehaviou
   }
 
   if (!managed) return;
+
+  // Foreign script: leave the behaviours cleared rather than evaluating another
+  // author's source in this page's context.
+  if (!trusted)
+  {
+    if (Object.keys(managed).length > 0)
+    {
+      console.info(
+        `applyManagedBehaviours(): skipped ${Object.keys(managed).length} behaviour(s) ` +
+        `from a script you do not own — dynamic param behaviours are disabled for foreign scripts.`,
+      );
+    }
+    return;
+  }
 
   for (const [name, targets] of Object.entries(managed))
   {

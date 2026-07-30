@@ -26,7 +26,13 @@ import { userService, toPublicUser, UserError } from '../services/UserService';
 import { emailService } from '../services/EmailService';
 import type { UserRow } from '../db/schema';
 
-const TOKEN_TTL = '30d';
+/**
+ * Session token lifetime. Shortened from 30 days: these are stateless JWTs with
+ * no revocation list, so a stolen token is valid for its full TTL and there is no
+ * way to invalidate it. 7 days keeps the "stay signed in" feel while cutting the
+ * exposure window fourfold. Proper refresh + revocation is tracked as follow-up.
+ */
+const TOKEN_TTL = '7d';
 /** Password-reset token: short-lived, purpose-scoped, and tied to the current
  *  password hash (`pfp`) so it can't be reused once the password changes. */
 const RESET_TOKEN_TTL = '1h';

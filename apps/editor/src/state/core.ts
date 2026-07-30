@@ -506,7 +506,14 @@ export function setExecutionResult(result: RunnerScriptExecutionResult): void
   const activeScript = editorScript.get();
   if (activeScript)
   {
-    applyManagedBehaviours(activeScript, result.state?.managedBehaviours);
+    // `trusted` gates a main-thread `new Function` on the script's behaviour
+    // source: only ever do that for a script the signed-in user owns, never for a
+    // foreign one (published configurator / someone else's shared script).
+    applyManagedBehaviours(
+      activeScript,
+      result.state?.managedBehaviours,
+      !_scriptIsForeign(activeScript),
+    );
     if (evaluateParamBehaviours(activeScript)) bumpScript();
   }
   executionResult.set(result);

@@ -7,6 +7,7 @@ import { Runner } from '@archiyou/core/src/runner/Runner';
 import { isRunnerScriptExecutionRequest } from '@archiyou/core/src/runner/typeguards';
 import { convertBinaryToBase64 } from '@archiyou/core/src/utils';
 
+import { config } from '../config';
 import type { QueueTaskData, QueueTaskResult, QueueDebugTask, RedisConfig } from './types';
 import { isQueueDebugTask } from './types';
 import { connectToRedis } from './utils';
@@ -130,6 +131,47 @@ export class ExecutionWorker
     }
 
     /**
+     * Run a script with a wall-clock cap (SERVER_EXECUTION_TIMEOUT_MS).
+     *
+     * ⚠️  PARTIAL PROTECTION — read before relying on this. Script code runs on
+     * this process's event loop, so the timer below can only fire while the
+     * script is awaiting something. A tight synchronous loop (`while(true){}`)
+     * starves the timer and this timeout will NOT trigger; the worker stays
+     * wedged until the container is killed. Defence for that case is external:
+     * BullMQ marks the job stalled when the lock can't be renewed, and the
+     * compose service sets cpus/mem_limit/pids_limit with a restart policy.
+     *
+     * What this DOES stop: scripts that yield — long awaits, slow I/O, runaway
+     * async recursion — which is the common accidental case.
+     *
+     * The real fix is to run scripts in a killable worker_thread or a per-job
+     * container; until then /execute is restricted to trusted authors
+     * (config.execution.allowedAuthors).
+     */
+    private async executeWithTimeout(request: RunnerScriptExecutionRequest)
+    {
+        const { timeoutMs } = config.execution;
+        let timer: NodeJS.Timeout | undefined;
+        try
+        {
+            return await Promise.race([
+                this.runner.execute(request),
+                new Promise<never>((_, reject) =>
+                {
+                    timer = setTimeout(
+                        () => reject(new Error(`Script execution exceeded ${timeoutMs}ms`)),
+                        timeoutMs,
+                    );
+                }),
+            ]);
+        }
+        finally
+        {
+            if (timer) clearTimeout(timer);
+        }
+    }
+
+    /**
      * Execute the actual task logic
      */
     private async executeTask(QueueTaskData: QueueTaskData): Promise<QueueTaskResult>
@@ -152,8 +194,8 @@ export class ExecutionWorker
         else if(isRunnerScriptExecutionRequest(payload))
         {
             const executionRequest = payload as RunnerScriptExecutionRequest;
-            const RunnerScriptExecutionResult = await this.runner.execute(executionRequest);
-            
+            const RunnerScriptExecutionResult = await this.executeWithTimeout(executionRequest);
+
             // We need to prepare the result for JSON serialization - all binary data is converted to base64 strings
             const RunnerScriptExecutionResultBase64 = convertBinaryToBase64(RunnerScriptExecutionResult);
             

@@ -55,7 +55,7 @@ export class Library
     {
         // Load environment variables from .env file
         dotEnvConfig();
-        this.url = process.env.LIBRARY_URL || 'http://localhost:4000';
+        this.url = process.env.LIBRARY_URL || 'http://localhost:4100';
 
         // Resolve relative paths to absolute paths based on current script directory
         this.scriptsRoot = (typeof libPath === 'string' && libPath.length > 0) ? libPath : process.env.LIBRARY_PATH;

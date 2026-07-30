@@ -16,13 +16,20 @@ process.env.LIBRARY_URL ??= `http://localhost:${process.env.SERVER_PORT ?? 4100}
 
 /** In production a real secret is mandatory; in dev we fall back to a fixed
  *  value so `pnpm dev` boots with no `.env`. Tokens signed with it are not
- *  secure — never run production without a real SERVER_JWT_SECRET. */
+ *  secure — never run production without a real SERVER_JWT_SECRET.
+ *
+ *  Resolved lazily (see the `jwtSecret` getter below) so that processes which
+ *  never mint or verify a token — notably the execution worker — do not need the
+ *  secret in their environment at all. Handing it to the worker would put it in
+ *  reach of the unsandboxed script Runner. */
+let jwtSecretCache: string | undefined;
 function jwtSecret(): string {
+  if (jwtSecretCache !== undefined) return jwtSecretCache;
   const v = process.env.SERVER_JWT_SECRET;
-  if (v) return v;
+  if (v) return (jwtSecretCache = v);
   if (isProduction) throw new Error('Missing required environment variable: SERVER_JWT_SECRET');
   console.warn('⚠️  SERVER_JWT_SECRET not set — using an insecure dev default. Set SERVER_JWT_SECRET for production.');
-  return 'dev-insecure-jwt-secret-change-me';
+  return (jwtSecretCache = 'dev-insecure-jwt-secret-change-me');
 }
 
 export const config = {
@@ -36,10 +43,34 @@ export const config = {
   //// BACKEND ////
 
   port: Number(process.env.SERVER_PORT ?? 4100),
-  jwtSecret: jwtSecret(),
+  /** Lazy: only the API process touches this, so the worker can run without it. */
+  get jwtSecret(): string { return jwtSecret(); },
 
-  /** Admin password for the library admin routes (login → JWT). */
-  adminPassword: process.env.SERVER_ADMIN_PASSWORD ?? '',
+  /**
+   * Server-side script execution (routes/execute.ts → ExecutionWorker → Runner).
+   *
+   * ⚠️  SECURITY: the Runner compiles script source with `new AsyncFunction` and
+   * runs it directly in the worker's Node process — there is no sandbox, so a
+   * script gets full Node capability (fs, child_process, network, process.env).
+   * In the browser that is contained by the Web Worker boundary; on the server
+   * it is not.
+   *
+   * Therefore this feature is DISABLED BY DEFAULT: `allowedAuthors` is empty, so
+   * every request 403s. Set SERVER_EXECUTION_AUTHORS to a comma-separated list of
+   * script authors you trust to run arbitrary code on this machine. The route
+   * additionally requires an authenticated caller.
+   *
+   * Tracking issue: replace with a real isolate (isolated-vm / per-job container)
+   * so this can be opened up again.
+   */
+  execution: {
+    allowedAuthors: (process.env.SERVER_EXECUTION_AUTHORS ?? '')
+      .split(',')
+      .map((a) => a.trim().toLowerCase())
+      .filter(Boolean),
+    /** Wall-clock cap on a single script run, so `while(true){}` can't pin the worker. */
+    timeoutMs: Number(process.env.SERVER_EXECUTION_TIMEOUT_MS ?? 30_000),
+  },
 
   /**
    * Asset proxy (routes/proxy.ts) — lets browser scripts `$import()` remote

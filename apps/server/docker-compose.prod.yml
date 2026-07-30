@@ -46,11 +46,11 @@ services:
       dockerfile: apps/server/Dockerfile
     container_name: archiyou-api
     expose:
-      - "4000"
+      - "4100"
     env_file: .env
     environment:
       - NODE_ENV=production
-      - SERVER_PORT=4000
+      - SERVER_PORT=4100
       - SERVER_REDIS_HOST=redis
       - SERVER_REDIS_PORT=6379
       - SERVER_REDIS_PASSWORD=${REDIS_PASW}
@@ -61,26 +61,45 @@ services:
     volumes:
       - server_data:/repo/apps/server/data
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     networks:
       - archiyou-network
 
+  # Executes user-authored scripts. The Runner has NO sandbox (see
+  # apps/server/src/config.ts → execution), so treat this container as the one
+  # most likely to be compromised and give it as little as possible:
+  #   - NO env_file: an explicit allowlist of variables only, so a compromised
+  #     script cannot read SERVER_JWT_SECRET (forging tokens for any user) or the
+  #     Mailgun key out of process.env. config.jwtSecret is lazy, so the worker
+  #     boots fine without it.
+  #   - non-root (USER node in the Dockerfile), all capabilities dropped
+  #   - cpu/memory/pid ceilings, because the in-process execution timeout cannot
+  #     interrupt a tight synchronous loop (see ExecutionWorker.executeWithTimeout)
   worker:
     build:
       context: ../..
       dockerfile: apps/server/Dockerfile
     container_name: archiyou-worker
     command: pnpm worker
-    env_file: .env
     environment:
       - NODE_ENV=production
       - SERVER_REDIS_HOST=redis
       - SERVER_REDIS_PORT=6379
       - SERVER_REDIS_PASSWORD=${REDIS_PASW}
+      - SERVER_EXECUTION_TIMEOUT_MS=${SERVER_EXECUTION_TIMEOUT_MS:-30000}
       - WORKER_ID=worker
     depends_on:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: 1.5
     networks:
       - archiyou-network
 

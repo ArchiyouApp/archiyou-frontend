@@ -30,11 +30,11 @@ services:
       dockerfile: apps/server/Dockerfile
     container_name: archiyou-api
     ports:
-      - "4000:4000"
+      - "4100:4100"
     env_file: .env
     environment:
       - NODE_ENV=production
-      - SERVER_PORT=4000
+      - SERVER_PORT=4100
       - SERVER_REDIS_HOST=redis
       - SERVER_REDIS_PORT=6379
       - SERVER_DATABASE_FILE=./data/archiyou.db

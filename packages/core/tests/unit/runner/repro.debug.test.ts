@@ -121,7 +121,11 @@ diagonalRafterBlockRight = diagonalRafterBlockLeft.copy().mirrorX(0);
 hammerBeamRight = hammerBeamLeft.copy().mirrorX(0);
 `
 
-describe('repro missing shapes', () => {
+// Manual debugging harness, not an assertion test: the final `toEqual('SHOW')`
+// compares the scene dump against a sentinel string so vitest prints the whole
+// tree in its diff. It can never pass by construction, so it is skipped to keep
+// CI green. Flip to `describe.only` when you need the scene-graph dump.
+describe.skip('repro missing shapes', () => {
   it('report scene', async () => {
     const runner = await new Runner().load()
     const result = await runner.execute({

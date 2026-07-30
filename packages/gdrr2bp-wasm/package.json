@@ -1,10 +1,14 @@
 {
   "name": "@archiyou/gdrr2bp-wasm",
   "version": "0.1.0",
-  "private": false,
-  "main": "pkg/gdrr2bp_wasm.js",
-  "types": "pkg/gdrr2bp_wasm.d.ts",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "ts/index.ts",
+  "types": "ts/index.ts",
   "scripts": {
-    "build": "wasm-pack build --target bundler"
+    "build:wasm": "wasm-pack build --target bundler",
+    "rust:check": "cargo check --target wasm32-unknown-unknown",
+    "rust:test": "cargo test"
   }
 }

@@ -8,3 +8,13 @@
 **/.git
 .git
 caddy
+
+# Rust build output. Without this, packages/meshup/rust/target (~9.7 GB) is
+# uploaded to the daemon on every build. Nothing in the image needs it: the
+# wasm modules are committed as base64/glue under each package's ts/ dir.
+**/target
+
+# Test fixtures and local scratch — not needed at runtime.
+**/tests/outputs
+**/*.bak
+**/*.bak.*

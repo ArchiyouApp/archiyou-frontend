@@ -1,0 +1,19 @@
+{
+  "name": "gdrr2bp-wasm",
+  "type": "module",
+  "description": "WebAssembly build of JeroenGar/gdrr-2bp (2D guillotine bin packing) with a single-threaded JSON solve() entry point",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "gdrr2bp_wasm_bg.wasm",
+    "gdrr2bp_wasm.js",
+    "gdrr2bp_wasm_bg.js",
+    "gdrr2bp_wasm.d.ts"
+  ],
+  "main": "gdrr2bp_wasm.js",
+  "types": "gdrr2bp_wasm.d.ts",
+  "sideEffects": [
+    "./gdrr2bp_wasm.js",
+    "./snippets/*"
+  ]
+}

@@ -1,6 +1,3 @@
-[submodule "devlibs/archiyou-core-next"]
-	path = devlibs/archiyou-core-next
-	url = https://gitlab.com/mvdnet/archiyou-core-next.git
 [submodule "packages/meshup"]
 	path = packages/meshup
 	url = https://github.com/ArchiyouApp/meshup.git

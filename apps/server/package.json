@@ -2,6 +2,7 @@
   "name": "@archiyou/server",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Archiyou backend — editor auth + per-user script (version) DB, published-script library, and server-side execution. Combines the former @archiyou/server + @archiyou/publish into one package.",
   "scripts": {

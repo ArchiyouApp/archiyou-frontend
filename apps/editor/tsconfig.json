@@ -2,7 +2,9 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "rootDir": "src",
-    "outDir": "dist"
+    // Typecheck only. Vite owns dist/ — without noEmit, `tsc && vite build`
+    // writes stray .js into dist/ before Vite ever runs (see AGENTS.md).
+    "noEmit": true
   },
   "include": ["src"]
 }

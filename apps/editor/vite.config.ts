@@ -38,14 +38,16 @@ function servePluginsDir(): Plugin {
 
 export default defineConfig(() => {
   // APP env var selects a single app for dev/build:
-  //   APP=viewer pnpm dev
   //   APP=workspace pnpm build
-  // When unset, all apps are included.
+  // When unset, all apps are included. There is currently one app; the
+  // standalone `viewer` entry was removed in the open-source release cleanup
+  // because it was a stub importing a `viewer-3d` component that was never
+  // written. The real viewer lives in packages/ui/src/viewer/model-viewer.ts
+  // and is used by the configurator route inside the workspace app.
   const app = process.env['APP'];
 
   const allInputs: Record<string, string> = {
     workspace: 'index.html',
-    viewer:    'viewer.html',
   };
 
   const inputs = app ? { [app]: allInputs[app] } : allInputs;

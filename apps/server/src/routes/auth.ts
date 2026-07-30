@@ -13,9 +13,11 @@ import {
   LoginRequestSchema,
   ForgotPasswordRequestSchema,
   ResetPasswordRequestSchema,
+  VerifyEmailRequestSchema,
   type AuthResponse,
   type AuthTokenClaims,
   type ResetTokenClaims,
+  type VerifyTokenClaims,
 } from '@archiyou/types';
 
 import { config } from '../config';
@@ -28,6 +30,9 @@ const TOKEN_TTL = '30d';
 /** Password-reset token: short-lived, purpose-scoped, and tied to the current
  *  password hash (`pfp`) so it can't be reused once the password changes. */
 const RESET_TOKEN_TTL = '1h';
+/** Email-verification token: purpose-scoped and bound to the address. Longer
+ *  than a reset because the user may not read mail immediately. */
+const VERIFY_TOKEN_TTL = '24h';
 
 /** Last 10 chars of the bcrypt hash — a stable per-password fingerprint. */
 function pwFingerprint(passwordHash: string): string {
@@ -40,14 +45,34 @@ function issue(fastify: FastifyInstance, user: UserRow): AuthResponse {
   return { token, user: toPublicUser(user) };
 }
 
+/** Mint a verification link and email it. Failures inside the EmailService are
+ *  swallowed there, so this never breaks the surrounding request. */
+async function sendVerification(fastify: FastifyInstance, user: UserRow): Promise<void> {
+  const claims: VerifyTokenClaims = { sub: user.id, type: 'verify', email: user.email };
+  const token = fastify.jwt.sign(claims, { expiresIn: VERIFY_TOKEN_TTL });
+  const link = `${config.frontendUrl}/verify-email?token=${encodeURIComponent(token)}`;
+  await emailService.sendEmailVerification(user.email, link);
+}
+
 export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.post('/auth/register', async (request) => {
+  /**
+   * Per-IP throttle for the credential endpoints. @fastify/rate-limit is
+   * registered with `global: false` (see plugin.ts), so only routes carrying this
+   * opt in. Guards password brute-force on /auth/login and mail-bombing via the
+   * forgot-password and resend-verification routes.
+   */
+  const throttled = { config: { rateLimit: config.authRateLimit } };
+
+  fastify.post('/auth/register', throttled, async (request) => {
     const { email, password, name } = parse(RegisterRequestSchema, request.body);
     const user = await userService.register(email, password, name);
+    // Sign the user straight in (unchanged UX) but send the confirmation mail.
+    // The account works immediately; only publish/share need a verified address.
+    await sendVerification(fastify, user);
     return issue(fastify, user);
   });
 
-  fastify.post('/auth/login', async (request) => {
+  fastify.post('/auth/login', throttled, async (request) => {
     // `email` is the login identifier — an email address OR a username handle.
     const { email, password } = parse(LoginRequestSchema, request.body);
     const user = await userService.login(email, password);
@@ -56,7 +81,7 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
 
   // Request a reset email. Always answers 200 with the same body so it never
   // reveals whether an account exists for the address.
-  fastify.post('/auth/forgot-password', async (request) => {
+  fastify.post('/auth/forgot-password', throttled, async (request) => {
     const { email } = parse(ForgotPasswordRequestSchema, request.body);
     const user = userService.findByEmail(email);
     if (user) {
@@ -71,7 +96,7 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
   });
 
   // Complete a reset with the emailed token + a new password, then sign the user in.
-  fastify.post('/auth/reset-password', async (request) => {
+  fastify.post('/auth/reset-password', throttled, async (request) => {
     const { token, password } = parse(ResetPasswordRequestSchema, request.body);
 
     let claims: ResetTokenClaims;
@@ -90,6 +115,47 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
     await userService.setPassword(user.id, password);
     return issue(fastify, user);
   });
+
+  // Confirm an email address with the emailed token. Idempotent, and answers 200
+  // when the address is already verified so a double-clicked link is not an error.
+  fastify.post('/auth/verify-email', throttled, async (request) => {
+    const { token } = parse(VerifyEmailRequestSchema, request.body);
+
+    let claims: VerifyTokenClaims;
+    try {
+      claims = fastify.jwt.verify(token) as VerifyTokenClaims;
+    } catch {
+      throw new UserError('invalid_token', 'This verification link is invalid or has expired');
+    }
+
+    // `type` is what stops a session or reset token being replayed here.
+    const user = claims.type === 'verify' ? userService.findById(claims.sub) : undefined;
+    // Bound to the address: if the account's email changed after the link was
+    // issued, the stale link must not confirm the new address.
+    if (!user || claims.email !== user.email) {
+      throw new UserError('invalid_token', 'This verification link is invalid or has expired');
+    }
+
+    userService.markEmailVerified(user.id);
+    const updated = userService.findById(user.id) ?? user;
+    // Return a fresh session token so the client picks up emailVerified: true.
+    return issue(fastify, updated);
+  });
+
+  // Re-send the confirmation mail to the signed-in user's address. Authenticated
+  // (so it cannot be used to mail arbitrary addresses) and throttled (so it
+  // cannot be used to flood the owner's inbox).
+  fastify.post(
+    '/auth/resend-verification',
+    { preHandler: fastify.authenticate, config: { rateLimit: config.authRateLimit } },
+    async (request, reply) => {
+      const user = userService.findByUsername(request.user.sub);
+      if (!user) return reply.code(404).send({ success: false, error: 'User not found' });
+      if (user.emailVerifiedAt !== null) return { success: true, alreadyVerified: true };
+      await sendVerification(fastify, user);
+      return { success: true, alreadyVerified: false };
+    },
+  );
 
   // Stateless JWT — logout is client-side (drop the token). Endpoint for symmetry.
   fastify.post('/auth/logout', async () => ({ success: true }));

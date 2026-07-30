@@ -84,6 +84,32 @@ export const authService = {
     return user;
   },
 
+  /** Confirm an email address with the token from the verification email. The
+   *  server returns a fresh session token so `currentUser.emailVerified` flips
+   *  without needing a re-login. */
+  async verifyEmail(token: string): Promise<PublicUser> {
+    const { token: jwt, user } = await post('/auth/verify-email', { token });
+    setToken(jwt);
+    currentUser.set(user);
+    return user;
+  },
+
+  /** Ask the server to re-send the confirmation email to the signed-in user's
+   *  address. Resolves true when the address was already verified. */
+  async resendVerification(): Promise<boolean> {
+    const res = await fetch(`${API_BASE}/auth/resend-verification`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(_token ? { Authorization: `Bearer ${_token}` } : {}) },
+    });
+    if (!res.ok) {
+      let message = `Request failed (${res.status})`;
+      try { const b = await res.json(); if (b?.error) message = b.error; } catch { /* ignore */ }
+      throw new Error(message);
+    }
+    const body = await res.json().catch(() => ({}));
+    return body?.alreadyVerified === true;
+  },
+
   /** Redirect to the server's Google OAuth entry point. */
   loginWithGoogle(): void {
     window.location.href = `${API_BASE}/auth/google`;

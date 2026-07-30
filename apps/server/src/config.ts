@@ -114,6 +114,20 @@ export const config = {
       .filter(Boolean),
   },
 
+  /**
+   * Per-IP rate limits on the credential endpoints (/auth/login, /auth/register,
+   * /auth/forgot-password, /auth/reset-password, /auth/resend-verification).
+   * There was previously no limiting at all, leaving password brute-force and
+   * reset-mail bombing wide open.
+   *
+   * Keyed on request.ip, which is only meaningful because trustProxy is set in
+   * index.ts — behind Caddy without it, every client shares one bucket.
+   */
+  authRateLimit: {
+    max: Number(process.env.SERVER_AUTH_RATE_LIMIT ?? 10),
+    timeWindow: process.env.SERVER_AUTH_RATE_WINDOW ?? '5 minutes',
+  },
+
   /** Redis/BullMQ for the server-side execution pipeline (ExecutionBroker/Worker). */
   redis: {
     host: process.env.SERVER_REDIS_HOST ?? 'localhost',

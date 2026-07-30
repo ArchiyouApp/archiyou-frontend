@@ -34,6 +34,11 @@ export const users = sqliteTable('users', {
   passwordHash: text('password_hash').notNull(),
   name: text('name'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull().default(sql`(unixepoch() * 1000)`),
+  /** When the address was confirmed via an emailed link; null ⇒ unverified.
+   *  Unverified accounts can use the editor but cannot publish or share (see
+   *  requireVerified in routes/scripts.ts). Accounts that predate verification
+   *  are backfilled as verified by the migration. */
+  emailVerifiedAt: integer('email_verified_at', { mode: 'timestamp_ms' }),
 }, (t) => ({
   usernameUnique: uniqueIndex('users_username_unique').on(t.username),
   emailUnique: uniqueIndex('users_email_unique').on(t.email),

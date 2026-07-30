@@ -29,6 +29,13 @@ export const routes: Route[] = [
     component: 'page-reset-password',
     action: async () => { await import('../../pages/reset-password.js'); },
   },
+  {
+    // Landing page for the link in the confirmation email; the server builds
+    // this URL from FRONTEND_URL (apps/server/src/routes/auth.ts).
+    path: '/verify-email',
+    component: 'page-verify-email',
+    action: async () => { await import('../../pages/verify-email.js'); },
+  },
 
   // --- Published configurator (standalone, no nav-bar — embeddable) ---
   {

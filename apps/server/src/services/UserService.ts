@@ -28,7 +28,15 @@ export class UserError extends Error {
 
 /** Client-safe view. `id` is the username handle (== JWT sub == script author). */
 export function toPublicUser(u: UserRow): PublicUser {
-  return { id: u.username, email: u.email, name: u.name, avatarUrl: null, emailVerified: true };
+  return {
+    id: u.username,
+    email: u.email,
+    name: u.name,
+    avatarUrl: null,
+    // Was hardcoded `true` before verification existed, so the client could never
+    // tell. Now reflects the column, which the editor uses to show its banner.
+    emailVerified: u.emailVerifiedAt !== null,
+  };
 }
 
 export class UserService {
@@ -94,6 +102,9 @@ export class UserService {
       passwordHash,
       name: name ?? null,
       createdAt: new Date(),
+      // Unverified until the emailed link is followed. The account is usable
+      // immediately — only publishing and sharing require verification.
+      emailVerifiedAt: null,
     };
     db.insert(users).values(row).run();
     return row;
@@ -116,6 +127,15 @@ export class UserService {
   async setPassword(userId: string, newPassword: string): Promise<void> {
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     db.update(users).set({ passwordHash }).where(eq(users.id, userId)).run();
+  }
+
+  /** Mark an address confirmed. Idempotent: following a verification link twice
+   *  is harmless, and the first timestamp is kept. */
+  markEmailVerified(userId: string): void {
+    db.update(users)
+      .set({ emailVerifiedAt: new Date() })
+      .where(and(eq(users.id, userId), sql`${users.emailVerifiedAt} IS NULL`))
+      .run();
   }
 
   /** Ensure the .env test user exists (idempotent — runs on boot). */

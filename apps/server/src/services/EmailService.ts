@@ -38,6 +38,21 @@ export class EmailService {
     });
   }
 
+  /** Send a "confirm your email address" email with a CTA linking to `link`. */
+  async sendEmailVerification(to: string, link: string): Promise<void> {
+    await this.send({
+      to,
+      subject: 'Confirm your Archiyou email address',
+      html: renderEmail({
+        subject: 'Welcome to Archiyou!',
+        text: 'Please confirm your email address to finish setting up your account. This link expires in 24 hours. Until it is confirmed you can still use the editor, but you will not be able to publish or share scripts.',
+        buttonText: 'Confirm your email',
+        buttonLink: link,
+      }),
+      devNote: `verification link: ${link}`,
+    });
+  }
+
   /** Low-level send. Never throws to callers — a failed/absent send must not leak
    *  whether an account exists (forgot-password always answers 200). */
   private async send({ to, subject, html, devNote }: Message): Promise<void> {

@@ -40,6 +40,12 @@ export const ResetPasswordRequestSchema = Type.Object({
 });
 export type ResetPasswordRequest = Static<typeof ResetPasswordRequestSchema>;
 
+/** Confirm an email address with the token from the verification email. */
+export const VerifyEmailRequestSchema = Type.Object({
+  token: Type.String({ minLength: 1 }),
+});
+export type VerifyEmailRequest = Static<typeof VerifyEmailRequestSchema>;
+
 //// RESPONSES ////
 
 /** The safe, client-facing view of a user (never includes passwordHash). */
@@ -71,4 +77,13 @@ export interface ResetTokenClaims {
   sub: string;      // user id
   type: 'reset';
   pfp: string;      // fingerprint of the password hash at issue time
+}
+
+/** JWT payload for an email-verification link. `type` keeps it from being usable
+ *  as a session or reset token, and `email` binds it to the address that was
+ *  confirmed, so a pending link stops working if the address changes. */
+export interface VerifyTokenClaims {
+  sub: string;      // user id
+  type: 'verify';
+  email: string;    // address being confirmed
 }

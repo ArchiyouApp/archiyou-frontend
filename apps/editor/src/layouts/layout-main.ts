@@ -9,6 +9,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement } from 'lit/decorators.js';
 
 import '@archiyou/ui/nav-bar.js';
+import '../components/verify-email-banner.js';
 
 @customElement('layout-main')
 export class LayoutMain extends LitElement
@@ -18,6 +19,7 @@ export class LayoutMain extends LitElement
   {
     return html`
       <nav-bar></nav-bar>
+      <verify-email-banner></verify-email-banner>
       <div class="content">
         <slot></slot>
       </div>
@@ -34,6 +36,10 @@ export class LayoutMain extends LitElement
     }
 
     nav-bar {
+      flex-shrink: 0;
+    }
+
+    verify-email-banner {
       flex-shrink: 0;
     }
 

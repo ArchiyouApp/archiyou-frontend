@@ -12,6 +12,7 @@ import type { ScriptData, ScriptShared } from '@archiyou/core/src/execution/type
 
 import { config } from '../config';
 import { scriptStore } from '../services/ScriptStore';
+import { userService } from '../services/UserService';
 
 /** Public URL where a published configurator is served (frontend origin). */
 function configuratorUrl(author: string, name: string, version: string): string {
@@ -26,6 +27,30 @@ export async function registerScriptRoutes(fastify: FastifyInstance): Promise<vo
     }
   }
   const auth = { preHandler: [fastify.authenticate, assertSelf] };
+
+  /**
+   * Reject unless the caller's email address has been confirmed.
+   *
+   * Applied only to the routes that make content visible to other people —
+   * publish, share, and setting share metadata. Saving and loading your own
+   * scripts stays open so a new account is usable the moment it is created;
+   * verification is the bar for putting something in front of others, which is
+   * what makes registration spam worth the effort.
+   *
+   * Accounts created before verification existed are grandfathered by migration
+   * 0002, so this cannot lock out existing users.
+   */
+  async function requireVerified(request: FastifyRequest, reply: FastifyReply) {
+    const user = userService.findByUsername(request.user.sub);
+    if (!user || user.emailVerifiedAt === null) {
+      reply.code(403).send({
+        success: false,
+        error: 'Please confirm your email address before publishing or sharing.',
+        code: 'email_not_verified',
+      });
+    }
+  }
+  const authVerified = { preHandler: [fastify.authenticate, assertSelf, requireVerified] };
 
   // The user's scripts (latest version each).
   fastify.get<{ Params: { user: string } }>('/scripts/:user', auth, async (request) => {
@@ -112,7 +137,7 @@ export async function registerScriptRoutes(fastify: FastifyInstance): Promise<vo
   // metadata. Body is the full ScriptData (with `version` + `shared` set).
   fastify.post<{ Params: { user: string; fileId: string } }>(
     '/scripts/:user/:fileId/share',
-    auth,
+    authVerified,
     async (request, reply) => {
       const stored = scriptStore.share(request.user.sub, request.params.fileId, request.body);
       reply.code(201);
@@ -125,7 +150,7 @@ export async function registerScriptRoutes(fastify: FastifyInstance): Promise<vo
   // `published` set).
   fastify.post<{ Params: { user: string; fileId: string } }>(
     '/scripts/:user/:fileId/publish',
-    auth,
+    authVerified,
     async (request, reply) => {
       const body = request.body as ScriptData;
       // Stamp the public configurator URL (built from FRONTEND_URL) so the client
@@ -143,7 +168,7 @@ export async function registerScriptRoutes(fastify: FastifyInstance): Promise<vo
   // { shared: null } / null to un-share.
   fastify.put<{ Params: { user: string; fileId: string }; Body: { shared?: ScriptShared | null } | ScriptShared | null }>(
     '/scripts/:user/:fileId/shared',
-    auth,
+    authVerified,
     async (request) => {
       const body = request.body as { shared?: ScriptShared | null } | ScriptShared | null;
       // Accept either the bare ScriptShared object or a { shared } envelope.

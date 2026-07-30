@@ -46,6 +46,18 @@ export async function serverApiPlugin(fastify: FastifyInstance): Promise<void> {
   // would only get in the way of the /proxy asset route.
   await fastify.register(import('@fastify/helmet'), { contentSecurityPolicy: false });
 
+  // Rate limiting. Registered with `global: false` so it applies only where a
+  // route opts in via `config.rateLimit` — the credential endpoints in
+  // routes/auth.ts. Read/library routes stay unthrottled; a blanket limit would
+  // be wrong for an editor that fans out many script requests per session.
+  await fastify.register(import('@fastify/rate-limit'), {
+    global: false,
+    // In-process store: fine for a single API container. With several API
+    // replicas each keeps its own counters, so the effective limit multiplies —
+    // pass a `redis` connection here if this is ever scaled out.
+    keyGenerator: (request) => request.ip,
+  });
+
   await fastify.register(import('@fastify/jwt'), { secret: config.jwtSecret });
 
   // preHandler that rejects unauthenticated requests.

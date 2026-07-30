@@ -10,6 +10,7 @@
   },
   "scripts": {
     "lint": "tsc --noEmit",
+    "typecheck:own": "node ../../scripts/typecheck-own.mjs packages/ui",
     "test": "vitest run",
     "test:watch": "vitest"
   },

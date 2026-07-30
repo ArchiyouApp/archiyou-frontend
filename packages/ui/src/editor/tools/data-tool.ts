@@ -7,7 +7,7 @@ import '@awesome.me/webawesome/dist/components/option/option.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import { executionResult } from '@archiyou/editor/src/state/workspace';
-import type { ComputedFooterRow } from '../@archiyou/core/src/calc/types.js';
+import type { ComputedFooterRow } from '@archiyou/core/src/calc/types.js';
 
 type DataRow = Record<string, any>;
 type TableData = { rows: DataRow[]; footer: ComputedFooterRow[] };

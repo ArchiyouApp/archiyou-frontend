@@ -10,7 +10,7 @@ import { buildScenegraphPath, executionResult, scenegraph, scriptParams, updateP
 import { formatDimensionValue } from './gltf-annotations.js';
 import { scheduleExecution, resetCameraCounter } from '@archiyou/editor/src/state/viewer';
 import type { ScriptOutputData } from '@archiyou/core/src/execution/types.js';
-import type { SmartSceneNodeData } from '@archiyou/core/src/modeler/types.js';
+import type { SceneNodeData } from '@archiyou/core/src/modeler/types.js';
 import { applyEdgeExtensions, applyPointStyles } from './gltf-edge-extensions.js';
 import { applyAnnotations } from './gltf-annotations.js';
 import type { HtmlLabelDef } from './gltf-annotations.js';
@@ -403,8 +403,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _xrSession?: unknown;
 
   // Node visibility (driven by scenegraph signal, identity by path).
-  private _pendingScenegraph: SmartSceneNodeData | null = null;
-  private _lastAppliedScenegraph: SmartSceneNodeData | null = null;
+  private _pendingScenegraph: SceneNodeData | null = null;
+  private _lastAppliedScenegraph: SceneNodeData | null = null;
   /** Path → Three.js object map rebuilt on every GLB load; matches the
    *  filtering rules used by the runner-side path emitter so paths line up. */
   private _pathToObject = new Map<string, THREE.Object3D>();
@@ -1404,14 +1404,14 @@ export class ModelViewer extends SignalWatcher(LitElement)
   /** Walk the scenegraph; for every node with `style.visible === false`,
    *  look up its Three.js object by path and hide it. Restores previously
    *  user-hidden objects first so toggling back to visible always succeeds. */
-  private _applyScenegraphVisibility(graph: SmartSceneNodeData | null)
+  private _applyScenegraphVisibility(graph: SceneNodeData | null)
   {
     for (const obj of this._userHiddenObjects) obj.visible = true;
     this._userHiddenObjects = [];
 
     if (!graph || !this._currentModel) return;
 
-    const walk = (node: SmartSceneNodeData, parentPath: string) =>
+    const walk = (node: SceneNodeData, parentPath: string) =>
     {
       const path = buildScenegraphPath(parentPath, node.name);
       if (node.style.visible === false)
@@ -1433,7 +1433,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
    *  scenegraph is available, use its canonical names directly so UI paths and
    *  viewer lookups stay aligned after refactors that changed GLTF node names.
    *  For standalone GLBs without state, fall back to inferred object names. */
-  private _buildPathMap(root: THREE.Object3D, graph?: SmartSceneNodeData | null): void
+  private _buildPathMap(root: THREE.Object3D, graph?: SceneNodeData | null): void
   {
     this._pathToObject.clear();
     const geoTypes = ModelViewer._GEO_TYPES;
@@ -1445,7 +1445,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
     {
       const recurWithGraph = (
         obj: THREE.Object3D,
-        node: SmartSceneNodeData,
+        node: SceneNodeData,
         parentPath: string,
       ) =>
       {

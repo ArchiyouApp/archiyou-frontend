@@ -7,7 +7,7 @@ import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@awesome.me/webawesome/dist/components/input/input.js';
 
 import { executionResult } from '@archiyou/editor/src/state/workspace';
-import type { ConsoleMessageType } from '../@archiyou/core/src/console/types';
+import type { ConsoleMessageType } from '@archiyou/core/src/console/types';
 
 const MESSAGE_TYPES: ConsoleMessageType[] = ['error', 'exec', 'geom', 'user', 'warn', 'info'];
 

@@ -7,12 +7,12 @@ import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import { buildScenegraphPath, scenegraph, toggleNodeVisibility, activeBottomPanel, 
     setActiveBottomPanel, selectedPath, setSelectedPath } from '@archiyou/editor/src/state/workspace';
-import type { SmartSceneNodeData } from '@archiyou/core/src/modeler/types.js';
+import type { SceneNodeData } from '@archiyou/core/src/modeler/types.js';
 import { SCENE_EXPLORER_MINIMIZED_TREE_LEVEL } from '@archiyou/editor/src/settings';
 
 /** Pick a row icon by node kind. Layer/group nodes have no held shape;
  *  Mesh/Curve nodes show their geometry icon. */
-function nodeIcon(node: SmartSceneNodeData): string
+function nodeIcon(node: SceneNodeData): string
 {
   if (!node.shape) return 'layer-group'; // container / layer
   // Children-bearing leaf nodes are uncommon; default to cube for shapes.
@@ -39,7 +39,7 @@ export class SceneExplorer extends SignalWatcher(LitElement)
   @state() private _search = '';
 
   /** Track which tree we've seeded expansion for; reset on new tree identity. */
-  private _knownTree?: SmartSceneNodeData;
+  private _knownTree?: SceneNodeData;
 
   /** Last selectedPath we reacted to, so a selection made in the 3D viewer
    *  expands the tree to reveal (and highlight) the matching node. */
@@ -120,7 +120,7 @@ export class SceneExplorer extends SignalWatcher(LitElement)
     `;
   }
 
-  private _renderNode(node: SmartSceneNodeData, parentPath: string, depth: number): HTMLTemplateResult
+  private _renderNode(node: SceneNodeData, parentPath: string, depth: number): HTMLTemplateResult
   {
     const path       = buildScenegraphPath(parentPath, node.name);
     const isHidden   = node.style.visible === false;
@@ -202,7 +202,7 @@ export class SceneExplorer extends SignalWatcher(LitElement)
   };
 
   /** Case-insensitive substring match of a node name against the active query. */
-  private _nodeMatches(node: SmartSceneNodeData): boolean
+  private _nodeMatches(node: SceneNodeData): boolean
   {
     if (!this._search) return false;
     return node.name.toLowerCase().includes(this._search.toLowerCase());
@@ -228,7 +228,7 @@ export class SceneExplorer extends SignalWatcher(LitElement)
 
   /** Walk the tree carrying the list of ancestor paths; when a node matches,
    *  add all its ancestors to the expanded set so the node becomes visible. */
-  private _collectSearchExpansion(node: SmartSceneNodeData, parentPath: string, ancestors: string[], set: Set<string>)
+  private _collectSearchExpansion(node: SceneNodeData, parentPath: string, ancestors: string[], set: Set<string>)
   {
     const path = buildScenegraphPath(parentPath, node.name);
     if (this._nodeMatches(node)) ancestors.forEach(a => set.add(a));
@@ -246,7 +246,7 @@ export class SceneExplorer extends SignalWatcher(LitElement)
     const next = new Set(this._expandedNodes);
     let found = false;
 
-    const walk = (node: SmartSceneNodeData, parentPath: string, ancestors: string[]): void =>
+    const walk = (node: SceneNodeData, parentPath: string, ancestors: string[]): void =>
     {
       if (found) return;
       const path = buildScenegraphPath(parentPath, node.name);
@@ -280,7 +280,7 @@ export class SceneExplorer extends SignalWatcher(LitElement)
 
   /** Collect paths of nodes whose depth is below the minimized level (so their
    *  children remain visible); deeper nodes stay collapsed. */
-  private _collectPathsToDepth(node: SmartSceneNodeData, parentPath: string, depth: number, set: Set<string>)
+  private _collectPathsToDepth(node: SceneNodeData, parentPath: string, depth: number, set: Set<string>)
   {
     const path = buildScenegraphPath(parentPath, node.name);
     if (depth < SCENE_EXPLORER_MINIMIZED_TREE_LEVEL) set.add(path);
@@ -302,7 +302,7 @@ export class SceneExplorer extends SignalWatcher(LitElement)
     this._expandedNodes = next;
   }
 
-  private _collectPaths(node: SmartSceneNodeData, parentPath: string, set: Set<string>)
+  private _collectPaths(node: SceneNodeData, parentPath: string, set: Set<string>)
   {
     const path = buildScenegraphPath(parentPath, node.name);
     set.add(path);

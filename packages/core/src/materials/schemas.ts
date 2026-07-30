@@ -11,9 +11,11 @@
  *  so the `$schema` pointer in materials.json actually resolves.
  */
 
-import { Type, type TSchema } from 'typebox'
+import { Type, type TSchema, type TLiteral } from 'typebox'
 
 import { LCA_MODULES, MATERIAL_PROPERTY_KEYS } from './types'
+
+type LiteralTuple<T extends readonly string[]> = { -readonly [K in keyof T]: TLiteral<T[K] & string> }
 
 /** A measurable property with its canonical unit and citation. */
 export const MaterialPropertySchema = Type.Object({
@@ -78,7 +80,9 @@ export const MATERIAL_GROUPS = [
 
 export const MaterialSchema = Type.Object({
     name:        Type.String({ minLength: 1 }),
-    group:       Type.Union(MATERIAL_GROUPS.map(g => Type.Literal(g))),
+    // `as LiteralTuple` — see ScriptSchema.ts: mapping a const array yields an
+    // array, not a tuple, and Type.Union over a non-tuple infers `never`.
+    group:       Type.Union(MATERIAL_GROUPS.map(g => Type.Literal(g)) as LiteralTuple<typeof MATERIAL_GROUPS>),
     aliases:     Type.Optional(Type.Array(Type.String())),
     description: Type.Optional(Type.String()),
 

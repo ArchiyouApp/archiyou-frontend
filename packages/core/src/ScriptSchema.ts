@@ -10,9 +10,25 @@
  */
 
 import semver from 'semver'
-import { Type, type Static } from 'typebox'
+import { Type, type Static, type TLiteral } from 'typebox'
 
 import { ScriptParamSchema, ParamRecordSchema, ParamPresetsSchema } from './execution/schemas'
+
+/**
+ * Turn a `readonly [...]` of string literals into the *tuple* of `TLiteral`
+ * schemas that `Type.Union` needs to infer a usable union.
+ *
+ * `CONSTS.map(v => Type.Literal(v))` widens to `TLiteral<...>[]` — an array, not
+ * a tuple — and `Static<>` over a union built from a non-tuple resolves to
+ * `never`. That is silent: the schema still validates correctly at runtime, but
+ * every field typed by it becomes `never` (or `undefined` when Optional), so
+ * assigning a perfectly valid licence or delivery value is a type error and the
+ * value is unusable in typed code.
+ *
+ * Keeping the `as const` array as the single source of truth and re-widening the
+ * mapped result to a tuple preserves both the runtime schema and the inferred type.
+ */
+type LiteralTuple<T extends readonly string[]> = { -readonly [K in keyof T]: TLiteral<T[K] & string> }
 
 //// VERSION ////
 
@@ -39,7 +55,9 @@ export const CC_LICENCES = [
     'CC-BY-NC-ND-4.0',
 ] as const
 export type CCLicence = typeof CC_LICENCES[number]
-export const CCLicenceSchema = Type.Union(CC_LICENCES.map((l) => Type.Literal(l)))
+export const CCLicenceSchema = Type.Union(
+    CC_LICENCES.map((l) => Type.Literal(l)) as LiteralTuple<typeof CC_LICENCES>,
+)
 
 //// SHARED ////
 
@@ -58,7 +76,7 @@ export const ScriptSharedSchema = Type.Object({
 export const FULFILLMENT_DELIVERIES = ['anonymous download', 'email', 'pay'] as const
 export type FulfillmentDelivery = typeof FULFILLMENT_DELIVERIES[number]
 export const FulfillmentDeliverySchema = Type.Union(
-    FULFILLMENT_DELIVERIES.map((d) => Type.Literal(d)),
+    FULFILLMENT_DELIVERIES.map((d) => Type.Literal(d)) as LiteralTuple<typeof FULFILLMENT_DELIVERIES>,
 )
 
 /** A fulfillment: a named bundle of outputs (a model, data tables, documents…) the

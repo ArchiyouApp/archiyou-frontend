@@ -645,8 +645,18 @@ export class Library
             } as ScriptPublished,
         })
 
-        // For now, make override params in published.params the same as original ones
-        newScript.published.params = newScript.params;
+        // For now, make override params in published.params the same as original ones.
+        // Serialize them: Script.fromData() hydrates `params` into ScriptParam
+        // *instances*, whereas published.params is plain ScriptParamData. Assigning
+        // the instances directly put internal fields (_value, _behaviours,
+        // _definedProgrammatically) into the published payload, which toData()
+        // exists to strip.
+        if (newScript.published)
+        {
+            newScript.published.params = Object.fromEntries(
+                Object.entries(newScript.params ?? {}).map(([key, param]) => [key, param.toData()]),
+            );
+        }
         return newScript;
     }
 

@@ -75,9 +75,32 @@ The editor's API base URL is baked in **at build time** — see
 
 ### A note on typechecking
 
-`tsc --noEmit` does not currently pass, so CI gates on **build + tests**, not
-types. Individual packages expose a `typecheck` script. The shape of the problem,
-since the raw error counts are misleading:
+**`apps/server` is fully typechecked and gated in CI**
+(`pnpm --filter @archiyou/server typecheck:own`). The rest of the repo is not yet
+clean, so CI gates the remainder on **build + tests**.
+
+Getting the server there needed two things, both worth knowing if you tackle
+another package:
+
+1. `tsconfig` **`paths`** pointing `@archiyou/core/*` at core's source. `tsc`
+   cannot follow core's `"./src/*": "./src/*"` exports map, and unresolved
+   imports are typed as `any` — so the entire server↔core boundary was silently
+   unchecked. Fixing resolution turned 36 "cannot find module" errors into 238
+   real ones. Do **not** "fix" this by changing the exports map to `./src/*.ts`:
+   that breaks the Vite build, because consumers also import with `.js` suffixes.
+2. `"lib": ["ES2022", "DOM"]`, since shared browser/Node code in core and meshup
+   references `window`/`document`/`WebAssembly` behind feature detection.
+
+That left 2 genuine bugs in server code, both now fixed — a JWT payload union
+that was never extended when email-verification tokens were added, and hydrated
+`ScriptParam` instances being assigned where plain `ScriptParamData` was
+expected, leaking internal fields into published payloads.
+
+`typecheck:own` compiles core for real (so every cross-boundary call is checked)
+but only *fails* on diagnostics in `apps/server/src`, ignoring core's own
+backlog. Delete it once core is clean and gate on `tsc` directly.
+
+The remaining backlog, since raw error counts are misleading:
 
 - **`packages/core` reports 260 errors against its own config** (which sets
   `strict: false`). Running `tsc` from `apps/editor` instead reports ~2000,
@@ -87,20 +110,14 @@ since the raw error counts are misleading:
   `PointLike`, `AnyShape`) used without being imported, a leftover from when they
   were ambient globals. `src/annotator/AnnotatorDimensionLine.ts` alone accounts
   for 57.
-- **`tsc` cannot follow `@archiyou/core`'s `"./src/*": "./src/*"` exports map**,
-  so `apps/server` sees 36 unresolved imports. That is not merely cosmetic:
-  unresolved modules are typed as `any`, which *hides* errors. Making resolution
-  work (via `paths`, or by mapping the export to `./src/*.ts`) drops those 36 to
-  1 and reveals 238 genuine type errors underneath.
-  Note that changing the exports map to `./src/*.ts` **breaks the Vite build**,
-  because consumers also import with explicit `.js` suffixes — use tsconfig
-  `paths` instead, which only affects `tsc`.
-- Excluding `src/modeler/brep` from the program does *not* help (260 → 236); it
-  is pulled in transitively by imports regardless.
+- Excluding `src/modeler/brep` (the OpenCascade wrapper) from the program does
+  *not* help — 260 → 236. It is pulled in transitively by imports regardless of
+  `include`/`exclude`, so detaching it means changing code, not config.
 
-So this is a real cleanup task rather than a config tweak, and it should be done
-boundary by boundary — fix resolution first, then the errors it uncovers. Tracked
-as an open issue; good first contributions welcome.
+Suggested order for whoever takes this on: `packages/ui` and `apps/editor` next,
+using the same `paths` + `lib` recipe as the server, then core's mechanical
+missing imports, and only then consider turning `strict` on for core. Tracked as
+an open issue; good first contributions welcome.
 
 ## Configuration
 

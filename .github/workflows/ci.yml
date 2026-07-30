@@ -57,14 +57,20 @@ jobs:
       - name: Core tests
         run: pnpm --filter @archiyou/core test:runner
 
-      # Typechecking is deliberately NOT a gate: `tsc --noEmit` reports ~2000
-      # pre-existing errors, overwhelmingly in packages/core (which predates the
-      # strict config), plus a quirk where tsc cannot follow @archiyou/core's
-      # exports map even though Vite and tsx can. Recorded here for visibility
-      # so the number can be driven down over time.
-      - name: Typecheck (advisory, never fails the build)
+      # A real gate: apps/server/src must typecheck against @archiyou/core's
+      # actual types. tsconfig `paths` makes tsc resolve core (its exports map
+      # defeats tsc, which silently typed the whole boundary as `any`), and this
+      # script ignores only core's own pre-existing backlog. New server code
+      # therefore cannot regress. See apps/server/scripts/typecheck-own.mjs.
+      - name: Typecheck server
+        run: pnpm --filter @archiyou/server typecheck:own
+
+      # The rest of the repo is not yet type-clean (~207 errors in packages/core,
+      # which predates the strict config). Advisory only, so the number is visible
+      # and can be driven down. See the README for the breakdown.
+      - name: Typecheck core (advisory, never fails the build)
         continue-on-error: true
-        run: pnpm --filter @archiyou/server typecheck
+        run: pnpm --filter @archiyou/core typecheck
 
   # The deployment config is executable, so it gets checked like code: a broken
   # Caddyfile means the reverse proxy will not start. This caught `auto_https on`,

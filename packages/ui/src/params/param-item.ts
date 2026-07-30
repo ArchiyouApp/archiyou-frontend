@@ -1,10 +1,18 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
+import './param-help.js';
 
 import type { ScriptParam } from '@archiyou/editor/src/state/workspace';
 import { toVariableName, isProgrammatic } from '@archiyou/editor/src/state/workspace';
+
+/** UI density of a parameter row.
+ *  - `compact`      — the editor's authoring row: one dense line, grip + inline
+ *                     edit/delete actions.
+ *  - `presentation` — the configurator's end-user row: taller, no authoring
+ *                     affordances, friendly label with a "?" description hint. */
+export type ParamUIMode = 'compact' | 'presentation';
 
 @customElement('param-item')
 export class ParamItem extends LitElement
@@ -14,6 +22,11 @@ export class ParamItem extends LitElement
   /** Set by the param menu from a dynamic enableIf() behaviour. Reflected so CSS
    *  (:host([disabled])) can dim the row and block interaction with the control. */
   @property({ type: Boolean, reflect: true }) disabled = false;
+  /** Reflected so the presentation layout can be selected purely in CSS. */
+  @property({ type: String, reflect: true }) mode: ParamUIMode = 'compact';
+  /** Set when the slotted control draws its own label row (the number control in
+   *  presentation mode puts label and value box on one line above its slider). */
+  @property({ type: Boolean }) hideLabel = false;
 
   @state() private _editingLabel = false;
   @state() private _labelDraft = '';
@@ -24,6 +37,29 @@ export class ParamItem extends LitElement
   // ── Render ──
 
   override render()
+  {
+    return this.mode === 'presentation'
+      ? this._renderPresentation()
+      : this._renderCompact();
+  }
+
+  /** End-user row: "? LABEL" above a full-width control. When `hideLabel` is set
+   *  the control supplies its own label row and we only host the control. */
+  private _renderPresentation()
+  {
+    const label = this.param?.label || this.param?.name || '';
+
+    return html`
+      ${this.hideLabel ? nothing : html`
+        <div class="pres-label-row">
+          <param-help .text=${this.param?.description ?? ''}></param-help>
+          <span class="pres-label" title=${this.param?.description ?? ''}>${label}</span>
+        </div>`}
+      <div class="pres-slot"><slot></slot></div>
+    `;
+  }
+
+  private _renderCompact()
   {
     const programmatic = isProgrammatic(this.param);
 
@@ -96,7 +132,7 @@ export class ParamItem extends LitElement
   override connectedCallback()
   {
     super.connectedCallback();
-    if (!this.readonly)
+    if (!this.readonly && this.mode !== 'presentation')
     {
       this.setAttribute('draggable', 'true');
       this.addEventListener('dragstart', this._onDragStart);
@@ -337,6 +373,43 @@ export class ParamItem extends LitElement
     .confirm-no:hover {
       background: color-mix(in srgb, var(--color-border) 40%, transparent);
     }
+
+    /* ── Presentation mode (configurator) ──
+       Taller row, no authoring affordances, label above a full-width control. */
+
+    :host([mode="presentation"]) {
+      display: block;
+      height: auto;
+      padding: var(--space-sm) var(--space-lg);
+    }
+
+    :host([mode="presentation"]:hover) { background: var(--color-bg-elevated); }
+
+    .pres-label-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      min-height: 18px;
+      margin-bottom: 2px;
+    }
+
+    .pres-label {
+      color: var(--color-text);
+      font-size: var(--text-sm);
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+
+    .pres-slot {
+      display: block;
+      width: 100%;
+    }
+
+    :host([mode="presentation"][disabled]) .pres-label-row { opacity: 0.5; }
+    :host([mode="presentation"][disabled]) .pres-slot { opacity: 0.45; pointer-events: none; }
   `;
 }
 

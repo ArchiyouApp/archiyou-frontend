@@ -7,8 +7,10 @@ import '@awesome.me/webawesome/dist/components/tooltip/tooltip.js';
 
 import './configurator-presets.js';
 import './configurator-params.js';
+import '../unit-switch.js';
 
 import { configuratorUnitSystem, setConfiguratorUnitSystem } from '@archiyou/editor/src/state/workspace';
+import type { UnitSystem } from '@archiyou/core/src/units/UnitConverter';
 
 @customElement('configurator-controls')
 export class ConfiguratorControls extends SignalWatcher(LitElement)
@@ -21,16 +23,11 @@ export class ConfiguratorControls extends SignalWatcher(LitElement)
     return html`
       <div class="unit-toggle-row">
         <wa-icon library="lucide" name="ruler"></wa-icon>
-        <div class="unit-seg" role="group">
-          <button
-            class=${`seg-btn ${sys === 'metric' ? 'active' : ''}`}
-            @click=${() => setConfiguratorUnitSystem('metric')}
-          >Metric <span class="seg-hint">mm</span></button>
-          <button
-            class=${`seg-btn ${sys === 'imperial' ? 'active' : ''}`}
-            @click=${() => setConfiguratorUnitSystem('imperial')}
-          >Imperial <span class="seg-hint">in</span></button>
-        </div>
+        <unit-switch
+          .value=${sys}
+          @unit-system-change=${(e: CustomEvent<UnitSystem>) => setConfiguratorUnitSystem(e.detail)}
+        ></unit-switch>
+        <span class="unit-spacer"></span>
         <span id="unit-help" class="unit-help"><wa-icon library="lucide" name="circle-help"></wa-icon></span>
         <wa-tooltip for="unit-help" placement="bottom">
           Choose how measurements are shown for you. Metric uses millimetres (mm); Imperial uses inches (in).
@@ -61,12 +58,14 @@ export class ConfiguratorControls extends SignalWatcher(LitElement)
       display: block;
     }
 
+    /* Same gap + inline padding as the Presets/Parameters headers below, so the
+       ruler icon lines up with their section icons. */
     .unit-toggle-row
     {
       display: flex;
       align-items: center;
       gap: var(--space-sm);
-      padding: var(--space-sm) var(--space-lg);
+      padding: var(--space-sm) var(--space-md);
       border-bottom: 1px solid var(--color-border);
       background: var(--color-bg-elevated);
     }
@@ -77,40 +76,7 @@ export class ConfiguratorControls extends SignalWatcher(LitElement)
       color: var(--color-text-muted, #888);
     }
 
-    .unit-seg
-    {
-      display: inline-flex;
-      align-items: stretch;
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-sm, 4px);
-      overflow: hidden;
-    }
-
-    .seg-btn
-    {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: var(--space-xs) var(--space-md);
-      border: none;
-      background: var(--color-bg);
-      color: var(--color-text-muted);
-      font-family: var(--font-sans);
-      font-size: var(--text-sm);
-      cursor: pointer;
-    }
-
-    .seg-btn + .seg-btn { border-left: 1px solid var(--color-border); }
-
-    .seg-btn:hover { background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg)); }
-
-    .seg-btn.active
-    {
-      background: var(--color-primary);
-      color: var(--color-bg);
-    }
-
-    .seg-hint { font-size: var(--text-xs); opacity: 0.7; }
+    .unit-spacer { flex: 1; }
 
     .unit-help
     {

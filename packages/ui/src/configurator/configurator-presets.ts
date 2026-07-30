@@ -3,13 +3,13 @@ import { customElement } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
-import '@awesome.me/webawesome/dist/components/button/button.js';
 
 import {
-  presetMenuCollapsed,
-  setPresetMenuCollapsed,
-} from '@archiyou/editor/src/state/workspace';
-import { configuratorPresets, applyConfiguratorPreset } from '@archiyou/editor/src/state/configurator';
+  configuratorPresets,
+  applyConfiguratorPreset,
+  configuratorPresetMenuCollapsed,
+  setConfiguratorPresetMenuCollapsed,
+} from '@archiyou/editor/src/state/configurator';
 
 @customElement('configurator-presets')
 export class ConfiguratorPresets extends SignalWatcher(LitElement)
@@ -23,7 +23,7 @@ export class ConfiguratorPresets extends SignalWatcher(LitElement)
     this.toggleAttribute('hidden', presets.length === 0);
     if (presets.length === 0) return nothing;
 
-    const collapsed = presetMenuCollapsed.get();
+    const collapsed = configuratorPresetMenuCollapsed.get();
 
     return html`
       <div class="header" @click=${this._toggleCollapse}>
@@ -36,11 +36,9 @@ export class ConfiguratorPresets extends SignalWatcher(LitElement)
       ${!collapsed ? html`
         <div class="preset-grid">
           ${presets.map(p => html`
-            <wa-button
-              size="small"
-              appearance="outlined"
-              @click=${() => applyConfiguratorPreset(p.name)}
-            >${p.name}</wa-button>
+            <button class="preset-btn" title=${`Apply preset "${p.name}"`}
+              @click=${() => this._apply(p.name)}
+            >${p.name}</button>
           `)}
         </div>
       ` : nothing}
@@ -48,9 +46,23 @@ export class ConfiguratorPresets extends SignalWatcher(LitElement)
   }
 
   // ── 4. Behaviour & Methods ──
+
+  /** Applying a preset only writes the configurator's runtime values; the page
+   *  re-runs the script off `configurator-params-changed`, so announce it here
+   *  too (the param controls never fire for a programmatic change). */
+  private _apply(name: string)
+  {
+    applyConfiguratorPreset(name);
+    this.dispatchEvent(new CustomEvent('configurator-params-changed', {
+      bubbles:  true,
+      composed: true,
+      detail:   { preset: name },
+    }));
+  }
+
   private _toggleCollapse()
   {
-    setPresetMenuCollapsed(!presetMenuCollapsed.get());
+    setConfiguratorPresetMenuCollapsed(!configuratorPresetMenuCollapsed.get());
   }
 
   // ── 5. Styles ──
@@ -97,9 +109,36 @@ export class ConfiguratorPresets extends SignalWatcher(LitElement)
     {
       display: flex;
       flex-wrap: wrap;
-      gap: var(--space-sm);
-      padding: var(--space-md);
+      gap: var(--space-xs);
+      padding: var(--space-sm) var(--space-lg) var(--space-md);
       background: var(--color-bg);
+    }
+
+    /* Deliberately a step below the section headers in the type hierarchy. */
+    .preset-btn
+    {
+      font-family: var(--font-sans);
+      font-size: var(--text-xs);
+      line-height: 1;
+      color: var(--color-text);
+      background: var(--color-bg-elevated);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-full, 100px);
+      padding: 5px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .preset-btn:hover
+    {
+      border-color: var(--color-primary);
+      color: var(--color-primary);
+      background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg-elevated));
+    }
+
+    .preset-btn:active
+    {
+      background: color-mix(in srgb, var(--color-primary) 16%, var(--color-bg-elevated));
     }
   `;
 }

@@ -159,6 +159,8 @@ export class ParamMenu extends SignalWatcher(LitElement)
         <param-define-menu
           ?open=${this._defineMenuOpen}
           .editParam=${this._editingParam}
+          .groups=${this._groups()}
+          .defaultGroup=${this._activeTab}
           @param-define=${this._handleParamDefine}
           @param-define-cancel=${this._handleDefineCancel}
         ></param-define-menu>

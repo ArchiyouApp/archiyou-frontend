@@ -2,6 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 
+import type { ParamUIMode } from './param-item.js';
 import type { ScriptParam } from '@archiyou/editor/src/state/workspace';
 import { paramValue, paramMinLength, paramMaxLength } from '@archiyou/editor/src/state/workspace';
 
@@ -31,6 +32,12 @@ export class ParamItemText extends LitElement
     // ── 2. State & Properties ──
 
     @property({ attribute: false }) param!: ScriptParam;
+    /** UI density — see ParamUIMode. */
+    @property({ type: String, reflect: true }) mode: ParamUIMode = 'compact';
+    /** Externally-owned value (the configurator's runtime value); `undefined`
+     *  falls back to the param's own value. */
+    @property({ attribute: false }) value: string | undefined = undefined;
+
     @state() private _value = '';
     @state() private _error = '';
 
@@ -39,12 +46,18 @@ export class ParamItemText extends LitElement
     override connectedCallback()
     {
         super.connectedCallback();
-        this._value = String((this.param ? paramValue(this.param) : '') ?? '');
+        this._sync();
     }
 
     override updated(changed: Map<string, unknown>)
     {
-        if (changed.has('param')) this._value = String((this.param ? paramValue(this.param) : '') ?? '');
+        if (changed.has('param') || changed.has('value')) this._sync();
+    }
+
+    private _sync()
+    {
+        const v = this.value !== undefined ? this.value : (this.param ? paramValue(this.param) : '');
+        this._value = String(v ?? '');
     }
 
     // ── 4. Behaviour ──
@@ -122,6 +135,9 @@ export class ParamItemText extends LitElement
         }
 
         .input.invalid { border-color: var(--color-alert); }
+
+        /* Presentation mode (configurator): roomier input for end users. */
+        :host([mode="presentation"]) .input { padding: 5px 8px; }
 
         .error
         {

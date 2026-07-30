@@ -45,10 +45,14 @@ export class ConfiguratorMetricBar extends SignalWatcher(LitElement)
           </button>
         ` : ''}
 
-        <button class="download-btn" title="Download" @click=${this._handleDownload}>
-          <wa-icon library="lucide" name="download"></wa-icon>
-          <span>Download</span>
-        </button>
+        <div class="download-wrap">
+          <button class="download-btn" title="Download" @click=${this._handleDownload}>
+            <wa-icon library="lucide" name="download"></wa-icon>
+            <span>Download</span>
+            <!-- Caret: opens the per-format option list (wired up later). -->
+            <wa-icon class="download-caret" library="lucide" name="chevron-down"></wa-icon>
+          </button>
+        </div>
       </div>
     `;
   }
@@ -197,26 +201,42 @@ export class ConfiguratorMetricBar extends SignalWatcher(LitElement)
       color: var(--color-text);
     }
 
-    .download-btn
+    .download-wrap
     {
       flex-shrink: 0;
       display: flex;
       align-items: center;
-      gap: var(--space-xs);
       padding: 0 var(--space-md);
-      border: none;
       border-left: 1px solid var(--color-border);
-      background: var(--color-bg);
-      color: var(--color-primary);
+    }
+
+    .download-btn
+    {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      padding: var(--space-sm) var(--space-md);
+      border: none;
+      border-radius: var(--radius-md, 8px);
+      background: var(--color-primary);
+      color: var(--color-white, #fff);
       cursor: pointer;
       font-family: var(--font-sans);
       font-size: var(--text-sm);
-      font-weight: 500;
+      font-weight: 600;
+      white-space: nowrap;
     }
 
     .download-btn:hover
     {
-      background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+      background: color-mix(in srgb, var(--color-black, #000) 12%, var(--color-primary));
+    }
+
+    .download-caret
+    {
+      margin-left: var(--space-xs);
+      font-size: var(--text-xs);
+      opacity: 0.85;
     }
 
     .empty

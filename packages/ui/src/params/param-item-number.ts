@@ -4,7 +4,9 @@ import { live } from 'lit/directives/live.js';
 import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
+import './param-help.js';
 
+import type { ParamUIMode } from './param-item.js';
 import type { ScriptParam } from '@archiyou/editor/src/state/workspace';
 import { paramMin, paramMax, paramStep, paramValue } from '@archiyou/editor/src/state/workspace';
 import { scriptUnitSystem, configuratorUnitSystem, scriptModelUnits } from '@archiyou/editor/src/state/workspace';
@@ -46,68 +48,107 @@ export class ParamItemNumber extends SignalWatcher(LitElement)
             ? formatImperial(toMM(this._value, src), { unit: display })
             : null;
 
+        const slider = html`
+            <input
+                type="range"
+                class="slider"
+                min=${min}
+                max=${max}
+                step=${step}
+                .value=${live(String(displayValue))}
+                @input=${this._onSlider}
+            />
+        `;
+
+        const numUnit = html`
+            <div class="num-unit">
+                <input
+                    type="number"
+                    class="num"
+                    min=${min}
+                    max=${max}
+                    step=${step}
+                    .value=${numStr}
+                    @focus=${() => { this._focused = true; }}
+                    @blur=${() => { this._focused = false; }}
+                    @input=${this._onNumberInput}
+                    @change=${this._onNumber}
+                />
+                ${this._renderUnitSelect(src, display)}
+            </div>
+        `;
+
+        const dec = html`
+            <button class="step-btn" title="Decrement" @click=${this._decrement}>
+                <wa-icon library="lucide" name="chevron-left"></wa-icon>
+            </button>`;
+        const inc = html`
+            <button class="step-btn" title="Increment" @click=${this._increment}>
+                <wa-icon library="lucide" name="chevron-right"></wa-icon>
+            </button>`;
+        const frac = fracHint
+            ? html`<span class="frac-hint" title="Fractional inches">${fracHint}</span>`
+            : '';
+
+        // Presentation: label + value box share the top line, the slider gets the
+        // full menu width underneath, flanked by the step arrows.
+        if (this.mode === 'presentation')
+        {
+            return html`
+                <div class="wrap pres"
+                    @mousedown=${(e: MouseEvent) => e.stopPropagation()}
+                    @dragstart=${(e: DragEvent) => e.stopPropagation()}
+                >
+                    <div class="pres-top">
+                        <param-help .text=${this.param?.description ?? ''}></param-help>
+                        <span class="pres-label">${this.param?.label || this.param?.name}</span>
+                        <span class="pres-spacer"></span>
+                        ${frac}
+                        ${numUnit}
+                    </div>
+                    <div class="pres-bottom">
+                        ${dec}
+                        ${slider}
+                        ${inc}
+                    </div>
+                </div>
+            `;
+        }
+
         return html`
             <div class="wrap"
                 @mousedown=${(e: MouseEvent) => e.stopPropagation()}
                 @dragstart=${(e: DragEvent) => e.stopPropagation()}
             >
-                <input
-                    type="range"
-                    class="slider"
-                    min=${min}
-                    max=${max}
-                    step=${step}
-                    .value=${live(String(displayValue))}
-                    @input=${this._onSlider}
-                />
-
-                <button class="step-btn" title="Decrement" @click=${this._decrement}>
-                    <wa-icon library="lucide" name="chevron-left"></wa-icon>
-                </button>
-
-                <div class="num-unit">
-                    <input
-                        type="number"
-                        class="num"
-                        min=${min}
-                        max=${max}
-                        step=${step}
-                        .value=${numStr}
-                        @focus=${() => { this._focused = true; }}
-                        @blur=${() => { this._focused = false; }}
-                        @input=${this._onNumberInput}
-                        @change=${this._onNumber}
-                    />
-                    ${this._renderUnitSelect(src, display)}
-                </div>
-
-                ${fracHint ? html`<span class="frac-hint" title="Fractional inches">${fracHint}</span>` : ''}
-
-                <button class="step-btn" title="Increment" @click=${this._increment}>
-                    <wa-icon library="lucide" name="chevron-right"></wa-icon>
-                </button>
+                ${slider}
+                ${dec}
+                ${numUnit}
+                ${frac}
+                ${inc}
             </div>
         `;
     }
 
-    /** Unit dropdown. In the editor it authors the param's unit (incl. '—' none);
-     *  in the configurator it is a display-unit override within the end-user's
-     *  system (no '—', and disabled for unitless params). */
+    /** The unit shown after the number.
+     *
+     *  Editor (authoring): a dropdown that sets the param's unit, including the
+     *  '—' none sentinel.
+     *  Configurator (end-user): a plain read-only label — end-users pick a unit
+     *  *system* once in the header, and a per-param unit picker only adds noise. */
     private _renderUnitSelect(src: ModelUnits | null, display: ModelUnits | null)
     {
         const system = this._displaySystem();
-        const editor = this.context === 'editor';
 
-        if (!editor && !src)
+        if (this.context !== 'editor')
         {
-            // Configurator + unitless param → nothing to convert/choose.
-            return html`<select class="unit" disabled title="No unit"><option>—</option></select>`;
+            // Unitless param → no label at all (the box then spans the full width).
+            if (!src || !display) return '';
+            return html`<span class="unit-label">${display}</span>`;
         }
 
         return html`
-            <select class="unit" @change=${this._onUnit}
-                title=${editor ? 'Parameter unit' : 'Display unit'}>
-                ${editor ? html`<option value=${NONE_UNIT} ?selected=${!src}>—</option>` : ''}
+            <select class="unit" @change=${this._onUnit} title="Parameter unit">
+                <option value=${NONE_UNIT} ?selected=${!src}>—</option>
                 ${UNIT_SYSTEMS[system].map(u => html`
                     <option value=${u} ?selected=${u === display}>${u}</option>
                 `)}
@@ -128,12 +169,17 @@ export class ParamItemNumber extends SignalWatcher(LitElement)
      *  system, dropdown overrides the display unit only). */
     @property({ type: String }) context: 'editor' | 'configurator' = 'editor';
 
+    /** UI density — see ParamUIMode. */
+    @property({ type: String, reflect: true }) mode: ParamUIMode = 'compact';
+
+    /** Externally-owned value. The configurator keeps end-user values in its own
+     *  signal (never on the shared ScriptParam), so it hands the current value in
+     *  here; without it a preset could change the value with no visible effect.
+     *  `undefined` → fall back to the param's own value. */
+    @property({ attribute: false }) value: number | undefined = undefined;
+
     @state() private _value = 0;
     @state() private _focused = false;
-
-    // User's chosen display unit (within the active system). Display-only —
-    // it never mutates the param's stored value or authored units.
-    @state() private _displayUnitOverride: ModelUnits | null = null;
 
     // Tracks the display system so a Metric/Imperial switch can snap the value.
     private _lastDisplaySystem: UnitSystem | null = null;
@@ -151,9 +197,9 @@ export class ParamItemNumber extends SignalWatcher(LitElement)
         // 1. Sync the displayed value from the param state, but only when the
         // external value actually differs — prevents resetting a slider that
         // the user is actively dragging (mid-drag _value ≠ committed param value).
-        if (changed.has('param'))
+        if (changed.has('param') || changed.has('value'))
         {
-            const external = this.param ? paramValue(this.param) : undefined;
+            const external = this._externalValue();
             if (external !== undefined && Number(external) !== this._value)
             {
                 this._syncValue();
@@ -191,20 +237,25 @@ export class ParamItemNumber extends SignalWatcher(LitElement)
     }
 
     /** The unit to display in: the source unit when already in the display
-     *  system, else an auto-picked best unit (or the user's in-system override). */
+     *  system, else an auto-picked best unit for that system. */
     private _displayUnit(src: ModelUnits): ModelUnits
     {
         const system = this._displaySystem();
-        const override = this._displayUnitOverride;
-        if (override && systemOfUnit(override) === system) return override;
-
         if (systemOfUnit(src) === system) return src;
         return pickBestUnit(toMM(paramMax(this.param), src), system);
     }
 
+    /** The value owned outside this component: the caller's `value` when given
+     *  (configurator), otherwise the param's own runtime/default value. */
+    private _externalValue(): any
+    {
+        if (this.value !== undefined && this.value !== null) return this.value;
+        return this.param ? paramValue(this.param) : undefined;
+    }
+
     private _syncValue()
     {
-        const v = this.param ? paramValue(this.param) : undefined;
+        const v = this._externalValue();
         this._value = (v !== undefined && v !== null) ? Number(v) : (this.param ? paramMin(this.param) : 0);
     }
 
@@ -272,21 +323,13 @@ export class ParamItemNumber extends SignalWatcher(LitElement)
         this._dispatchValue(clamped);
     }
 
+    /** Editor only (the configurator renders a read-only unit label): author the
+     *  param's unit — a real ModelUnits, or the '—' sentinel for explicitly
+     *  unitless. The value stays the same number in the new unit. */
     private _onUnit(e: Event)
     {
-        const chosen = (e.target as HTMLSelectElement).value;
-
-        if (this.context === 'configurator')
-        {
-            // Display-only: choose which unit within the active system to show.
-            this._displayUnitOverride = chosen ? (chosen as ModelUnits) : null;
-            return;
-        }
-
-        // Editor: author the param's unit (a real ModelUnits, or the '—' sentinel
-        // for explicitly unitless). Value stays the same number in the new unit.
         this.dispatchEvent(new CustomEvent('param-value-change', {
-            detail:   { name: this.param.name, units: chosen },
+            detail:   { name: this.param.name, units: (e.target as HTMLSelectElement).value },
             bubbles:  true,
             composed: true,
         }));
@@ -419,6 +462,22 @@ export class ParamItemNumber extends SignalWatcher(LitElement)
 
         .unit:focus { outline: none; }
 
+        /* Read-only unit label (configurator) — same footprint as .unit so the
+           number box keeps its width whichever variant is rendered. */
+        .unit-label
+        {
+            flex-shrink:  0;
+            display:      inline-flex;
+            align-items:  center;
+            width:        38px;
+            font-family:  var(--font-sans);
+            font-size:    var(--text-xs);
+            color:        var(--color-gray-dark, #666);
+            background:   var(--color-bg-elevated);
+            padding:      1px 6px;
+            user-select:  none;
+        }
+
         .frac-hint
         {
             /* Fixed width so the fractional-inch text (e.g. 15/16" vs 1 15/16")
@@ -435,6 +494,54 @@ export class ParamItemNumber extends SignalWatcher(LitElement)
             color:         var(--color-text-muted, #888);
             white-space:   nowrap;
         }
+
+        /* ── Presentation mode (configurator) ──
+           Row 1: "? LABEL … [value][unit]".  Row 2: ‹ full-width slider ›. */
+
+        .wrap.pres
+        {
+            display:        flex;
+            flex-direction: column;
+            align-items:    stretch;
+            gap:            var(--space-xs);
+        }
+
+        .pres-top
+        {
+            display:     flex;
+            align-items: center;
+            gap:         var(--space-xs);
+            min-height:  24px;
+        }
+
+        .pres-label
+        {
+            font-family:   var(--font-sans);
+            font-size:     var(--text-sm);
+            font-weight:   500;
+            color:         var(--color-text);
+            overflow:      hidden;
+            text-overflow: ellipsis;
+            white-space:   nowrap;
+            min-width:     0;
+        }
+
+        .pres-spacer { flex: 1; min-width: var(--space-sm); }
+
+        .pres-bottom
+        {
+            display:     flex;
+            align-items: center;
+            gap:         var(--space-xs);
+            width:       100%;
+        }
+
+        .wrap.pres .slider { flex: 1 1 auto; height: 18px; }
+
+        .wrap.pres .step-btn { width: 20px; height: 24px; font-size: 12px; }
+
+        /* Narrower than the editor's box: no unit dropdown to make room for. */
+        .wrap.pres .num-unit { width: 100px; height: 26px; }
     `;
 }
 

@@ -391,6 +391,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
   private _pendingResetCount     = 0;
   private _lastHandledResetCount = 0;
   private _forceFrameOnNextLoad  = false;
+  /** Bounding-sphere radius the camera was last framed for. Drives the
+   *  outgrown-model re-frame in _refitIfOutgrown(). */
+  private _framedRadius = 0;
 
   // View-style override tracking
   private _savedMaterials = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
@@ -1775,6 +1778,10 @@ export class ModelViewer extends SignalWatcher(LitElement)
       this._hasFramedCamera = true;
       this._forceFrameOnNextLoad = false;
     }
+    else
+    {
+      this._refitIfOutgrown(model);
+    }
 
     // Store animations for user selection — don't auto-play
     if (gltf.animations.length)
@@ -2029,6 +2036,39 @@ export class ModelViewer extends SignalWatcher(LitElement)
     }));
   }
 
+  /** A parameter change can make a model dramatically bigger than the one the
+   *  camera was framed for — enough that the viewer ends up inside the geometry
+   *  and the user sees a flat wall of colour. Re-frame when the model has both
+   *  outgrown its last framing *and* swallowed the camera; a model that merely
+   *  grew but is still comfortably in view keeps the user's chosen viewpoint. */
+  private _refitIfOutgrown(obj: THREE.Object3D)
+  {
+    if (!this._hasFramedCamera || this._framedRadius <= 0) return;
+
+    const box = new THREE.Box3().setFromObject(obj);
+    if (box.isEmpty()) return;
+
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    if (sphere.radius <= 0) return;
+
+    const outgrown = sphere.radius > this._framedRadius * ModelViewer._REFRAME_GROWTH_FACTOR;
+    if (!outgrown) return;
+
+    // "Too close": the camera sits inside (or barely outside) the model's
+    // bounding sphere, so most of the view is filled by near geometry.
+    const activeCamera = this._isOrtho ? (this._orthoCamera ?? this._camera) : this._camera;
+    const camDistance = activeCamera.position.distanceTo(sphere.center);
+    if (camDistance > sphere.radius * ModelViewer._REFRAME_PROXIMITY_FACTOR) return;
+
+    this._frameCamera(obj);
+  }
+
+  /** How much bigger a reloaded model must be before an auto re-frame is even
+   *  considered (bounding-sphere radius ratio). */
+  private static readonly _REFRAME_GROWTH_FACTOR = 2.5;
+  /** Camera counts as "too close" within this multiple of the bounding radius. */
+  private static readonly _REFRAME_PROXIMITY_FACTOR = 1.25;
+
   private _frameCamera(obj: THREE.Object3D)
   {
     const box = new THREE.Box3().setFromObject(obj);
@@ -2036,6 +2076,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     const center = box.getCenter(new THREE.Vector3());
     const sphere = box.getBoundingSphere(new THREE.Sphere());
+    this._framedRadius = sphere.radius;
     const activeCamera = this._isOrtho ? (this._orthoCamera ?? this._camera) : this._camera;
     const currentViewVector = activeCamera.position.clone().sub(this._controls.target);
     const viewDirection = currentViewVector.lengthSq() > 0

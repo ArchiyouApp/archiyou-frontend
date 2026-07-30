@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
+import type { ParamUIMode } from './param-item.js';
 import type { ScriptParam } from '@archiyou/editor/src/state/workspace';
 import { paramValue, paramOptions } from '@archiyou/editor/src/state/workspace';
 
@@ -34,6 +35,12 @@ export class ParamItemOptions extends LitElement
     // ── 2. State & Properties ──
 
     @property({ attribute: false }) param!: ScriptParam;
+    /** UI density — see ParamUIMode. */
+    @property({ type: String, reflect: true }) mode: ParamUIMode = 'compact';
+    /** Externally-owned value (the configurator's runtime value); `undefined`
+     *  falls back to the param's own value. */
+    @property({ attribute: false }) value: string | number | undefined = undefined;
+
     @state() private _value = '';
 
     // ── 3. Lifecycle ──
@@ -41,15 +48,18 @@ export class ParamItemOptions extends LitElement
     override connectedCallback()
     {
         super.connectedCallback();
-        this._value = String(this.param ? (paramValue(this.param) ?? '') : '');
+        this._sync();
     }
 
     override updated(changed: Map<string, unknown>)
     {
-        if (changed.has('param'))
-        {
-            this._value = String(this.param ? (paramValue(this.param) ?? '') : '');
-        }
+        if (changed.has('param') || changed.has('value')) this._sync();
+    }
+
+    private _sync()
+    {
+        const v = this.value !== undefined ? this.value : (this.param ? paramValue(this.param) : '');
+        this._value = String(v ?? '');
     }
 
     // ── 4. Behaviour ──
@@ -93,6 +103,13 @@ export class ParamItemOptions extends LitElement
         {
             outline:      none;
             border-color: var(--color-primary);
+        }
+
+        /* Presentation mode (configurator): roomier select for end users. */
+        :host([mode="presentation"]) .select
+        {
+            font-size: var(--text-sm);
+            padding:   5px 8px;
         }
     `;
 }

@@ -12,6 +12,7 @@ import {
   deletePreset,
   renamePreset,
   activatePreset,
+  scheduleExecution,
 } from '@archiyou/editor/src/state/workspace';
 
 import type { ScriptPreset } from '@archiyou/editor/src/state/workspace';
@@ -132,7 +133,7 @@ export class PresetsMenu extends SignalWatcher(LitElement)
               </button>`
           : html`
               <button class="action-btn activate-btn" title="Apply preset"
-                  @click=${(e: Event) => { e.stopPropagation(); activatePreset(preset.name); }}>
+                  @click=${(e: Event) => { e.stopPropagation(); this._apply(preset.name); }}>
                 <wa-icon library="lucide" name="play"></wa-icon>
                 Apply
               </button>
@@ -143,6 +144,17 @@ export class PresetsMenu extends SignalWatcher(LitElement)
         }
       </div>
     `;
+  }
+
+  // ── Apply ──
+
+  /** Apply a preset's values and re-run. The editor only re-executes off
+   *  `param-value-change` from <param-menu>; a preset writes the values straight
+   *  onto the script, so it has to ask for the run itself. */
+  private _apply(name: string)
+  {
+    activatePreset(name);
+    scheduleExecution();
   }
 
   // ── Rename ──

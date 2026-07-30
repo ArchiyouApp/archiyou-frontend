@@ -25,9 +25,12 @@ export class ConfiguratorMetricCard extends LitElement
       <div class="card">
         <div class="header">
           <wa-icon class="card-icon" library="lucide" name=${icon}></wa-icon>
-          <span class="card-label">${label}</span>
+          <span class="card-label" title=${label}>${label}</span>
         </div>
-        <div class="card-value">${pre}${value}<span class="card-unit">${unit}</span></div>
+        <div class="value-row">
+          <span class="card-value">${pre}${value}</span>
+          ${unit ? html`<span class="card-unit">${unit}</span>` : ''}
+        </div>
       </div>
     `;
   }
@@ -50,11 +53,11 @@ export class ConfiguratorMetricCard extends LitElement
       flex-direction: column;
       justify-content: center;
       gap: var(--space-xs);
-      padding: var(--space-sm) var(--space-md);
+      padding: var(--space-sm) var(--space-xl);
       background: var(--color-bg-elevated);
       border-right: 1px solid var(--color-border);
-      min-width: 120px;
-      max-width: 180px;
+      min-width: 160px;
+      max-width: 240px;
       height: 100%;
       box-sizing: border-box;
     }
@@ -73,14 +76,28 @@ export class ConfiguratorMetricCard extends LitElement
       flex-shrink: 0;
     }
 
+    /* The metric name sits at the same level as the "Presets"/"Parameters"
+       section headers, set in caps to read as a label rather than a value. */
     .card-label
     {
       font-family: var(--font-sans);
-      font-size: var(--text-xs);
-      color: var(--color-text-muted, #888);
+      font-size: var(--text-sm);
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--color-text);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    /* Value left, unit pushed to the card's right edge. */
+    .value-row
+    {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-xs);
+      width: 100%;
     }
 
     .card-value
@@ -91,14 +108,17 @@ export class ConfiguratorMetricCard extends LitElement
       color: var(--color-text);
       line-height: 1.2;
       word-break: break-word;
+      min-width: 0;
     }
 
     .card-unit
     {
-      font-size: var(--text-sm);
+      margin-left: auto;
+      flex-shrink: 0;
+      font-size: var(--text-xs);
       font-weight: 400;
       color: var(--color-text-muted, #888);
-      margin-left: 0.1em;
+      white-space: nowrap;
     }
   `;
 }

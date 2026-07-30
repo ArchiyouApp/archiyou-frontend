@@ -14,11 +14,13 @@ import '../params/param-item-text.js';
 import '../params/param-item-options.js';
 import '../params/param-item-list.js';
 
+import '../params/param-help.js';
+
 import {
-  paramMenuCollapsed,
-  setParamMenuCollapsed,
-} from '@archiyou/editor/src/state/workspace';
-import { configuratorParams, setConfiguratorValue } from '@archiyou/editor/src/state/configurator';
+  configuratorParamMenuCollapsed,
+  setConfiguratorParamMenuCollapsed,
+} from '@archiyou/editor/src/state/configurator';
+import { configuratorParams, configuratorValueFor, setConfiguratorValue } from '@archiyou/editor/src/state/configurator';
 
 import type { ScriptParam, ParamValueChangeDetail } from '@archiyou/editor/src/state/workspace';
 
@@ -28,7 +30,7 @@ export class ConfiguratorParams extends SignalWatcher(LitElement)
   // ── 1. Render ──
   override render()
   {
-    const collapsed = paramMenuCollapsed.get();
+    const collapsed = configuratorParamMenuCollapsed.get();
     const params    = configuratorParams.get();
     const groups    = this._groups(params);
 
@@ -94,8 +96,10 @@ export class ConfiguratorParams extends SignalWatcher(LitElement)
       .filter(p => (p.group ?? 'main') === group)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
+    // The number control draws its own label row (label + value box on one line,
+    // slider underneath), so param-item stands back for it.
     return groupParams.map(p => html`
-      <param-item .param=${p} readonly>
+      <param-item .param=${p} readonly mode="presentation" ?hideLabel=${p.type === 'number'}>
         ${this._renderControl(p)}
       </param-item>
     `);
@@ -103,20 +107,24 @@ export class ConfiguratorParams extends SignalWatcher(LitElement)
 
   private _renderControl(p: ScriptParam)
   {
+    // Values live in the configurator's own signal, never on the shared
+    // ScriptParam — hand them in so presets are reflected in the controls.
+    const v = configuratorValueFor(p);
+
     switch (p.type)
     {
-      case 'number':  return html`<param-item-number  .param=${p} context="configurator"></param-item-number>`;
-      case 'boolean': return html`<param-item-boolean .param=${p}></param-item-boolean>`;
-      case 'text':    return html`<param-item-text    .param=${p}></param-item-text>`;
-      case 'options': return html`<param-item-options .param=${p}></param-item-options>`;
-      case 'list':    return html`<param-item-list    .param=${p}></param-item-list>`;
+      case 'number':  return html`<param-item-number  .param=${p} .value=${v} mode="presentation" context="configurator"></param-item-number>`;
+      case 'boolean': return html`<param-item-boolean .param=${p} .value=${v} mode="presentation"></param-item-boolean>`;
+      case 'text':    return html`<param-item-text    .param=${p} .value=${v} mode="presentation"></param-item-text>`;
+      case 'options': return html`<param-item-options .param=${p} .value=${v} mode="presentation"></param-item-options>`;
+      case 'list':    return html`<param-item-list    .param=${p} .value=${v} mode="presentation"></param-item-list>`;
       default:        return nothing;
     }
   }
 
   private _toggleCollapse()
   {
-    setParamMenuCollapsed(!paramMenuCollapsed.get());
+    setConfiguratorParamMenuCollapsed(!configuratorParamMenuCollapsed.get());
   }
 
   private _handleParamValueChange(e: CustomEvent<ParamValueChangeDetail>)
@@ -180,12 +188,33 @@ export class ConfiguratorParams extends SignalWatcher(LitElement)
       padding: var(--space-md);
     }
 
+    /* Tabs read as a peer of the "Parameters" header, so they share its type
+       size; the inline margin keeps them off the panel edges. */
     wa-tab-group
     {
       --track-color: var(--color-border);
+      --indicator-color: var(--color-primary);
+    }
+
+    wa-tab-group::part(tabs)
+    {
+      margin: 0 var(--space-lg);
+    }
+
+    wa-tab::part(base)
+    {
+      font-family: var(--font-sans);
+      font-size: var(--text-sm);
+      font-weight: 500;
+      padding: var(--space-sm) var(--space-md);
     }
 
     wa-tab-panel
+    {
+      padding: 0;
+    }
+
+    wa-tab-panel::part(base)
     {
       padding: 0;
     }

@@ -44,6 +44,22 @@ export const configuratorPresets = computed<ScriptPreset[]>(() =>
 export const configuratorValues   = signal<Record<string, any>>({});
 export const configuratorExecuting = signal<boolean>(false);
 
+/** Collapse state of the configurator's own Presets/Parameters sections. Kept
+ *  separate from the editor's `presetMenuCollapsed`/`paramMenuCollapsed` so the
+ *  Configurator Preview never rearranges the editor's left panel behind it. */
+export const configuratorPresetMenuCollapsed = signal<boolean>(false);
+export const configuratorParamMenuCollapsed  = signal<boolean>(false);
+
+export function setConfiguratorPresetMenuCollapsed(collapsed: boolean): void
+{
+  configuratorPresetMenuCollapsed.set(collapsed);
+}
+
+export function setConfiguratorParamMenuCollapsed(collapsed: boolean): void
+{
+  configuratorParamMenuCollapsed.set(collapsed);
+}
+
 /** Resolve the effective value for a param (runtime override → default). */
 export function configuratorValueFor(p: ScriptParam): any
 {

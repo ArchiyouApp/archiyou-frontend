@@ -3,6 +3,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
+import type { ParamUIMode } from './param-item.js';
 import type { ScriptParam } from '@archiyou/editor/src/state/workspace';
 import { paramValue, paramListItemType } from '@archiyou/editor/src/state/workspace';
 
@@ -13,8 +14,7 @@ export class ParamItemList extends LitElement
 
     override render()
     {
-        const v = this.param ? paramValue(this.param) : undefined;
-        const items: any[] = Array.isArray(v) ? v : [];
+        const items: any[] = this._items();
 
         const itemType = this.param ? paramListItemType(this.param) : 'string';
 
@@ -56,15 +56,27 @@ export class ParamItemList extends LitElement
     // ── 2. State & Properties ──
 
     @property({ attribute: false }) param!: ScriptParam;
+    /** UI density — see ParamUIMode. */
+    @property({ type: String, reflect: true }) mode: ParamUIMode = 'compact';
+    /** Externally-owned value (the configurator's runtime value); `undefined`
+     *  falls back to the param's own value. */
+    @property({ attribute: false }) value: any[] | undefined = undefined;
+
     @state() private _draft = '';
 
     // ── 4. Behaviour ──
 
+    /** Current items: the caller's `value` when given (configurator), else the
+     *  param's own runtime/default value. */
+    private _items(): any[]
+    {
+        const v = this.value !== undefined ? this.value : (this.param ? paramValue(this.param) : undefined);
+        return Array.isArray(v) ? v : [];
+    }
+
     private _removeAt(index: number)
     {
-        const cur = this.param ? paramValue(this.param) : undefined;
-        const items: any[] = Array.isArray(cur) ? [...cur] : [];
-
+        const items = this._items();
         this._dispatchItems(items.filter((_, i) => i !== index));
     }
 
@@ -73,11 +85,8 @@ export class ParamItemList extends LitElement
         const raw = this._draft.trim();
         if (!raw) return;
 
-        const cur = this.param ? paramValue(this.param) : undefined;
-        const items: any[] = Array.isArray(cur) ? [...cur] : [];
-
         this._draft = '';
-        this._dispatchItems([...items, this._parseItem(raw)]);
+        this._dispatchItems([...this._items(), this._parseItem(raw)]);
     }
 
     private _onKeydown(e: KeyboardEvent)

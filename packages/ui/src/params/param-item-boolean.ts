@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
+import type { ParamUIMode } from './param-item.js';
 import type { ScriptParam } from '@archiyou/editor/src/state/workspace';
 import { paramValue } from '@archiyou/editor/src/state/workspace';
 
@@ -27,6 +28,12 @@ export class ParamItemBoolean extends LitElement
     // ── 2. State & Properties ──
 
     @property({ attribute: false }) param!: ScriptParam;
+    /** UI density — see ParamUIMode. */
+    @property({ type: String, reflect: true }) mode: ParamUIMode = 'compact';
+    /** Externally-owned value (the configurator's runtime value); `undefined`
+     *  falls back to the param's own value. */
+    @property({ attribute: false }) value: boolean | undefined = undefined;
+
     @state() private _checked = false;
 
     // ── 3. Lifecycle ──
@@ -34,12 +41,19 @@ export class ParamItemBoolean extends LitElement
     override connectedCallback()
     {
         super.connectedCallback();
-        this._checked = Boolean(this.param ? paramValue(this.param) : false);
+        this._sync();
     }
 
     override updated(changed: Map<string, unknown>)
     {
-        if (changed.has('param')) this._checked = Boolean(this.param ? paramValue(this.param) : false);
+        if (changed.has('param') || changed.has('value')) this._sync();
+    }
+
+    private _sync()
+    {
+        this._checked = Boolean(
+            this.value !== undefined ? this.value : (this.param ? paramValue(this.param) : false)
+        );
     }
 
     // ── 4. Behaviour ──
@@ -73,7 +87,12 @@ export class ParamItemBoolean extends LitElement
             height:      14px;
             cursor:      pointer;
             flex-shrink: 0;
+            accent-color: var(--color-primary);
         }
+
+        /* Presentation mode (configurator): a touch bigger for end users. */
+        :host([mode="presentation"]) .checkbox { width: 16px; height: 16px; }
+        :host([mode="presentation"]) .label { color: var(--color-text); }
 
         .label
         {

@@ -39,8 +39,8 @@ export class MainMenu extends SignalWatcher(LitElement)
           id="btn-configurator"
           appearance="plain"
           @click=${this._openConfigurator}
-        ><wa-icon library="lucide" name=${inPluginMode ? 'app-window' : 'tv-minimal-play'} label=${inPluginMode ? 'App' : 'Configurator'}></wa-icon></wa-button>
-        <wa-tooltip for="btn-configurator" placement="right">${inPluginMode ? msg('App') : msg('Configurator')}</wa-tooltip>
+        ><wa-icon library="lucide" name=${inPluginMode ? 'app-window' : 'tv-minimal-play'} label=${inPluginMode ? 'App' : 'Preview Configurator'}></wa-icon></wa-button>
+        <wa-tooltip for="btn-configurator" placement="right">${inPluginMode ? msg('App') : msg('Preview Configurator')}</wa-tooltip>
 
       </div>
 
@@ -50,20 +50,16 @@ export class MainMenu extends SignalWatcher(LitElement)
         label=${inPluginMode ? msg('App') : msg('Configurator Preview')}
         style="--width: 80vw"
         ?open=${this._configuratorOpen}
-        @wa-after-hide=${() => { this._configuratorOpen = false; }}
+        @wa-after-hide=${this._onDialogAfterHide}
       >
-        ${inPluginMode ? '' : html`
-          <wa-button
-            slot="header-actions"
-            size="small"
-            variant="brand"
-            @click=${this._publishFromPreview}
-          >
-            <wa-icon slot="start" library="lucide" name="rocket"></wa-icon>
-            ${msg('Publish as configurator')}
-          </wa-button>`}
         ${this._configuratorOpen
-          ? (inPluginMode ? html`<plugin-app></plugin-app>` : html`<page-configurator></page-configurator>`)
+          ? (inPluginMode
+              ? html`<plugin-app></plugin-app>`
+              : html`
+                  <page-configurator
+                    preview
+                    @configurator-publish=${this._publishFromPreview}
+                  ></page-configurator>`)
           : ''}
       </wa-dialog>
 
@@ -117,6 +113,16 @@ export class MainMenu extends SignalWatcher(LitElement)
   private _openConfigurator()
   {
     this._configuratorOpen = true;
+  }
+
+  /** Only the dialog's *own* hide closes the preview. Web Awesome's overlays
+   *  (tooltips, dropdowns, popovers) emit `wa-after-hide` as a composed,
+   *  bubbling event, so a tooltip dismissed anywhere inside the configurator
+   *  used to reach this listener and tear the whole dialog down. */
+  private _onDialogAfterHide(e: Event)
+  {
+    if (e.target !== e.currentTarget) return;
+    this._configuratorOpen = false;
   }
 
   /** Close the preview and route into the "Publish as configurator" flow. The

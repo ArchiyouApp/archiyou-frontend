@@ -1,7 +1,6 @@
 import { LitElement, html, css, nothing, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
-import { ifDefined } from 'lit/directives/if-defined.js';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
@@ -33,7 +32,15 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
     {
         if (!this.open) return html``;
 
-        const groups = [...new Set(scriptParams.get().map(p => p.group).concat(['main']))];
+        // Groups the host knows about (incl. empty tabs the user just created)
+        // come in via `groups`; union them with the ones actually in use so the
+        // list is complete no matter which route created the group.
+        const groups = [...new Set([
+            'main',
+            ...this.groups,
+            ...scriptParams.get().map(p => p.group ?? 'main'),
+            ...(this._group ? [this._group] : []),
+        ])];
 
         return html`
             <div class="backdrop" @click=${this._cancel}></div>
@@ -129,14 +136,14 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
                                             (this._newGroupName = (e.target as HTMLInputElement).value)}
                                     />
                                     <button class="link-btn"
-                                        @click=${() => { this._newGroupMode = false; this._group = 'main'; }}>
+                                        @click=${() => { this._newGroupMode = false; this._newGroupName = ''; }}>
                                         Cancel
                                     </button>
                                 </div>`
                             : html`
-                                <select class="select-input" @change=${this._onGroupChange}>
+                                <select class="select-input" .value=${this._group} @change=${this._onGroupChange}>
                                     ${groups.map(g => html`
-                                        <option value=${ifDefined(g)} ?selected=${this._group === g}>${g}</option>
+                                        <option value=${g} ?selected=${this._group === g}>${g}</option>
                                     `)}
                                     <option value="__new__">+ New group…</option>
                                 </select>`
@@ -328,6 +335,10 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
 
     @property({ attribute: false }) editParam: ScriptParam | null = null;
     @property({ type: Boolean, reflect: true }) open = false;
+    /** All groups known to the host (incl. groups without params yet). */
+    @property({ attribute: false }) groups: string[] = [];
+    /** Group preselected when adding a new param (the host's active tab). */
+    @property({ attribute: false }) defaultGroup = 'main';
 
     @state() private _type:           ParamType = 'number';
     @state() private _name            = '';
@@ -414,7 +425,7 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
         this._name         = p?.name ?? '';
         this._nameError    = '';
         this._description  = (p as any)?.description ?? '';
-        this._group        = p?.group ?? 'main';
+        this._group        = p?.group ?? this.defaultGroup ?? 'main';
         this._newGroupMode = false;
         this._newGroupName = '';
 

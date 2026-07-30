@@ -22,7 +22,10 @@ import type { ScriptPublishedFulfillmentData } from '@archiyou/core/src/ScriptSc
  *  dev too. */
 export function configuratorUrl(author: string, name: string, version: string): string {
   const base = (typeof window !== 'undefined' && window.location?.origin) || '';
-  return `${base}/configurators/${author}/${name}:${version}`;
+  // Encoded per segment (script names may contain spaces); the ':' separating
+  // name from version is part of the route pattern, so it stays literal.
+  return `${base}/configurators/${encodeURIComponent(author)}`
+    + `/${encodeURIComponent(name)}:${encodeURIComponent(version)}`;
 }
 
 /** Wildcard token used in output paths for "all entities" / "all formats". */

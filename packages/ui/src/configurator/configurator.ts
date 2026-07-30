@@ -1,5 +1,5 @@
 import { LitElement, html, css } from 'lit';
-import { customElement, state } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/split-panel/split-panel.js';
@@ -14,6 +14,10 @@ import '../viewer/model-viewer.js';
 import './configurator-header.js';
 import './configurator-controls.js';
 import './configurator-metric-bar.js';
+import './configurator-attribution.js';
+import './configurator-viewer-actions.js';
+
+import type { ConfiguratorFeedbackDetail } from './configurator-attribution.js';
 
 @customElement('page-configurator')
 export class PageConfigurator extends SignalWatcher(LitElement)
@@ -40,14 +44,30 @@ export class PageConfigurator extends SignalWatcher(LitElement)
           ></configurator-controls>
         </div>
 
-        <model-viewer slot="end"></model-viewer>
+        <div class="viewer-pane" slot="end">
+          <model-viewer></model-viewer>
+          <configurator-viewer-actions
+            class="viewer-actions"
+            ?preview=${this.preview}
+          ></configurator-viewer-actions>
+          <configurator-attribution
+            class="viewer-attribution"
+            @configurator-feedback=${this._handleFeedback}
+          ></configurator-attribution>
+        </div>
       </wa-split-panel>
 
       <configurator-metric-bar></configurator-metric-bar>
     `;
   }
 
-  // ── 2. State ──
+  // ── 2. State & Properties ──
+
+  /** True when rendered inside the editor's Configurator Preview dialog: the
+   *  viewer offers "Publish as configurator" instead of the embed/view-source
+   *  actions a published configurator gets. */
+  @property({ type: Boolean, reflect: true }) preview = false;
+
   @state() private _executing = false;
   private _paramExecTimeout: number | null = null;
   private _pendingUnitSystem: string | null = null;
@@ -87,6 +107,15 @@ export class PageConfigurator extends SignalWatcher(LitElement)
   }
 
   // ── 4. Behaviour & Methods ──
+
+  /** Feedback from the attribution bar. There is no feedback endpoint on
+   *  apps/server yet, so this only logs for now — swap in the API call once the
+   *  route exists. */
+  private _handleFeedback(e: CustomEvent<ConfiguratorFeedbackDetail>)
+  {
+    console.info('Configurator feedback:', e.detail.message);
+  }
+
   private _handleParamsChanged()
   {
     if (this._paramExecTimeout !== null) clearTimeout(this._paramExecTimeout);
@@ -169,11 +198,37 @@ export class PageConfigurator extends SignalWatcher(LitElement)
       border-right: 1px solid var(--color-border);
     }
 
+    /* Positioning context for the viewer overlays (attribution + actions). */
+    .viewer-pane
+    {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      overflow: hidden;
+    }
+
     model-viewer
     {
       display: block;
       width: 100%;
       height: 100%;
+    }
+
+    .viewer-attribution
+    {
+      position: absolute;
+      right: var(--space-md);
+      bottom: var(--space-sm);
+      z-index: 12;
+    }
+
+    .viewer-actions
+    {
+      position: absolute;
+      right: var(--space-md);
+      top: var(--space-md);
+      z-index: 12;
     }
 
     configurator-metric-bar

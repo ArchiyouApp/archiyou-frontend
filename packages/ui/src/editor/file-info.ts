@@ -9,6 +9,7 @@ import '@awesome.me/webawesome/dist/components/popover/popover.js';
 import '@awesome.me/webawesome/dist/components/dropdown/dropdown.js';
 import '@awesome.me/webawesome/dist/components/dropdown-item/dropdown-item.js';
 import '@dile/editor/editor.js';
+import '../unit-switch.js';
 
 import {
   editorScript,
@@ -26,6 +27,7 @@ import {
 } from '@archiyou/editor/src/state/workspace';
 
 import type { ScriptMetadata } from '@archiyou/editor/src/state/workspace';
+import type { UnitSystem } from '@archiyou/core/src/units/UnitConverter';
 
 import {
   FILE_MANAGER_DISABLED_TOOLBAR_ITEMS,
@@ -173,13 +175,12 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
               </button>`
           : nothing}
 
-        <div class="unit-quick" @click=${(e: Event) => e.stopPropagation()}
-            title="Script units — Metric (mm) / Imperial (in)">
-          <span class=${scriptUnitSystem.get() === 'metric' ? 'on' : ''}
-              @click=${() => setScriptUnitSystem('metric')}>metric</span>
-          <span class=${scriptUnitSystem.get() === 'imperial' ? 'on' : ''}
-              @click=${() => setScriptUnitSystem('imperial')}>imperial</span>
-        </div>
+        <unit-switch
+            class="unit-quick"
+            title="Script units — Metric (mm) / Imperial (in)"
+            .value=${scriptUnitSystem.get()}
+            @unit-system-change=${(e: CustomEvent<UnitSystem>) => setScriptUnitSystem(e.detail)}
+        ></unit-switch>
 
         <wa-icon library="lucide" name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
       </div>
@@ -846,36 +847,8 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
 
     .spacer { flex: 1; }
 
-    /* ── Quick mm/in unit switch (header) ── */
-    .unit-quick
-    {
-      display: inline-flex;
-      align-items: stretch;
-      height: 22px;
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-sm, 3px);
-      overflow: hidden;
-      font-size: var(--text-xs);
-      font-family: var(--font-sans);
-      flex-shrink: 0;
-    }
-
-    .unit-quick span
-    {
-      display: inline-flex;
-      align-items: center;
-      padding: 0 8px;
-      color: var(--color-text-muted, #888);
-      background: var(--color-white, #fff);
-      cursor: pointer;
-      white-space: nowrap;
-    }
-
-    .unit-quick span.on
-    {
-      color: var(--color-text);
-      background: var(--color-border);
-    }
+    /* ── Quick mm/in unit switch (header) — shared <unit-switch> pill ── */
+    .unit-quick { flex-shrink: 0; }
 
     /* Read-only badge (foreign shared script) */
     .fm-readonly

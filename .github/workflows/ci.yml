@@ -71,12 +71,13 @@ jobs:
       - name: Typecheck editor
         run: pnpm --filter @archiyou/editor typecheck:own
 
-      # packages/core itself is not yet type-clean (260 errors against its own
-      # config, ~1900 under strict). Advisory only, so the number stays visible
-      # and can be driven down. See the README for the breakdown.
-      - name: Typecheck core (advisory, never fails the build)
-        continue-on-error: true
-        run: pnpm --filter @archiyou/core typecheck
+      # packages/core is not type-clean yet, so it gets a ratchet rather than a
+      # zero-error gate: the count may go down but never up. Waiting for zero
+      # would mean no gate at all, which is how this drifted in the first place.
+      # Lower the budget in packages/core/package.json as it improves; when it
+      # reaches 0, switch core to typecheck:own like the other packages.
+      - name: Typecheck core (budget — fails only if errors increase)
+        run: pnpm --filter @archiyou/core typecheck:budget
 
   # The deployment config is executable, so it gets checked like code: a broken
   # Caddyfile means the reverse proxy will not start. This caught `auto_https on`,

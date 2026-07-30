@@ -13,6 +13,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "typecheck": "tsc --noEmit",
+    "typecheck:budget": "node ../../scripts/typecheck-budget.mjs packages/core 197",
     "test": "vitest run",
     "test:brep": "vitest run tests/unit/brep/Vector.test.ts",
     "test:cadscripts": "vitest run tests/cadscripts/run.cadscripts.test.ts",

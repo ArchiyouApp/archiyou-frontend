@@ -113,24 +113,40 @@ cross-package call is checked) but only *fails* on diagnostics in that package's
 own directory. Retire it per package as core is cleaned up, then gate on `tsc`
 directly.
 
-The remaining backlog, since raw error counts are misleading:
+### packages/core
 
-- **`packages/core` reports 260 errors against its own config** (which sets
-  `strict: false`). Running `tsc` from `apps/editor` instead reports ~2000,
-  because the editor's config applies `strict` + `noUnusedLocals` to core's
-  sources. Same code, different lens — the 260 is the real number.
-- Most are mechanical: ~74 are BREP types (`Vector`, `Point`, `Edge`,
-  `PointLike`, `AnyShape`) used without being imported, a leftover from when they
-  were ambient globals. `src/annotator/AnnotatorDimensionLine.ts` alone accounts
-  for 57.
-- Excluding `src/modeler/brep` (the OpenCascade wrapper) from the program does
-  *not* help — 260 → 236. It is pulled in transitively by imports regardless of
-  `include`/`exclude`, so detaching it means changing code, not config.
+Not clean yet, so it gets a **ratchet** instead of a zero-error gate
+(`pnpm --filter @archiyou/core typecheck:budget`): the count may go down but
+never up. Waiting for zero would have meant no gate at all. Lower the budget in
+`packages/core/package.json` as you improve it; at 0, switch it to
+`typecheck:own` like the others.
 
-Suggested order for whoever takes this on: core's mechanical missing imports
-first (they are the bulk and are low-risk), then the genuine type mismatches, and
-only then consider turning `strict` on for core — that is what takes 260 to
-~1900. Tracked as an open issue; good first contributions welcome.
+It is at **197**, down from 260. The ambient-globals cluster is fixed (see the
+annotator commit). What is left, and why it needs judgement rather than a sweep:
+
+- **72 in `src/modeler/brep/`** — the OpenCascade kernel. Worth knowing before
+  investing: that kernel's own test suite currently fails, **16 of 19 files, 25
+  tests failing vs 10 passing**. It is reachable only through the non-default
+  `brep` kernel (`getOc()`). Decide whether to repair or retire it before
+  polishing its types.
+- **~50 in test files**, several of which call getters as functions
+  (`l.type()` where `type` is a getter) — i.e. the tests have drifted from the
+  API, which is consistent with them failing at runtime.
+- **~75 in live mesh-path source**, mostly genuine mismatches: methods called on
+  the base `Shape` that only exist on specific subtypes (`intersection`,
+  `overlapPerc`, `subtract`, `center`). Each needs a decision about whether the
+  type or the call is wrong — casting them away would hide real bugs.
+
+One upstream fix is worth doing in **meshup**, not here: `ShapeCollection.name()`
+is declared `name(value?: string): this | string`, so every chained
+`.name('x')` yields `string | ShapeCollection` and the next call fails. Splitting
+it into overloads (`name(): string` / `name(value: string): this`) removes 7 core
+errors on its own — measured. The same combined getter/setter shape likely
+affects its siblings.
+
+Note the counts depend entirely on the lens: core reports 197 against its own
+config (`strict: false`), but ~1900 when compiled by the editor's strict one.
+Turning `strict` on for core is the last step, not the first.
 
 ## Configuration
 

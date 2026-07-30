@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { Modeler } from '../../../src/modeler/Modeler'
 import { Interactor } from '../../../src/interaction/Interactor'
-import type { SmartSceneNodeData } from '../../../src/modeler/types'
+import type { SceneNodeData } from '../../../src/modeler/types'
 
 /** Walk a serialised scenegraph, returning shape-id → canonical encoded path,
  *  reproducing the viewer's buildScenegraphPath (encodeURIComponent per segment,
  *  root already named 'Scene' by toData(true)). */
-function shapePathsFromData(root: SmartSceneNodeData): Map<string, string>
+function shapePathsFromData(root: SceneNodeData): Map<string, string>
 {
     const out = new Map<string, string>()
-    const walk = (node: SmartSceneNodeData, parentPath: string) =>
+    const walk = (node: SceneNodeData, parentPath: string) =>
     {
         const seg = encodeURIComponent(node.name)
         const path = parentPath ? `${parentPath}/${seg}` : seg

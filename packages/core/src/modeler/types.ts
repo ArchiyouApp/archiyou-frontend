@@ -13,6 +13,15 @@ import { ModelUnitsSchema, ModelModeSchema, MainAxisSchema } from './schemas'
 /** Any concrete meshup shape (Vertex | Curve | Polygon | Mesh). */
 export type AnyShape = meshup.Shape
 
+/** A meshup ShapeCollection. Named for symmetry with AnyShape; the BREP kernel
+ *  had an identically-named type, so prefer these aliases in modeler/annotator
+ *  code to make the kernel unambiguous. */
+export type AnyShapeCollection = meshup.ShapeCollection
+
+/** Either a single shape or a collection — what most modeller/annotator entry
+ *  points accept. */
+export type AnyShapeOrCollection = meshup.Shape | meshup.ShapeCollection
+
 /** Duck-typed guard for a single meshup shape (true for Vertex/Curve/Polygon/Mesh, false for
  *  a ShapeCollection). Avoids a runtime meshup import here — see the note above. */
 export function isAnyShape(o: any): o is meshup.Shape

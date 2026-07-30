@@ -12,7 +12,22 @@
 // TODO: after refactor
 //import { DxfBlock, point3d } from '@tarikjabiri/dxf'
 
-import type  { MainAxis, ModelUnits } from '../modeler/types'
+import type  { MainAxis, ModelUnits, AnyShape, AnyShapeCollection, AnyShapeOrCollection } from '../modeler/types'
+/**
+ * Geometry types come from MESHUP, not the BREP kernel, even though several
+ * names collide. This class builds geometry through `this.classes.*`, and
+ * KernelClasses (modeler/types.ts) is declared entirely in terms of meshup —
+ * `Vector: typeof meshup.Vector`, and so on. Importing the identically-named
+ * BREP `Vector`/`Point` instead produces the memorable
+ * "Type 'Vector' is missing the following properties from type 'Vector'".
+ *
+ * `import type` only: these are used purely in type position, so nothing is
+ * emitted and the annotator gains no runtime dependency on either kernel.
+ *
+ * Note meshup has no `Edge` — its 1D shape is `Curve` (see the casts below,
+ * which is what `linkedTo` actually holds in mesh mode).
+ */
+import type { Vector, Point, PointLike, Curve } from '@archiyou/meshup/src/index'
 import type { DimensionLineData, DimensionOptions, AnnotationType } from './types'
 import { BaseAnnotation } from './AnnotatorBaseAnnotation'
 
@@ -36,7 +51,7 @@ export class DimensionLine extends BaseAnnotation
     _initialized:boolean = false;
     targetStart:Point; // point on Shape
     targetEnd:Point; // point on Shape
-    targetShape:AnyShape = null; // the (sub)shape (mostly an Edge) the dimension line is directly generated from
+    targetShape:AnyShape = null; // the (sub)shape (mostly an Curve) the dimension line is directly generated from
     linkedTo:any = null; // the main parent Shape or ShapeCollection this dimension is linked to
     // value:number; // the value of the dimension line, from BaseAnnotation
     static:boolean = false;
@@ -96,7 +111,7 @@ export class DimensionLine extends BaseAnnotation
     }
 
     /** Generate a dimension line from this Edge */
-    fromEdge(edge:Edge, options?:DimensionOptions):this
+    fromEdge(edge:Curve, options?:DimensionOptions):this
     {
         if(!this.classes.Shape.isShape(edge)){ throw new Error(`DimensionLine::init(): Please supply an Edge Shape`); }
         
@@ -140,7 +155,7 @@ export class DimensionLine extends BaseAnnotation
         switch (t)
         {
             case 'Edge':
-                return this.fromEdge(shape as Edge, opts);
+                return this.fromEdge(shape as Curve, opts);
 
             case 'Curve':
             {
@@ -151,7 +166,7 @@ export class DimensionLine extends BaseAnnotation
                 const isClosed = typeof curve.isClosed === 'function' && curve.isClosed();
                 if (!isClosed)
                 {
-                    return this.fromEdge(shape as Edge, opts);
+                    return this.fromEdge(shape as Curve, opts);
                 }
                 if (typeof curve.isCuboid === 'function' && curve.isCuboid())
                 {
@@ -163,7 +178,7 @@ export class DimensionLine extends BaseAnnotation
             case 'Wire':
             case 'Face':
             {
-                const edges = new this.classes.ShapeCollection((shape as any).edges().visible()).toArray() as Array<Edge>;
+                const edges = new this.classes.ShapeCollection((shape as any).edges().visible()).toArray() as Array<Curve>;
                 if (edges.length === 0) return this;
                 this.fromEdge(edges[0], opts);
                 const rest = edges.slice(1).map(e => ann.dimensionLine().fromEdge(e, opts));
@@ -306,7 +321,7 @@ export class DimensionLine extends BaseAnnotation
         // TODO: AFTER REFACTOR FIX
         if(this.targetShape && (this.targetShape.type() === 'Curve' || (this.targetShape as any).type() === 'Edge'))
         {
-            const linkedEdge = (this.targetShape as Edge);
+            const linkedEdge = (this.targetShape as Curve);
             this.targetStart = linkedEdge.start().toPoint();
             this.targetEnd = linkedEdge.end().toPoint();
             this._calculateOffsetVec(true); // force overwrite
@@ -705,20 +720,20 @@ export class DimensionLine extends BaseAnnotation
     }
 
     /** Generic Shape method (every Annotation class should have this!) */
-    toShape():Edge 
+    toShape(): Curve 
     {
         return this.toEdge();
     }
 
     /** Make a Line Edge out this DimensionLine */
-    toEdge():Edge
+    toEdge(): Curve
     {
-        return this.classes.Curve.Line(this._calculatePoint('start'), this._calculatePoint('end')) as Edge;
+        return this.classes.Curve.Line(this._calculatePoint('start'), this._calculatePoint('end')) as Curve;
     }
 
-    targetEdge():Edge
+    targetEdge(): Curve
     {
-        return this.classes.Curve.Line(this.targetStart, this.targetEnd) as Edge;
+        return this.classes.Curve.Line(this.targetStart, this.targetEnd) as Curve;
     }
 
     //// RELATIONS WITH OTHER DIMENSION LINES ////

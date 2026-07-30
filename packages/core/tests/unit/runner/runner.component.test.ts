@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { Runner } from '../../../src/runner/Runner'
 import { Script } from '../../../src/Script'
 import { save } from '@archiyou/meshup/src/utils'
-import type { SmartSceneNodeData } from '../../../src/modeler/types'
+import type { SceneNodeData } from '../../../src/modeler/types'
 
 /**
  * Tests the linkComponentScripts() → _prepareComponentScript('./name')
@@ -93,7 +93,7 @@ describe('Runner.linkComponentScripts (local component lookup)', () =>
 
         expect(result.status).toBe('success')
         
-        const countNodes = (n: SmartSceneNodeData | undefined): number =>
+        const countNodes = (n: SceneNodeData | undefined): number =>
             !n ? 0 : 1 + (n.children ?? []).reduce((acc, c) => acc + countNodes(c), 0)
         const total = countNodes(result.state?.scenegraph)
         console.log(`scenegraph total nodes: ${total}`)

@@ -6,7 +6,12 @@
  */ 
 
 import type { ArchiyouModules } from '../types';
-import type { MainAxis, PointLike, AnyShape, Point, Vector, Edge, AnyShapeCollection, Bbox } from '../modeler/types'
+import type { MainAxis, AnyShape, AnyShapeCollection } from '../modeler/types'
+// Geometry types live in meshup, not modeler/types — the latter only re-exports
+// the AnyShape* aliases. See the note in AnnotatorDimensionLine.ts: the BREP
+// kernel has identically-named Point/Vector, so be explicit about the source.
+// meshup's 1D shape is `Curve`; there is no `Edge`.
+import type { PointLike, Point, Vector, Curve, Bbox } from '@archiyou/meshup/src/index'
 
 import type {
     DimensionOptions,DimensionLevelSettings,DimensionLevel,
@@ -262,7 +267,7 @@ export class Annotator
 
         
         // Level 2: edges on and parallel to sides of bbox
-        const bboxSideEdges = part.bbox().rect().edges().shapes as Array<Edge>;
+        const bboxSideEdges = part.bbox().rect().edges().shapes as Array<Curve>;
         const sideEdgesUsed = new this.classes.ShapeCollection();
 
         bboxSideEdges.forEach((sideEdge,i) => 
@@ -279,7 +284,7 @@ export class Annotator
             const sideEdges = part.edges()
                             .intersecting(sideEdge)
                             .filter(e => {
-                                return !(e as Edge).direction().normalize().abs().round().equals(sideDir90) // no perpendicular
+                                return !(e as Curve).direction().normalize().abs().round().equals(sideDir90) // no perpendicular
                                     && (!e.direction().isOrtho() || (e.direction().isOrtho() && roundTo(e.center()[levelCoordAxis], LEVEL_COORD_ROUND_DECIMALS) === levelCoordValue)) // ortho edges need to be on side, other we allow
                             });
 
@@ -352,7 +357,7 @@ export class Annotator
         remainingEdges.forEach((e,i) =>
         {
             const dim = this.makeDimensionLine()
-                            .fromEdge(e as Edge, { offset: dimLevelOffset * 1  })
+                            .fromEdge(e as Curve, { offset: dimLevelOffset * 1  })
             newAnnotations.push(dim)
         });
         

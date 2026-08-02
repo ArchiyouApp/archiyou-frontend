@@ -10,6 +10,11 @@ import { targetOcForGarbageCollection, roundToTolerance } from './utils'
 // this can disable TS errors when subclasses are not initialized yet
 type IEdge = Edge
 
+
+// Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
+// run at class-definition time, before it has finished initialising.
+import { checkInput } from './decorators'
+
 export class Vertex extends Shape
 {
     /* 
@@ -136,6 +141,7 @@ export class Vertex extends Shape
     }
 
     /** For backward compatibility: Better to use constructor */
+    @checkInput('Vector', 'Vector')
     fromVector(v:Vector):Vertex
     {
         console.warn('Vertex::fromVector: **** To be deprecated ****. Use constructor directly: new Vertex(PointLike)');
@@ -145,6 +151,7 @@ export class Vertex extends Shape
     }
 
     /** For backward compatibility: could just use constructor */
+    @checkInput('Point', 'Point')
     fromPoint(p:Point)
     {
         console.warn('Vertex::fromPoint: **** To be deprecated ****. Use constructor directly: new Vertex(PointLike)');
@@ -196,6 +203,7 @@ export class Vertex extends Shape
     }
 
     // overload method on Point
+    @checkInput(Number, Number)
     setX(x:number):Vertex
     {
         this._x = x;
@@ -205,6 +213,7 @@ export class Vertex extends Shape
 
     /** Sets y component of Vector  */
     // overload method on Point
+    @checkInput(Number, Number)
     setY(y:number):Vertex
     {
         this._y = y;
@@ -214,6 +223,7 @@ export class Vertex extends Shape
 
     /** Sets z component of Vector  */
     // overload method on Point
+    @checkInput(Number, Number)
     setZ(z:number):Vertex
     {
         this._z = z;
@@ -254,6 +264,7 @@ export class Vertex extends Shape
     //// SELF OPERATIONS ////
 
     /** Extrudes the Vertex to create a Edge with certain length along a Direction Vector: default direction: Z-axis */
+    @checkInput([Number, [ 'PointLike', [0,0,1] ]],[Number, 'Vector'])
     extrude(amount:number, direction?:PointLike):IEdge 
     {
         let endVertex = this.moved( (direction as Vector).normalize().scaled(amount) ); // direction is auto converted 
@@ -263,6 +274,7 @@ export class Vertex extends Shape
     }
 
     /** Extrude a copy of Vertex to create a Edge with certain length along a Direction Vector: default direction: Z-axis */
+    @checkInput([Number, [ 'PointLike', [0,0,1] ]],[Number, 'Vector'])
     extruded(amount:number, direction?:PointLike):IEdge 
     {
         return this.copy().extrude(amount, direction as Vector) as Edge; // auto added to Scene by copy()
@@ -278,6 +290,7 @@ export class Vertex extends Shape
     //// SPECIAL OPERATIONS ////
 
     /*
+    @checkInput('AnyShapeOrCollection', 'auto')
     project(to:AnyShapeOrCollection)
     {
         return this.toPoint().project(to);

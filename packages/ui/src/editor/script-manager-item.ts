@@ -1,9 +1,10 @@
-import { LitElement, html, css } from 'lit';
+import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import type { Script } from '@archiyou/core/src/Script';
+import { assetUrl } from '@archiyou/editor/src/services/api';
 
 @customElement('script-manager-item')
 export class ScriptManagerItem extends LitElement
@@ -13,10 +14,19 @@ export class ScriptManagerItem extends LitElement
   /** Hide owner-only actions (delete) — used for foreign shared scripts. */
   @property({ type: Boolean }) readonly = false;
 
-  /** Optional author line shown for shared scripts. */
+  /** Optional author, shown as "by <author>" for shared/public scripts. */
   @property({ type: String }) author = '';
 
+  /** Latest known version, shown as a pill after the name (and after the author
+   *  when there is one). Empty when the script has never been published/shared —
+   *  a working copy genuinely has no version, so nothing is rendered. */
+  @property({ type: String }) version = '';
+
   @state() private _confirmingDelete = false;
+  /** Set when the thumbnail URL fails to load, so the preview is dropped rather than
+   *  rendered as a broken image. A thumbnail file can legitimately be missing (older
+   *  scripts predate the feature; a redeploy can lose a non-persistent volume). */
+  @state() private _thumbFailed = false;
 
   // ── Render ──
 
@@ -30,13 +40,26 @@ export class ScriptManagerItem extends LitElement
     const created = fmt(this.script.created);
     const updated = fmt(this.script.updated);
 
+    // Root-relative on the wire; assetUrl() points it at the API origin.
+    const thumbnail = assetUrl(this.script.thumbnail);
+
     return html`
-      <span class="icon">
-        <wa-icon library="lucide" name="file-text"></wa-icon>
-      </span>
+      <!-- The model's own drawing stands in for the generic file icon when there
+           is one; both occupy the same slot so every row stays aligned. -->
+      ${thumbnail && !this._thumbFailed
+        ? html`<img class="thumb" src=${thumbnail} alt="" loading="lazy"
+                    @error=${() => { this._thumbFailed = true; }}>`
+        : html`
+            <span class="icon">
+              <wa-icon library="lucide" name="file-text"></wa-icon>
+            </span>`}
 
       <span class="info">
-        <span class="name">${name}${this.author ? html`<span class="author"> · ${this.author}</span>` : ''}</span>
+        <span class="name-row">
+          <span class="name">${name}</span>
+          ${this.author ? html`<span class="author">by ${this.author}</span>` : nothing}
+          ${this.version ? html`<span class="version">${this.version}</span>` : nothing}
+        </span>
         <span class="meta">${loc} lines · created ${created} · updated ${updated}</span>
       </span>
 
@@ -72,6 +95,14 @@ export class ScriptManagerItem extends LitElement
   {
     super.connectedCallback();
     this.addEventListener('click', this._onRowClick);
+  }
+
+  override willUpdate(changed: Map<string, unknown>)
+  {
+    // Rows are reused across list renders (switching tab / filtering swaps the
+    // script on the same element), so a latched failure from the previous script
+    // would wrongly suppress the new one's thumbnail.
+    if (changed.has('script')) this._thumbFailed = false;
   }
 
   override disconnectedCallback()
@@ -139,16 +170,32 @@ export class ScriptManagerItem extends LitElement
       background: color-mix(in srgb, var(--color-primary) 20%, transparent);
     }
 
+    /* The icon and the thumbnail share one leading slot of the same width, so a
+       row with a preview lines up with a row without one. */
     .icon {
       flex-shrink: 0;
       display: flex;
       align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
       color: var(--color-gray-dark, #666);
       font-size: var(--text-lg);
     }
 
     :host([selected]) .icon {
       color: var(--color-primary);
+    }
+
+    /* Leading preview of the model, in the file icon's place.
+       contain (not cover): the drawing is already framed square with padding, and
+       cropping a line drawing removes the very geometry that identifies it. */
+    .thumb {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
+      display: block;
     }
 
     .info {
@@ -159,12 +206,23 @@ export class ScriptManagerItem extends LitElement
       gap: 2px;
     }
 
+    /* name · by author · version pill, on one line. Only the name truncates.
+       Centered, not baseline-aligned: the pill's padding and border make its text
+       baseline sit well below the name's, which reads as a misalignment. */
+    .name-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
     .name {
       color: var(--color-text);
       font-weight: 500;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      min-width: 0;
     }
 
     .meta {
@@ -173,8 +231,26 @@ export class ScriptManagerItem extends LitElement
     }
 
     .author {
+      flex-shrink: 0;
+      font-size: var(--text-xs);
       font-weight: 400;
       color: var(--color-text-muted, #666);
+      white-space: nowrap;
+    }
+
+    /* Same pill as the configurator header's version badge. */
+    .version {
+      flex-shrink: 0;
+      font-family: var(--font-mono, monospace);
+      font-size: var(--text-x-xs, 0.625rem);
+      line-height: 1;
+      color: var(--color-gray-dark, #666);
+      /* gray-light stays distinguishable from the elevated row in dark mode. */
+      background: var(--color-gray-light, #eee);
+      border: 1px solid var(--color-border, #cfcfcf);
+      border-radius: var(--radius-full, 9999px);
+      padding: 3px 7px;
+      white-space: nowrap;
     }
 
     .actions {

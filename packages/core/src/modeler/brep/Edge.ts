@@ -14,7 +14,7 @@ import { Color } from '@archiyou/meshup/src/Color'
 // import { DxfBlock, point3d } from '@tarikjabiri/dxf'
 
 // types
-import type { ObjStyle, ThickenDirection, PointLike, Cursor,
+import type { ThickenDirection, PointLike, Cursor,
         AnyShape, AnyShapeOrCollection,
         LinearShape, LinearShapeTail, PointLikeSequence,
         DimensionOptions } from '.' // see types
@@ -44,6 +44,13 @@ type IFace = Face
 type IShell = Shell
 type IDimensionLine = DimensionLine
 
+
+
+// Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
+// run at class-definition time, before it has finished initialising.
+import { sceneAdd, sceneCarry } from '@archiyou/meshup/src/sceneDecorators'
+import { checkInput } from './decorators'
+import { hostUnits } from './host'
 
 export class Edge extends Shape
 {
@@ -139,6 +146,7 @@ export class Edge extends Shape
     }
 
     /** Convert to Wire and add to Scene */
+    @sceneAdd
     toWire():IWire
     {
         return this._toWire()
@@ -168,6 +176,7 @@ export class Edge extends Shape
 
     //// CREATION METHODS ////
     
+    @checkInput([ ['PointLike',EDGE_DEFAULT_START], ['PointLike',EDGE_DEFAULT_END ] ], ['Vertex', 'Vertex'])
     makeLine(start:PointLike, end:PointLike):Edge
     {
         start = Point.fromPointLike(start).toVertex() as Vertex; // auto converted
@@ -186,6 +195,7 @@ export class Edge extends Shape
 
     
     /** Create a Circle Edge with given radius (default:50) and center (default: [0,0,0]) */
+    @checkInput([ [Number, EDGE_DEFAULT_CIRCLE_RADIUS], ['PointLike', [0,0,0]] ], ['auto', 'Point' ])
     makeCircle(radius?:number, center?:PointLike):Edge
     {
         /* OC docs:
@@ -203,6 +213,7 @@ export class Edge extends Shape
     }
 
     /** Make Spline that goes through Vectors provided in list of points (PointLike) */
+    @checkInput('PointLikeSequence', 'VertexCollection')
     makeSpline(points:PointLikeSequence, ...args):Edge
     {
         /* OC docs: 
@@ -241,6 +252,7 @@ export class Edge extends Shape
     /** Make Arc line
      *  @param type threepoint or tangent
      */
+    @checkInput(['PointLike', 'PointLike', 'PointLike', [String,'threepoint']], ['Point','Point','Point',String])
     makeArc(start:PointLike, mid:PointLike, end:PointLike, type?:string):Edge
     {   
         start = new Point(start).toVertex() as Vertex; // auto converted from PointLike
@@ -273,6 +285,7 @@ export class Edge extends Shape
     }
 
     /** Make Bezier curve from given points. One control point for Quadratic. Two for Cubic */
+    @checkInput('PointLikeSequence', 'VertexCollection')
     makeBezier(points:PointLikeSequence, ...args):Edge // NOTE: handles (start,controlpoint,end) too
     {
         /* OC docs:
@@ -292,6 +305,7 @@ export class Edge extends Shape
 
     /** Make weighted Bezier Curve by supplying (control)points and weights */
     /* // NOT WORKING. crashes OC
+    @checkInput(['PointLikeSequence', 'Array'], ['VertexCollection', 'auto'])
     makeWeightedBezier(points:PointLikeSequence, weights:Array<number>):Edge
     {
         // some sanity checks
@@ -420,6 +434,7 @@ export class Edge extends Shape
     /** Calculate the normal of the straight line Edge 
      *  Force that normal always faces flipTo (otherwise the side is determined by direction)
     */
+    @checkInput([['PointLike', null]], ['Point'])
     normal(orientTo?:PointLike, ...args):Vector
     {
         if(this.edgeType() != 'Line')
@@ -522,12 +537,14 @@ export class Edge extends Shape
     }
 
     /** Get tangent (= direction ) at certain point on the Edge */
+    @checkInput('PointLike', 'Point')
     tangent()
     {
         return this.direction().normalize();
     }
 
     /** Get direction = tangent at certain point on the Edge */
+    @checkInput('PointLike', 'Point')
     directionAt(point:PointLike, ...args):Vector
     {
         let at = point as Point; // auto converted
@@ -567,6 +584,7 @@ export class Edge extends Shape
     }
 
     /** Get direction Vector at percentage of length */
+    @checkInput(Number, 'auto')
     directionAtPerc(perc):Vector
     {
         perc = (perc < 0) ? 0 : (perc > 1) ? 1.0 : perc;
@@ -575,6 +593,7 @@ export class Edge extends Shape
     }
 
     /** Get tangent Vector (=direction) at certain point on the Edge */
+    @checkInput('PointLike', 'Point')
     tangentAt(point:PointLike, ...args):Vector
     {
         return this.directionAt(point).normalize();
@@ -592,6 +611,7 @@ export class Edge extends Shape
     }
 
     /** Thicken Edge to create a Face (private: without adding result to Scene) */
+    @checkInput([[Number,EDGE_DEFAULT_THICKEN],['ThickenDirection', 'center'], ['PointLike', null]], ['auto', 'auto', 'Vector'])
     _thickened(amount?:number, direction?:ThickenDirection,  onPlaneNormal?:PointLike):IFace
     {
         // the same for Edges and Wire: forward to the Wire one
@@ -599,11 +619,14 @@ export class Edge extends Shape
     }
 
     /** Thicken Edge to create a Face */
+    @checkInput([[Number,EDGE_DEFAULT_THICKEN],['ThickenDirection', 'center'], ['PointLike', null]], ['auto', 'auto', 'Vector'])
+    @sceneAdd
     thickened(amount?:number, direction?:string,  onPlaneNormal?:PointLike):IFace
     {
         return this._thickened(amount, direction, onPlaneNormal);
     }
 
+    @checkInput([[Number,EDGE_DEFAULT_THICKEN],['ThickenDirection', 'center'], ['PointLike', null]], ['auto', 'auto', 'Vector'])
     thicken(amount:number, direction?:ThickenDirection, onPlaneNormal?:PointLike):IFace
     {
         let newShape = this._thickened(amount, direction, onPlaneNormal);
@@ -612,6 +635,7 @@ export class Edge extends Shape
     }
 
     /** Thicken the Edge along the normal to create a Face */
+    @checkInput([[Number,EDGE_DEFAULT_OFFSET],'PointLike', [Boolean, false]], [Number, Vector, Boolean])
     thickenOffsetted(amount?:number, v?:PointLike, flip?:boolean):IFace 
     {
         let vector = v as Vector;
@@ -625,6 +649,7 @@ export class Edge extends Shape
     /** Offset Edge a given amount into normal direction or reversed with '-amount' and return new Edge (private without adding to Scene)
      *  NOTE: param type does nothing but is for consistency     
     */
+    @checkInput([ [Number,EDGE_DEFAULT_OFFSET], [String, null],['PointLike', null]], [Number, 'auto','Vector'])
     _offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):Edge|Wire
     {
         /* OC docs: 
@@ -673,6 +698,8 @@ export class Edge extends Shape
     }
 
     /** Offset Edge a given amount into normal direction or reversed with '-amount' and return new Edge */
+    @checkInput([ [Number,EDGE_DEFAULT_OFFSET], [String, null],['PointLike', null]], [Number, 'auto','Vector'])
+    @sceneAdd
     offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):Edge|Wire
     {
         let offsetShape = this._offsetted(amount,type,onPlaneNormal);
@@ -683,6 +710,7 @@ export class Edge extends Shape
     }
 
     /** Offset Edge a given amount into normal direction or reversed with '-amount' */
+    @checkInput([ [Number,EDGE_DEFAULT_OFFSET], [String, null], ['PointLike', null]], [Number, 'auto','Vector'])
     offset(amount?:number, type?:string, onPlaneNormal?:PointLike):Edge|Wire
     {
         let offsetShape = this._offsetted(amount, type, onPlaneNormal); 
@@ -720,6 +748,7 @@ export class Edge extends Shape
      * Generate a Point at specific percentage of this Edge
      *  @param perc: number between 0 and 1
      */
+    @checkInput(Number, Number)
     pointAt(perc:number):Point
     {
         if(perc < 0 || perc > 1)
@@ -735,6 +764,7 @@ export class Edge extends Shape
     }
     
     /** Get Point at specific param value */
+    @checkInput(Number, Number)
     pointAtParam(param:number):Point
     {
         let p = new Point()._fromOcPoint(this._toOcCurve().Value(param)); 
@@ -742,12 +772,14 @@ export class Edge extends Shape
     }
 
     /** Check if Edge has a Vertex that equals the given Vertex */
+    @checkInput('PointLike', 'Vertex')
     isVertex(vertex:PointLike, ...args):Vertex
     {
         return ((vertex as Vertex).equals(this.start())) ? this.start() : (((vertex as Vertex).equals(this.end()) ? this.end() : null) );
     }
 
     /** Calculate the normal for a point on the Edge */
+    @checkInput('PointLike', 'Point')
     normalAt(point:PointLike, ...args):Vector
     {   
         let at = point as Point; // auto converted
@@ -775,6 +807,7 @@ export class Edge extends Shape
     }
 
     /** Get normal of Edge at percentage of length */
+    @checkInput(Number, 'auto')
     normalAtPerc(perc:number):Vector
     {
         perc = (perc < 0) ? 0 : (perc > 1) ? 1.0 : perc;
@@ -783,6 +816,7 @@ export class Edge extends Shape
     }
 
     /** Calculate the angle between two touching Edges at either ends */
+    @checkInput('Edge', 'Edge')
     angleTo(other:Edge):number
     {
         let intersections = this._intersections(other);
@@ -824,6 +858,7 @@ export class Edge extends Shape
     /** Extend Edge into a given direction (start or end) 
      *  NOTE: Check quality of Edge - there are signs of resulting Edges not being consistent  
     */
+    @checkInput([ [Number, EDGE_DEFAULT_EXTEND_AMOUNT], ['LinearShapeTail', EDGE_DEFAULT_EXTEND_DIRECTION]], [Number,'auto'])
     extend(amount?:number, direction?:LinearShapeTail):Edge
     {
         if(!['Line','Arc'].includes(this.edgeType())){ throw new Error(`Edge::extend(): Extend with edge type "${this.edgeType()}" not yet implemented!`)}
@@ -856,12 +891,15 @@ export class Edge extends Shape
     }
 
     /** Extend Edge into a certain direction (start or end) and return a copy */
+    @checkInput([[Number,EDGE_DEFAULT_POPULATE_NUM],['LinearShapeTail', EDGE_DEFAULT_EXTEND_DIRECTION]], [Number,'auto'])
     _extended(amount?:number, direction?:LinearShapeTail):Edge 
     {
         return (this._copy() as Edge).extend(amount, direction);
     }
 
     /** Extend Edge into a certain direction (start or end) and return a copy */
+    @checkInput([[Number,EDGE_DEFAULT_POPULATE_NUM],['LinearShapeTail', EDGE_DEFAULT_EXTEND_DIRECTION]], [Number,'auto'])
+    @sceneAdd
     extended(amount?:number, direction?:LinearShapeTail):Edge 
     {
         return this._extended(amount, direction);
@@ -871,6 +909,7 @@ export class Edge extends Shape
      *  @param other
      *  @param direction Extend at start or end. If not given pick closest
      */
+    @checkInput(['AnyShape', ['LinearShapeTail', null]], ['auto', 'auto'])
     extendTo(other:AnyShape, direction?:LinearShapeTail):this
     {
         const TEST_EXTEND_NON_CIRCULAR_PERC_DISTANCE = 2;
@@ -932,6 +971,8 @@ export class Edge extends Shape
         return this;
     }
 
+    @checkInput(['AnyShape', ['LinearShapeTail', null]], ['auto', 'auto'])
+    @sceneAdd
     extendedTo(other:AnyShape, direction?:LinearShapeTail):Edge
     {
         return this._copy().extendTo(other,direction);
@@ -947,6 +988,7 @@ export class Edge extends Shape
 
 
     /** Loft (forwarded to Wire) */
+    @checkInput(['AnyShapeOrCollection', [Boolean, WIRE_LOFTED_SOLID ]], ['ShapeCollection', 'auto'])
     loft(sections:AnyShapeOrCollection, solid?:boolean):IShell|Solid
     {
         let newShape = this._toWire()._lofted(sections,solid)
@@ -954,12 +996,15 @@ export class Edge extends Shape
         return newShape;
     }
 
+    @checkInput(['AnyShapeOrCollection', [Boolean, WIRE_LOFTED_SOLID ]], ['ShapeCollection', 'auto'])
+    @sceneAdd
     lofted(sections:AnyShapeOrCollection, solid?:boolean):IShell|Solid
     {
         return this._toWire()._lofted(sections,solid);
     }
 
     /* Move current Edge so it connects to another Edge or Wire with given from,to = start | end  */
+    @checkInput(['LinearShape', [String, EDGE_DEFAULT_ALIGNTO_FROM], [String, EDGE_DEFAULT_ALIGNTO_TO]], ['Wire', String, String])
     alignTo(other:LinearShape, from?:LinearShapeTail, to?:LinearShapeTail):this
     {
         // Main method is in Wire, convert single Edge to Wire and use that method
@@ -968,6 +1013,7 @@ export class Edge extends Shape
     }
 
     /** Get parameter (U) on Edge for given Point. If not on Edge will pick closest */ 
+    @checkInput('PointLike', 'Point')
     getParamAt(point:PointLike):number|null
     {
         // OC docs: https://dev.opencascade.org/doc/refman/html/class_geom_a_p_i___project_point_on_curve.html
@@ -984,6 +1030,8 @@ export class Edge extends Shape
     }
 
     /** Generate a Collection of a given number of Vertices equally spaced over this Edge including the start and end of the Edge */
+    @checkInput([[Number, EDGE_DEFAULT_POPULATE_NUM]], Number)
+    @sceneAdd
     populated(num?:number):VertexCollection
     {
         // NOTE: 4 points means 3 Edges ~ increments - except for circular Edges
@@ -1003,6 +1051,7 @@ export class Edge extends Shape
     }
 
     /** Break a curved Edge up into a Wire consisting of Line Edges with given angle between segments */
+    @checkInput([[Number,EDGE_DEFAULT_SEGMENTS_ANGLE], [Number, EDGE_DEFAULT_SEGMENTS_SIZE]], [Number, Number])
     segmentize(angle?:number, size?:number):LinearShape // Wire
     {
         const MINIMUM_POINTS = 2;
@@ -1068,6 +1117,7 @@ export class Edge extends Shape
     //// CONTEXT PREDICATES ////
 
     /* Get the Shapes where given current Edge and another intersect */
+    @checkInput('Edge', 'Edge')
     _intersectionsWithEdge(other:Edge):Vertex|Edge|ShapeCollection
     {
         // if edges are the same instance return itself (OC returns null)
@@ -1115,6 +1165,7 @@ export class Edge extends Shape
     }   
 
     /** Test if an Edge shares a Vertex with another */
+    @checkInput('Edge', 'Edge')
     connected(other:Edge)
     {
         // NOTE: this uses tolerance via Vector.equals() - and gp_Vec3.Equals()
@@ -1165,6 +1216,7 @@ export class Edge extends Shape
 
     //// SHAPE ANNOTATIONS API ////
 
+    @checkInput([['DimensionOptions',null]], ['auto'])
     dimension(options?:DimensionOptions):IDimensionLine
     {
         // For Edges it is always unclear where to offset dimension to
@@ -1180,6 +1232,7 @@ export class Edge extends Shape
     }
 
     /** Alias for dimension() */
+    @checkInput([['DimensionOptions',null]], ['auto'])
     dim(options?:DimensionOptions):IDimensionLine
     {
         return this.dimension(options);
@@ -1250,46 +1303,37 @@ export class Edge extends Shape
             - we set all attributes here, either set by user or default. So the renderers have consistent styling to work with
         */
 
-        const modelUnits = this._brep._units;
+        const modelUnits = hostUnits(this);
 
+        /*  Line styling comes from the meshup Style model: stroke.{color,opacity,width,dash}.
+            Values fall back to the shape's top-level color, then to the SVG defaults below. */
         const STYLE_TO_ATTR = [
-            { geom: 'line', prop: 'color', attr: 'stroke', transform : (val) => (val) ? new Color(val).toHex() : this.TO_SVG_LINE_COLOR_DEFAULT },
-            { geom: 'line', prop: 'dashed', attr: 'stroke-dasharray', transform : (val) => (val) ? convertValueFromToUnit(val ?? this.TO_SVG_DASH_SIZE_DEFAULT , 'mm', modelUnits) : null },
-            { geom: 'line', prop: 'width', attr: 'stroke-width' , transform : (val) => convertValueFromToUnit(val ?? this.TO_SVG_LINE_WIDTH_DEFAULT, 'mm', modelUnits) },
-            { geom: 'line', prop: 'opacity', attr: 'stroke-opacity' , transform : (val) => val ?? this.TO_SVG_OPACTIY_DEFAULT },
+            { prop: 'color', attr: 'stroke', transform : (val) => (val) ? new Color(val).toHex() : this.TO_SVG_LINE_COLOR_DEFAULT },
+            { prop: 'dash', attr: 'stroke-dasharray', transform : (val:Array<number>) =>
+                (Array.isArray(val) && val.length)
+                    ? val.map(d => convertValueFromToUnit(d, 'mm', modelUnits)).join(' ')
+                    : null },
+            { prop: 'width', attr: 'stroke-width' , transform : (val) => convertValueFromToUnit(val ?? this.TO_SVG_LINE_WIDTH_DEFAULT, 'mm', modelUnits) },
+            { prop: 'opacity', attr: 'stroke-opacity' , transform : (val) => val ?? this.TO_SVG_OPACTIY_DEFAULT },
         ]
 
         let svgAttrs = {};
 
-        // Get style from Edge obj container itself, or of its parent Shape or the parent of the object (most likely a layer)
-        const style = (this?._obj?._style 
-                            || this?._parent?._obj?._style 
-                            || this?._obj?._parent?._style
-                            || this?._parent?._obj?._parent?._style 
-                            || { point: {}, line: {}, fill: {} }) as ObjStyle; // empty style if none can be found
+        // Effective style: the Edge's own, else the parent Shape it was selected from. Both
+        // cascade through their SceneNode, so a color set on a layer reaches here.
+        const style = this._getObjStyle() ?? (this._parent as Shape)?._getObjStyle?.() ?? {};
+        const stroke = (style.stroke ?? {}) as Record<string,any>;
 
-        if(!style)
+        STYLE_TO_ATTR.forEach( t =>
         {
-            console.warn(`Edge::_getSvgPathAttributes(): There is no style available! This Edge (or it's _parent main Shape) is not in the Scene. `);
-        }
-        else {
-            STYLE_TO_ATTR.forEach( t => 
+            // NOTE: always execute (even if val is nullish) so we can set defaults
+            const val = stroke[t.prop] ?? ((t.prop === 'color') ? style.color : null) ?? null;
+            const svgValue = t.transform(val as any);
+            if(svgValue)
             {
-                // NOTE: always execute (even if val is nullish) so we can set defaults
-                const geomStyle = style[t.geom];
-                const val = (geomStyle) ? geomStyle[t.prop] || null : null;
-                const svgValue = t.transform(val);
-                if(svgValue)
-                {
-                    svgAttrs[t.attr] = svgValue
-                } 
-                else {
-                    // console.warn(`Edge::_getSvgPathAttributes(): Skipped attribute ${t.geom}->${t.prop} because svg value was null!`);
-                    // Disabled because it happens often
-                    // TODO: fix common line->dashed === null
-                }
-            })
-        }
+                svgAttrs[t.attr] = svgValue
+            }
+        })
         let svgAttrArr = [];
         for(const [a,v] of Object.entries(svgAttrs))
         {
@@ -1311,7 +1355,7 @@ export class Edge extends Shape
         
         const CLASSES_AFTER_TESTS = {
             'line' : (edge) => true, // add for basic geom type styling
-            'dashed' : (edge) => edge._getObjStyle()?.line?.dashed === true,
+            'dashed' : (edge) => Array.isArray(edge._getObjStyle()?.stroke?.dash),
         }
 
         let classes:Array<string> = [];

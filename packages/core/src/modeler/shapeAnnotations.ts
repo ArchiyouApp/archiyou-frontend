@@ -239,4 +239,51 @@ for (const Proto of [meshup.ShapeCollection.prototype, meshup.SceneNode.prototyp
     }
 }
 
+//// SECOND KERNEL ////
+
+/** Methods that are written purely against the shared Shape contract (`_modeler`, `style`,
+ *  `node()`, `_material`) and therefore work unchanged on brep Shapes. */
+const PORTABLE_SHAPE_METHODS = [
+    'dimension', 'dim', 'label', 'material', 'weight', 'carbon', 'selected', 'onClick',
+] as const
+
+const PORTABLE_COLLECTION_METHODS = ['weight', 'carbon', 'materialTotals'] as const
+
+/**
+ *  Give a second kernel's Shape/ShapeCollection classes the same app-level methods.
+ *
+ *  Called lazily from Modeler._loadBrep() rather than at import time: this module is loaded
+ *  eagerly by Modeler, and reaching for the brep classes here would drag the 10MB OpenCascade
+ *  barrel into every mesh-only run.
+ *
+ *  `addToScene` is deliberately NOT copied — brep Shape has its own, which knows about the
+ *  kernel's tmp() flag.
+ */
+export function applyShapeAnnotations(ShapeCtor: any, ShapeCollectionCtor: any, mode: string): void
+{
+    const target = ShapeCtor?.prototype
+    if (!target) return
+
+    Object.defineProperty(target, 'mode', { get() { return mode }, configurable: true })
+    Object.defineProperty(target, '_ay', {
+        get(this: any) { return this._modeler?.modules },
+        configurable: true,
+    })
+
+    for (const name of PORTABLE_SHAPE_METHODS)
+    {
+        // Don't clobber a kernel's own richer implementation if it has one on the base class.
+        if (Object.prototype.hasOwnProperty.call(target, name)) continue
+        target[name] = (ShapeProto as any)[name]
+    }
+
+    const colProto = ShapeCollectionCtor?.prototype
+    if (!colProto) return
+    for (const name of PORTABLE_COLLECTION_METHODS)
+    {
+        if (Object.prototype.hasOwnProperty.call(colProto, name)) continue
+        colProto[name] = (meshup.ShapeCollection.prototype as any)[name]
+    }
+}
+
 export {} // module marker

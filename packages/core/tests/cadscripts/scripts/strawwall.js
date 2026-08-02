@@ -1,12 +1,18 @@
-export default {
-  id: "archiyou/strawwall/0.4.0",
-  name: "strawwall",
-  author: "archiyou",
-  description: "Straw wall in variety of European systems",
-  tags: [],
-  created: "2025-04-10T14:19:17.478Z",
-  updated: "2025-04-10T14:19:17.478Z",
-  code: `// Archiyou 0.6.3
+// strawwall
+// Straw wall in variety of European systems
+
+$PARAMS.define('LENGTH', 'number', { label: "Length", units: "cm", order: 0, default: 300, minimum: 100, maximum: 400, multipleOf: 1 });
+$PARAMS.define('HEIGHT', 'number', { label: "Height", units: "cm", order: 0, default: 200, minimum: 100, maximum: 300, multipleOf: 1 });
+$PARAMS.define('SYSTEM', 'options', { label: "System", order: 0, default: "RFCP-2", options: ["RFCP-2","FASBA","RFCP-1-front","RFCP-1-back"] });
+$PARAMS.define('BALE_THICKNESS', 'number', { label: "Bale depth", units: "mm", order: 0, default: 370, minimum: 300, maximum: 500, multipleOf: 1 });
+$PARAMS.define('BALE_WIDTH', 'number', { label: "Bale width", units: "mm", order: 0, default: 470, minimum: 300, maximum: 500, multipleOf: 1 });
+$PARAMS.define('BALE_LENGTH', 'number', { label: "Bale length", units: "mm", order: 0, default: 600, minimum: 300, maximum: 800, multipleOf: 1 });
+$PARAMS.define('BEAM_SECTION_AUTO', 'boolean', { label: "Beam section automatic", order: 0, default: true });
+$PARAMS.define('BEAM_SECTION_WIDTH', 'number', { label: "Beam section width", units: "mm", order: 0, default: 35, minimum: 30, maximum: 70, multipleOf: 1 });
+$PARAMS.define('BEAM_SECTION_HEIGHT', 'number', { label: "Beam section height", units: "mm", order: 0, default: 70, minimum: 70, maximum: 150, multipleOf: 1 });
+$PARAMS.define('HIDE_BALES', 'boolean', { label: "Hide bales", order: 0, default: false });
+
+// Archiyou 0.6.3
 
 /*
     Basic straw wall
@@ -97,7 +103,7 @@ gridline = line([0,-500,0],[0,500,0]).moveY(STRAW_BALE_THICKNESS/2)
 studCTC = (SYSTEM.balesPerSegment*STRAW_BALE_WIDTH) - (SYSTEM.balesPerSegment*STRAW_BALE_TIGHTFIT_INSET_PER_BALE) + BEAM_SECTION_WIDTH;
 numFullStuds = Math.floor( (bottomPlateLength-BEAM_SECTION_WIDTH) / (studCTC)) + 1;
 
-gridlines = gridline.arrayX(numFullStuds+1, studCTC)
+gridlines = gridline.array([numFullStuds+1,1,1],[studCTC,0,0])
 
 layer('studs').color('blue');
 
@@ -120,7 +126,7 @@ if(SYSTEM.studAlign === 'back')
     studFront.moveToY(STRAW_BALE_THICKNESS-BEAM_SECTION_WIDTH/2)
 }
     
-studsFront = studFront.arrayX(numFullStuds, studCTC);
+studsFront = studFront.array([numFullStuds,1,1],[studCTC,0,0]);
 
 if(SYSTEM.doubleStuds)
 {
@@ -169,7 +175,7 @@ if(SYSTEM.doubleStuds)
                             .align(bottomPlateFront, 'leftbottomfront', 'leftbottomback')
                             .name('stud brace')
 
-    bracesBottom = braceLeftBottom.arrayX(numFullStuds, studCTC)
+    bracesBottom = braceLeftBottom.array([numFullStuds,1,1],[studCTC,0,0])
     // Last brace
     if(numFullStuds < studsFront.length)
     {
@@ -195,7 +201,7 @@ bale = boxbetween([0,0,0],[realBaleWidth, STRAW_BALE_THICKNESS, STRAW_BALE_LENGT
         .name('bale')
 
 numWholeBalesStacked = Math.floor(studHeight / STRAW_BALE_LENGTH);
-wholeBales = bale.arrayZ(numWholeBalesStacked, STRAW_BALE_LENGTH)
+wholeBales = bale.array([1,1,numWholeBalesStacked],[0,0,STRAW_BALE_LENGTH])
 brokeBale =  boxbetween([0,0,0],[realBaleWidth, STRAW_BALE_THICKNESS, studHeight - numWholeBalesStacked*STRAW_BALE_LENGTH])
                 .align(wholeBales.last(), 'leftbottomfront', 'lefttopfront')
                 .name('bale cut')
@@ -217,7 +223,7 @@ calc.metric('total bale volume',
     roundTo((numFullStuds + 1) * ((realBaleWidth*studHeight*STRAW_BALE_THICKNESS)/1e9),2), { 'unit' : 'm3' } )
 calc.metric('num bales', (wholeBales.length * SYSTEM.balesPerSegment + 1)*numFullStuds )
 
-allTimberShapes = group(layer('bottomplate').shapes(), layer('bottomplate').shapes(), 
+allTimberShapes = collection(layer('bottomplate').shapes(), layer('bottomplate').shapes(), 
                     layer('studs').shapes(), layer('braces').shapes())
                     .filter(s => s.bbox().minSize() > BOARD_THICKNESS)
 
@@ -271,7 +277,7 @@ doc
     .height(0.6)
     .pivot(0,1)
     .position(0.4,1)
-    .text(\`System: \${$SYSTEM}\`, { size: '5mm' })
+    .text(`System: ${$SYSTEM}`, { size: '5mm' })
     .position(0.8,0.3)
     .table('parts', { 'fontsize': 6 })
     .width(0.6)
@@ -279,450 +285,4 @@ doc
 
 
     
-`,
-  params: {
-    LENGTH: {
-      name: "LENGTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Length",
-      default: 300,
-      _value: undefined,
-      min: 100,
-      max: 400,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "cm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    HEIGHT: {
-      name: "HEIGHT",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Height",
-      default: 200,
-      _value: undefined,
-      min: 100,
-      max: 300,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "cm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    SYSTEM: {
-      name: "SYSTEM",
-      id: undefined,
-      type: "options",
-      enabled: true,
-      visible: undefined,
-      label: "System",
-      default: "RFCP-2",
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: [
-        "RFCP-2",
-        "FASBA",
-        "RFCP-1-front",
-        "RFCP-1-back"
-      ],
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BALE_THICKNESS: {
-      name: "BALE_THICKNESS",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Bale depth",
-      default: 370,
-      _value: undefined,
-      min: 300,
-      max: 500,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BALE_WIDTH: {
-      name: "BALE_WIDTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Bale width",
-      default: 470,
-      _value: undefined,
-      min: 300,
-      max: 500,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BALE_LENGTH: {
-      name: "BALE_LENGTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Bale length",
-      default: 600,
-      _value: undefined,
-      min: 300,
-      max: 800,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BEAM_SECTION_AUTO: {
-      name: "BEAM_SECTION_AUTO",
-      id: undefined,
-      type: "boolean",
-      enabled: true,
-      visible: undefined,
-      label: "Beam section automatic",
-      default: true,
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BEAM_SECTION_WIDTH: {
-      name: "BEAM_SECTION_WIDTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Beam section width",
-      default: 35,
-      _value: undefined,
-      min: 30,
-      max: 70,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BEAM_SECTION_HEIGHT: {
-      name: "BEAM_SECTION_HEIGHT",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Beam section height",
-      default: 70,
-      _value: undefined,
-      min: 70,
-      max: 150,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    HIDE_BALES: {
-      name: "HIDE_BALES",
-      id: undefined,
-      type: "boolean",
-      enabled: true,
-      visible: undefined,
-      label: "Hide bales",
-      default: false,
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    }
-  },
-  presets: {},
-  published: {
-    url: "/archiyou/strawwall:0.4.0",
-    version: "0.4.5",
-    title: "StrawWall",
-    public: true,
-    published: "2025-04-10T16:19:17.478751",
-    description: "Straw wall in variety of European systems",
-    params: {
-      LENGTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "LENGTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Length",
-        default: 300,
-        min: 100,
-        max: 400,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "cm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      HEIGHT: {
-        MAX_TEXT_LENGTH: 255,
-        name: "HEIGHT",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Height",
-        default: 200,
-        min: 100,
-        max: 300,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "cm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      SYSTEM: {
-        MAX_TEXT_LENGTH: 255,
-        name: "SYSTEM",
-        id: undefined,
-        type: "options",
-        enabled: true,
-        visible: undefined,
-        label: "System",
-        default: "RFCP-2",
-        min: undefined,
-        max: undefined,
-        step: undefined,
-        options: [
-          "RFCP-2",
-          "FASBA",
-          "RFCP-1-front",
-          "RFCP-1-back"
-        ],
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: null,
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BALE_THICKNESS: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BALE_THICKNESS",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Bale depth",
-        default: 370,
-        min: 300,
-        max: 500,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BALE_WIDTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BALE_WIDTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Bale width",
-        default: 470,
-        min: 300,
-        max: 500,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BALE_LENGTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BALE_LENGTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Bale length",
-        default: 600,
-        min: 300,
-        max: 800,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BEAM_SECTION_AUTO: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BEAM_SECTION_AUTO",
-        id: undefined,
-        type: "boolean",
-        enabled: true,
-        visible: undefined,
-        label: "Beam section automatic",
-        default: true,
-        min: undefined,
-        max: undefined,
-        step: undefined,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: null,
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BEAM_SECTION_WIDTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BEAM_SECTION_WIDTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Beam section width",
-        default: 35,
-        min: 30,
-        max: 70,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BEAM_SECTION_HEIGHT: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BEAM_SECTION_HEIGHT",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Beam section height",
-        default: 70,
-        min: 70,
-        max: 150,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      HIDE_BALES: {
-        MAX_TEXT_LENGTH: 255,
-        name: "HIDE_BALES",
-        id: undefined,
-        type: "boolean",
-        enabled: true,
-        visible: undefined,
-        label: "Hide bales",
-        default: false,
-        min: undefined,
-        max: undefined,
-        step: undefined,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: null,
-        order: 0,
-        iterable: true,
-        description: null
-      }
-    },
-    presets: {},
-    libraryUrl: "http://localhost:4000"
-  }
-};
+

@@ -20,9 +20,13 @@ import type { ArchiyouApp, PointLike, PointLikeOrAnyShapeOrCollection,
          LayoutOrderType, LayoutOptions, 
          DimensionLevelSettings, AnnotationAutoDimStrategy,
          MeshShape, MeshShapeBuffer, MeshShapeBufferStats,
-         Annotation, MainAxis, ObjStyle, toDXFOptions, toSVGOptions  } from '.' // see types
+         Annotation, MainAxis, toDXFOptions, toSVGOptions  } from '.' // see types
 
-import { Obj, Point, Vector, Shape, Vertex, Edge, Wire, Face, Shell, Solid, Brep } from './index'
+import { Point, Vector, Shape, Vertex, Edge, Wire, Face, Shell, Solid, Brep } from './index'
+
+// Scene + style come from the mesh kernel — one SceneNode graph and one Style model for both.
+import { SceneNode } from '@archiyou/meshup/src/SceneNode'
+import type { StyleData } from '@archiyou/meshup/src/Style'
 import { Exporter } from './Exporter'
 import { BaseAnnotation } from '../../annotator/AnnotatorBaseAnnotation'
 
@@ -53,12 +57,28 @@ import { Color } from '@archiyou/meshup/src/Color'
  }
 
 
+
+// Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
+// run at class-definition time, before it has finished initialising.
+import { checkInput } from './decorators'
+import { hostUnits, hostAnnotator, nextName } from './host'
+import { getOc } from './index' // OC global getter
+
  export class ShapeCollection
  {
-      /*  ShapeCollection cannot contain other ShapeCollections. Hierarchies are managed by Obj container class */
-      _oc:any; 
-      _brep:Brep;
-      _obj:Obj = null; // Obj container
+      /*  ShapeCollection cannot contain other ShapeCollections. Hierarchies live in the
+          meshup SceneNode graph — see _layer. */
+      /** The OpenCascade module. A lazy getter, not a field: ShapeCollections are constructed
+       *  constantly (including before OC is initialised) and only a handful of methods —
+       *  toOcCompound() and friends — actually need the kernel. */
+      get _oc():any { return getOc() }
+      /** Opaque back-reference to the host Modeler — see Shape._modeler and ./host.ts */
+      _modeler:any = null;
+      /** The scene layer node holding this collection's Shapes, when it is scene-backed.
+       *  Mirrors meshup ShapeCollection._layer and is what the @colScene* decorators resolve. */
+      _layer:SceneNode|null = null;
+      /** Collection name, mirrored onto _layer. */
+      _name:string|undefined;
       _parent:AnyShapeOrCollection;
       shapes:Array<AnyShape> = []; // No ShapeCollection here
       _groups:{[key:string]:Array<AnyShape>} = {}; // mechanism to define groups within ShapeCollection (experimental)
@@ -90,6 +110,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       /** Try to convert anything to a ShapeCollection */
       // We use an incremental way of iterating over collections (Arrays, ShapeCollections), testing the entities and adding them
       // IMPORTANT TODO: if new ShapeCollection from existing one - what to do with taking over attributes? 
+      @checkInput('MakeShapeCollectionInput', 'auto') // no conversion of types
       fromAll(entities?:MakeShapeCollectionInput):AnyShapeCollection
       {
          // protect against single PointLike
@@ -112,6 +133,7 @@ import { Color } from '@archiyou/meshup/src/Color'
 
       /** Add entities (geometry and shapes) to Shape Collection */
       // Extra: add entities as group to organize shapes inside the ShapeCollection
+      @checkInput(['MakeShapeCollectionInput', ['String', null]], ['auto','auto']) // no conversion of types
       _addEntities(entities?:MakeShapeCollectionInput, group?:string):AnyShapeCollection
       {
          if(entities == null)
@@ -221,6 +243,7 @@ import { Color } from '@archiyou/meshup/src/Color'
 
       /** Add entities as named group */
       // TODO: organize scene tree too!
+      @checkInput([['String', null], 'MakeShapeCollectionInput'], ['auto','auto']) // no conversion of types
       addGroup(group?:string, entities?:MakeShapeCollectionInput):AnyShapeCollection
       {
          let c = this._addEntities(entities, group);
@@ -389,6 +412,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Array API - For consistency with Array */
+      @checkInput('AnyShapeSequence', 'ShapeCollection')
       concat(other:AnyShapeSequence):AnyShapeCollection
       {
          other = other as ShapeCollection;
@@ -411,17 +435,8 @@ import { Color } from '@archiyou/meshup/src/Color'
          return this.shapes.every(checkFunc);
       }
 
-      /** Place this ShapeCollection (and all it's child Shapes) into the Obj container */
-      setObj(obj:Obj)
-      {
-         this._obj = obj;
-         
-         this.shapes.forEach(s => {
-            s._obj = obj;
-         });
-      }
-
       /** Add Shape to ShapeCollection */
+      @checkInput('AnyShapeOrCollection', 'ShapeCollection')
       add(shapes?:AnyShapeOrSequence, ...args):this
       {
          // TODO: Adding to ShapeCollection is by reference. This makes it not exclusively owned
@@ -433,6 +448,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /**  Array API - Add Shape to ShapeCollection*/
+      @checkInput('AnyShape', 'auto')
       push(shape:AnyShape):ShapeCollection
       {
          this.add(shape);
@@ -440,6 +456,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Add Shape to ShapeCollection but not if it is already in it */
+      @checkInput('AnyShapeOrCollection', 'ShapeCollection')
       addUnique(shapes?:ShapeCollection, ...args):this
       {
          const hashes = this.shapes.map(s => s._hashcode());
@@ -449,6 +466,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Remove Shapes from ShapeCollection */
+      @checkInput('AnyShapeOrCollection', 'ShapeCollection')
       remove(shapes:AnyShapeOrCollection, ...args): ShapeCollection
       {
          let removeShapes = shapes as ShapeCollection;
@@ -481,6 +499,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Return a new Collection of given Shapes removed */
+      @checkInput('AnyShapeOrCollection', 'ShapeCollection')
       removed(shapes:AnyShapeOrCollection): ShapeCollection
       {
          const newCollection = this.shallowCopy();
@@ -490,6 +509,7 @@ import { Color } from '@archiyou/meshup/src/Color'
 
 
       /** Add Shape at beginning of collection */
+      @checkInput('AnyShape', 'auto')
       prepend(shape:AnyShape):ShapeCollection
       {
          this.shapes = [shape].concat(this.shapes);
@@ -497,12 +517,14 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Add Shape at beginning of collection */
+      @checkInput('AnyShape', 'auto')
       prepended(shape:AnyShape):ShapeCollection
       {
          return new ShapeCollection([shape].concat(this.shapes));
       }
 
       /** Add Shape to right of current ShapeCollection */
+      @checkInput('AnyShape', 'auto')
       addAligned(shape:AnyShape):this
       {
          const NEXT_MARGIN = 10;
@@ -521,6 +543,7 @@ import { Color } from '@archiyou/meshup/src/Color'
          return this;
       }
 
+      @checkInput(['AnyShapeOrCollection','AnyShapeOrCollection'],['ShapeCollection','ShapeCollection'])
       replace(shapes:AnyShapeOrCollection, newShapes:AnyShapeOrCollection):ShapeCollection
       {
          this.remove(shapes as ShapeCollection)
@@ -542,6 +565,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - move all Shapes in ShapeCollection */
+      @checkInput('PointLike','Vector') // this automatically transforms Types
       move(vector:PointLike, ...args):AnyShapeCollection
       {
          this.shapes.forEach( shape => shape.move(vector as Vector));
@@ -550,6 +574,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - move a copy of all Shapes in ShapeCollection */
+      @checkInput('PointLike','Vector') // this automatically transforms Types
       moved(vector:PointLike, ...args):AnyShapeCollection
       {
          let newCollection = this.copy();
@@ -561,6 +586,7 @@ import { Color } from '@archiyou/meshup/src/Color'
 
       /**  Shape API - Move center of Collection to a given point */
       // NOTE: This might be a bit weird: Moving all Shapes in this Collection to the same coordinate */
+      @checkInput('PointLike','Vector') // this automatically transforms Types
       moveTo(to:PointLike, ...args):AnyShapeCollection
       {
          let moveVec = (to as Vector).subtract(this.center().toVector());
@@ -577,6 +603,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Aliass for move along x-direction */
+      @checkInput(Number, 'auto')
       moveX(distance:number):this
       {
          this.move(distance)
@@ -584,6 +611,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Aliass for move along x-direction */
+      @checkInput(Number, 'auto')
       moveY(distance:number):this
       {
          this.move(0,distance,0)
@@ -591,6 +619,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Aliass for move along x-direction */
+      @checkInput(Number, 'auto')
       moveZ(distance:number):this
       {
          this.move(0,0,distance)
@@ -598,6 +627,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
       
       /** Move shapes to given x coordinate */
+      @checkInput(Number, 'auto')
       moveToX(x:number):this
       {
          this.shapes.forEach(s => s.moveToX(x));
@@ -605,6 +635,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Move shapes to given x coordinate */
+      @checkInput(Number, 'auto')
       moveToY(y:number):this
       {
          this.shapes.forEach(s => s.moveToY(y));
@@ -612,6 +643,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Move shapes to given x coordinate */
+      @checkInput(Number, 'auto')
       moveToZ(z:number):this
       {
          this.shapes.forEach(s => s.moveToZ(z));
@@ -619,6 +651,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API */
+      @checkInput([ [Number,0],[Number,0], [Number,0], ['Pivot', 'center']], [Number,Number,Number,'auto']) // IMPORTANT: not able to directly convert Pivot to Vector because pivot needs current Shape (can that be accessed in decorator?)
       rotateEuler(degX?:number, degY?:number, degZ?:number, pivot?:PointLike):AnyShapeCollection
       {
          if (pivot === 'center'){ pivot = this.center();} // use center of ShapeCollection as pivot, not of individual Shape
@@ -627,6 +660,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API */
+      @checkInput([ [Number,0],[Number,0], [Number,0], ['Pivot', 'center']], [Number,Number,Number,'auto']) // IMPORTANT: not able to directly convert Pivot to Vector because pivot needs current Shape (can that be accessed in decorator?)
       rotatedEuler(degX?:number, degY?:number, degZ?:number, pivot?:PointLike):AnyShapeCollection
       {
          let newCollection = this.copy();
@@ -636,6 +670,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Rotate all Shapes around their centers with a given x,y,z angles */
+      @checkInput('PointLike', Vector)
       rotate(r:PointLike, ...args):AnyShapeCollection // allows flattened notation rotate(180,0,-90)
       {
          let rv = r as Vector; // automatically converted to Vector
@@ -645,6 +680,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Rotate all Shapes around the x-axis with a given angle and given pivot (default: center) */
+      @checkInput([Number,['Pivot','center']], [Number, 'auto'])
       rotateX(deg:number, pivot?:Pivot):AnyShapeCollection
       {
          if (pivot === 'center'){ pivot = this.center();} // use center of ShapeCollection as pivot, not of individual Shape
@@ -653,6 +689,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Rotate all Shapes around the y-axis with a given angle and given pivot (default: center) */
+      @checkInput([Number,['Pivot','center']], [Number, 'auto'])
       rotateY(deg:number, pivot?:Pivot):AnyShapeCollection
       {
          if (pivot === 'center'){ pivot = this.center();} // use center of ShapeCollection as pivot, not of individual Shape
@@ -661,6 +698,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Rotate all Shapes around the z-axis with a given angle and given pivot (default: center of ShapeCollection) */
+      @checkInput([Number,['Pivot','center']], [Number, 'auto'])
       rotateZ(deg:number, pivot?:Pivot):AnyShapeCollection
       {
          if (pivot === 'center'){ pivot = this.center();} // use center of ShapeCollection as pivot, not of individual Shape
@@ -670,6 +708,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Rotate all Shapes around a specific axis with a given angle (default: [0,0,1]) and given pivot (default: center) */
+      @checkInput([Number,['PointLike',[0,0,1]],['Pivot','center'] ], [Number, 'Vector', 'auto'])
       rotateAround(angle:number, axis?:PointLike, pivot?:Pivot):AnyShapeCollection
       {
          if (pivot === 'center'){ pivot = this.center();} // use center of ShapeCollection as pivot, not of individual Shape
@@ -679,6 +718,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Scale entire ShapeCollection */
+      @checkInput([[Number,SHAPE_SCALE_DEFAULT_FACTOR], ['PointLike', null]],[Number,'Point'])
       scale(factor?:number, pivot?:PointLike):AnyShapeCollection
       {
          pivot = pivot || this.center();
@@ -687,6 +727,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Scale entire ShapeCollection and return copy */
+      @checkInput([[Number,SHAPE_SCALE_DEFAULT_FACTOR], ['PointLike', null]],[Number,'Point'])
       scaled(factor?:number, pivot?:PointLike):AnyShapeCollection
       {
          let newCollection = this._copy();
@@ -695,6 +736,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Align Shapecollection to other Shape or ShapeCollection */
+      @checkInput(['AnyShapeOrCollection',['Pivot','center'],['Alignment', 'center']],['ShapeCollection','auto','auto'])
       align(other:AnyShapeOrCollection, pivot?:Pivot, alignment?:Alignment):AnyShapeOrCollection
       {
          const otherCollection = other as ShapeCollection; // autoconverted
@@ -747,6 +789,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API */
+      @checkInput([Number,'PointLike'], [Number, 'Point']) 
       _array1D(size:number, spacingOffset:PointLike):AnyShapeCollection
       {
          let newCollection = new ShapeCollection();
@@ -759,6 +802,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Mirror Shapes in ShapeCollection with mirror plane defined by planeNormal and origin */
+      @checkInput([['PointLike', [0,0,0]], ['PointLike', 'x']], ['Vector', 'Vector']) // the default mirror plane is the YZ plane with normal +X-axis at [0,0,0]
       mirrored(origin:PointLike, planeNormal:PointLike):AnyShapeCollection
       {
          let newCollection = new ShapeCollection();
@@ -769,6 +813,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Mirror Shapes relative to X-plane (x=0) with its collection center as pivot or given offset x-coord */
+      @checkInput([[Number,null]], ['auto'])
       mirrorX(offset?:number):AnyShapeCollection
       {
          offset = offset ?? this.center().y; // based on given offset or center of collection
@@ -780,6 +825,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Mirror copies of Shapes relative to X-plane (x=0) with its collection center as pivot or given offset x-coord */
+      @checkInput([[Number,null]], 'auto')
       _mirroredX(offset?:number)
       {
          const newCollection = new ShapeCollection();
@@ -789,12 +835,14 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Mirror copies of Shapes relative to X-plane (x=0) with its collection center as pivot or given offset x-coord */
+      @checkInput([[Number,null]], 'auto')
       mirroredX(offset?:number)
       {
          return this._mirroredX(offset);
       }
 
       /** Shape API - Mirror Shapes relative to Y plane (y=0) with its collection center as pivot or given offset y-coord */
+      @checkInput([[Number,null]], 'auto')
       mirrorY(offset?:number):AnyShapeCollection
       {
          offset = offset ?? this.center().x; // based on given offset or center of collection
@@ -806,6 +854,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Mirror copies of Shapes relative to Y plane (y=0) with its collection center as pivot or given offset y-coord */
+      @checkInput([[Number,null]], 'auto')
       _mirroredY(offset?:number)
       {
          const newCollection = new ShapeCollection();
@@ -815,12 +864,14 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Mirror copies of Shapes relative to Y plane (y=0) with its collection center as pivot or given offset y-coord */
+      @checkInput([[Number,null]], 'auto')
       mirroredY(offset?:number)
       {
          return this._mirroredY(offset);
       }
 
       /** Shape API - Mirror Shapes relative to Z plane (z=0) with its collection center as pivot or given offset z-coord */
+      @checkInput([[Number,null]], 'auto')
       mirrorZ(offset?:number):AnyShapeCollection
       {
          offset = offset ?? this.center().z; // based on given offset or center of collection
@@ -831,6 +882,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Mirror copies of Shapes in Z-plane (z=0) with its collection center as pivot or given offset z-coord */
+      @checkInput([[Number,null]], 'auto')
       _mirroredZ(offset?:number)
       {
          const newCollection = new ShapeCollection();
@@ -840,12 +892,14 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Mirror copies of Shapes relative to XZ plane with its collection center as pivot or given offset z-coord */
+      @checkInput([[Number,null]], 'auto')
       mirroredZ(offset?:number)
       {
          return this._mirroredZ(offset);
       }
 
       /** Shape API - offset Shapes in Collection */
+      @checkInput([[Number,null],[String, null],['PointLike', null]], ['auto', 'auto', 'Vector'])
       offset(amount?:number, type?:string, onPlaneNormal?:PointLike):AnyShapeCollection
       {
          this.shapes.forEach( shape => (shape as Shape).offset(amount, type, onPlaneNormal) )
@@ -854,6 +908,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - create copeis and offset Shapes in Collection  */
+      @checkInput([[Number,null],[String, null],['PointLike', null]], ['auto', 'auto', 'Vector'])
       offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):AnyShapeCollection
       {
          let newCollection = new ShapeCollection();
@@ -865,6 +920,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Extrude Shapes in ShapeCollection a certain amount in a given direction (default: [0,0,1]) */
+      @checkInput([ [Number, SHAPE_EXTRUDE_DEFAULT_AMOUNT], ['PointLike', null ]], [Number, 'auto'])
       extrude(amount?:number, direction?:PointLike):AnyShapeCollection
       {
          this.shapes.forEach( shape => {
@@ -875,6 +931,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Extrude Shapes in ShapeCollection a certain amount in a given direction (default: [0,0,1]) */
+      @checkInput([ [Number, SHAPE_EXTRUDE_DEFAULT_AMOUNT], ['PointLike', null ]], [Number, 'auto'])
       extruded(amount?:number, direction?:PointLike):AnyShapeCollection
       {
          let newCollection = new ShapeCollection();
@@ -885,6 +942,7 @@ import { Color } from '@archiyou/meshup/src/Color'
          return newCollection;
       }
 
+      @checkInput([Number, [String, 'center']], [Number, String])
       thicken(amount:number,  direction?:string):ShapeCollection
       {
          this.forEach( shape => 
@@ -895,6 +953,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Create a new ShapeCollection with thickened Shapes */
+      @checkInput([Number, [String, 'all']], [Number, String])
       thickened(amount:number,  direction?:string):ShapeCollection
       {
          let newCollection = new ShapeCollection();
@@ -938,7 +997,7 @@ import { Color } from '@archiyou/meshup/src/Color'
             const copiedShapes = groupShapes.map(shape => shape._copy())
             newShapeCollection.addGroup(groupName, copiedShapes); 
          })
-         newShapeCollection.setName( this._brep.getNextLayerName( 'CopyOf' + this.getName() ));
+         newShapeCollection.setName( nextName( 'CopyOf' + this.getName() ));
          newShapeCollection._setFakeArrayKeys();
 
          return newShapeCollection;
@@ -964,8 +1023,11 @@ import { Color } from '@archiyou/meshup/src/Color'
          return new ShapeCollection(this.shapes.map(s => s.clone()));
       }
 
-      /** Shape API */
-      type():string
+      /** Shape API — a getter, matching Shape.type and meshup's SceneNodeShape contract.
+       *  NOTE: this was a method in the pre-monorepo sources. Everything now reads it as a
+       *  property, so leaving it callable made `isShapeCollection()` compare a function to a
+       *  string and always answer false. */
+      get type():string
       {
          // TODO: Distinguish between: Mixed and the same geometries (like ShapeCollection, EdgeCollection, VertexCollection etc)
          return 'ShapeCollection';
@@ -981,6 +1043,12 @@ import { Color } from '@archiyou/meshup/src/Color'
       isShapeCollection():boolean
       {
          return this.type == 'ShapeCollection';
+      }
+
+      /** meshup's ShapeCollection and scene decorators accept anything answering true here. */
+      isShapeClass():boolean
+      {
+         return true;
       }
 
       /* Test if a given object is a ShapeCollection */
@@ -1080,6 +1148,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       
 
       /** Shape API */
+      @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
       _intersections(others:PointLikeOrAnyShapeOrCollection):ShapeCollection
       {         
          if(this.count() == 0)
@@ -1106,12 +1175,14 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Create intersecting Shapes between Shapes in this collection and other Shape or Collection */
+      @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
       intersections(others:PointLikeOrAnyShapeOrCollection):ShapeCollection
       {
          return this._intersections(others)
       }
 
       /** Get Shapes that intersect with given Shape(s) */
+      @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
       intersecting(other:PointLikeOrAnyShapeOrCollection):ShapeCollection
       {
          let otherShapeOrCollection = isPointLike(other) ? new Point(other)._toVertex() : other; // convert PointLike to Vertex so it is a Shape
@@ -1129,18 +1200,21 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Alias for intersecting */
+      @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
       intersectors(other:PointLikeOrAnyShapeOrCollection):ShapeCollection
       {
          return this.intersecting(other);
       }
 
       /** Shape API */
+      @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
       contains(other:PointLikeOrAnyShapeOrCollection):boolean
       {
          return (this.find(shape => shape.contains(other)) != null);
       }
 
       /** Find Shapes within ShapeCollection that entirely contain given other Shape */
+      @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
       containers(other:PointLikeOrAnyShapeOrCollection):ShapeCollection|AnyShape
       {
          return this.filter(shape => shape.contains(other));
@@ -1148,6 +1222,7 @@ import { Color } from '@archiyou/meshup/src/Color'
 
       /** Return nearest Shape within this Collection to other given Shape(s) */
       // TODO: write test
+      @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
       nearest(other:PointLikeOrAnyShapeOrCollection):AnyShape
       {  
          const otherShapes = new ShapeCollection();  
@@ -1281,6 +1356,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API: Project 3D Shapes on XY plane */
+      @checkInput([['PointLike',[0,1,0]], ['Boolean', false]],['Vector', 'auto'])
       _project(planeNormal?:PointLike, all?:boolean):ShapeCollection
       {
          const visibleShapes = new ShapeCollection(this.filter( shape => shape.visible() === true)); // filter can return single Shape
@@ -1292,12 +1368,14 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API: Public Project 3D Shapes on XY plane and add result to Scene */
+      @checkInput([['PointLike',[0,1,0]], ['Boolean', false]],['Vector', 'auto'])
       project(planeNormal?:PointLike, all?:boolean):ShapeCollection
       {
           return this._project(planeNormal, all);
       }
 
       /** Shape API: Generate elevation from a given side without adding to Scene */
+      @checkInput([['Side', 'top'], ['Boolean', false]], ['auto', 'auto'])
       _elevation(side?:Side, all?:boolean):ShapeCollection
       {
          const visibleShapes = new ShapeCollection(this.filter( shape => shape.visible() === true)); // filter can return single Shape
@@ -1310,6 +1388,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
       
       /** Shape API: Generate elevation from a given side and add to Scene */
+      @checkInput([['Side', 'top'], ['Boolean', false]], ['auto', 'auto'])
       elevation(side?:Side, all?:boolean):ShapeCollection
       {
          return this._elevation(side, all);
@@ -1379,6 +1458,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Get Shapes at index. NOTE: We can also use the fake index keys like collection[0] */
+      @checkInput(Number.isInteger, 'auto')
       at(index:number)
       {
          return this.shapes[index];
@@ -1441,6 +1521,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       //// NAVIGATING SHAPES ////
 
       /** Get Shapes of given type in ShapeCollection */
+      @checkInput('ShapeType', 'auto')
       getShapesByType(type:ShapeType):ShapeCollection
       {
         let shapes = this.shapes.filter( s => s.type == type );
@@ -1448,6 +1529,7 @@ import { Color } from '@archiyou/meshup/src/Color'
         // TODO: make specific ShapeCollection: like VertexCollection?
       }
 
+      @checkInput('ShapeTypes', Array)
       getShapesByTypes(types:Array<ShapeType>):ShapeCollection
       {
         let shapes = this.shapes.filter( s => types.includes(s.type));
@@ -1456,6 +1538,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Get all subshapes of type from Shapes in Collection */
+      @checkInput('ShapeType', 'auto') 
       getSubShapes(type:ShapeType):ShapeCollection
       {
          const TYPE_TO_FUNC = { 'Vertex' : 'vertices', 'Edge' : 'edges', 'Wire' : 'wires', 'Face' : 'faces', 'Shell' : 'shells', 'Solid' : 'solids' }
@@ -1505,6 +1588,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** check if this Collection has a specific instance of a Geometry */
+      @checkInput('AnyShapeOrCollection', 'auto')
       has(s:AnyShapeOrCollection):boolean
       {
          if (Shape.isShape(s))
@@ -1535,24 +1619,28 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Check if this Collection has a Shape of a given type */
+      @checkInput('ShapeType', 'auto')
       hasType(type:ShapeType):boolean
       {
          return this.getShapesByType(type).length > 0; 
       }
 
       /** Array API - Get index of given Shape, if not exists -1 */
+      @checkInput('AnyShape', 'auto')
       indexOf(s:Shape):number
       {
          return this.shapes.indexOf(s);
       }
 
       /** Array API - */
+      @checkInput([Number.isInteger, Number.isInteger], [Number, Number])
       slice(start:number,end:number):ShapeCollection
       {
          return new ShapeCollection(this.shapes.slice(start,end));
       }
 
       /** Get the Shapes in current collection that are also in the other one with the same Geometry */
+      @checkInput('AnyShapeOrCollection', 'auto')
       getEquals(others:AnyShapeOrCollection):ShapeCollection
       {  
          let equals = [];
@@ -1574,6 +1662,7 @@ import { Color } from '@archiyou/meshup/src/Color'
        *    NOTE: this might not be enough to establish 
        * 
       */
+      @checkInput('AnyShapeOrCollection', 'auto')
       getEqualsTranslated(others:AnyShapeOrCollection):ShapeCollection
       {
          let equals = [];
@@ -1594,6 +1683,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       
       /** Combine two ShapeCollections and also try to upgrade Shapes that might be combined into higher order Shapes */
       // TODO: performance looks very slow. Can we improve this?
+      @checkInput('AnyShapeCollection', 'auto')
       combine(other:ShapeCollection):ShapeCollection
       {
          if(!(other instanceof ShapeCollection))
@@ -1609,6 +1699,7 @@ import { Color } from '@archiyou/meshup/src/Color'
          }
       }
       
+      @checkInput('AnyShapeCollection', 'auto')
       combined(other:ShapeCollection):ShapeCollection
       {
          return this.copy().combine(other);
@@ -1732,6 +1823,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Force unique Geometry based on the equals() method ( not hash ) */
+      @checkInput([['Number',null]], ['auto'])
       unique(tolerance?:number):ShapeCollection 
       {
          const UNIQUE_TOLERANCE = 0.1; // OC tolerance is 0.001 (see _oc.SHAPE_TOLERANCE)
@@ -1904,6 +1996,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Test if the collections are the same */
+      @checkInput('AnyShapeOrCollection', 'ShapeCollection')
       equals(other:AnyShapeOrCollection):boolean
       {
          const otherCollection = other as ShapeCollection; // autoconverted
@@ -1963,6 +2056,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       //// BOOLEAN OPERATIONS (compatible with Shape API) ////
 
       /* Private Subtract without adding to scene */
+      @checkInput('AnyShapeOrCollection', 'auto')
       _subtracted(other:AnyShapeOrCollection):ShapeCollection
       {
          const newShapes = new ShapeCollection();
@@ -2006,11 +2100,13 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Subtract Shape or ShapeCollection from current ShapeCollection and return new ShapeCollection */
+      @checkInput('AnyShapeOrCollection', 'auto')
       subtracted(other:AnyShapeOrCollection):ShapeCollection
       {
         return this._subtracted(other);
       }
 
+      @checkInput('AnyShapeOrCollection', 'auto')
       subtract(other:AnyShapeOrCollection):ShapeCollection
       {
          this.shapes = this._subtracted(other).toArray();
@@ -2018,6 +2114,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Try to union all shapes in Collection (without adding to Scene) */
+      @checkInput([['AnyShapeOrCollection',null ],[Boolean, false]], ['auto', 'auto'])
       _unioned(other?:AnyShapeOrCollection, noRecurse?:boolean):ShapeCollection|AnyShape
       {
          // just add the other to collection, and then union
@@ -2072,6 +2169,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Shape API - Try to union all shapes in Collection and add to Scene */
+      @checkInput([['AnyShapeOrCollection',null ]], 'auto')
       unioned(other?:AnyShapeOrCollection):ShapeCollection|AnyShape
       {
          return this._unioned(other);
@@ -2119,6 +2217,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Assign lineWidth to all Shapes in collection  */
+      @checkInput(Number, 'auto')
       lineWidth(lw:number):this
       {
          this.forEach( shape => shape.lineWidth(lw));
@@ -2126,51 +2225,34 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
       
       /** Shape API - Style all Shapes in Collection */
-      style(newStyle:ObjStyle):ShapeCollection
+      setStyle(newStyle:Partial<StyleData>):ShapeCollection
       {
-         this.forEach( shape => shape.style(newStyle));
+         this.forEach( shape => shape.setStyle(newStyle));
          return this;
       }
 
-      /** Return this Shape wrapped with a Obj instance for adding it to the scene */
-      object():Obj
-      {
-         // wrap in Obj and return
-         let obj = new Obj(this);
-         this._obj = obj;
-         return this._obj;
-      }
-
-      /** Check if there is an Obj container tied to current ShapeCollection
-       *    If so: return it, otherwise make one and return that
-       */
-      checkObj():Obj
-      {
-          if(!this._obj)
-          {
-              this.object();
-          }
-          return this._obj;
-      }
-
-      /** NOTE: We don't use set/get here, because it doesnt play well with chaining */
-      name(n?:string):this|string
+      /** NOTE: We don't use set/get here, because it doesnt play well with chaining.
+       *  Overloaded like meshup — see Shape.name(). */
+      name(n:string):this;
+      name():string|undefined;
+      name(n?:string):this|string|undefined
       {
          return (n) ? this.setName(n) : this.getName();
       }
 
-      /** Set name */
+      /** Name this collection. Mirrored onto its scene layer node when it has one, so a
+       *  named group shows up under that name in the scene graph. */
       setName(newName:string):this
       {
-         this.checkObj().name(newName);
+         this._name = newName;
+         if(this._layer){ this._layer.name = newName }
          return this;
       }
 
-      /** Get name of container Obj */
       getName():string|undefined
       {
-         const r = this?._obj?.name();
-         return (typeof r === 'string') ? r : 'UnnamedShapeCollection'; // TODO: we better return undefined if not there, but we have some algoritms depending on this
+         // NOTE: falls back to a placeholder rather than undefined - some algorithms depend on a string
+         return (typeof this._name === 'string') ? this._name : 'UnnamedShapeCollection';
       }
 
       /** Shape API - hide all Shapes in Collection */
@@ -2196,6 +2278,7 @@ import { Color } from '@archiyou/meshup/src/Color'
        *   If an axis is given all Shapes are flattened along that axis and placed at 0 at that axis
        *   Otherwise we consider shapes as extrusions and we flatten according to _extrudedFace()
       */
+      @checkInput([['MainAxis',null], ['Boolean', true]], ['auto','auto'])
       flattened(axis?:MainAxis, filterDuplicates?:boolean):AnyShapeCollection
       {
          let flattened = this.map( s => s._flattened(axis)
@@ -2238,6 +2321,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       }
 
       /** Layout Shapes on XY plane within a given Layout order */
+      @checkInput([ ['String','binpack'], ['Boolean', true], ['LayoutOptions', null]], ['String','auto','auto'])
       layout(order:LayoutOrderType, copy:boolean, options:LayoutOptions):ShapeCollection
       {
          let lastItemPosition:Point = new Point(0,0,0);
@@ -2447,7 +2531,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       autoDim(settings?:DimensionLevelSettings, strategy?:AnnotationAutoDimStrategy):ShapeCollection
       {
          // TODO: How to tie annotations to ShapeCollection?
-         this._brep._annotator.autoDim(this, settings, strategy);
+         hostAnnotator(this, 'ShapeCollection::autoDim()').autoDim(this, settings, strategy);
 
          return this;
       }
@@ -2685,7 +2769,7 @@ import { Color } from '@archiyou/meshup/src/Color'
                         xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" 
                         viewBox="${svgViewBbox}"
                         _bbox="${svgWorldBbox}" 
-                        _worldUnits="${this._brep._units}" stroke="black">
+                        _worldUnits="${hostUnits(this)}" stroke="black">
                         ${svgPaths.join('\n\t')}
                         ${ (withAnnotations) ? this._getDimensionLinesSvgElems() : ''}
                      </svg>`
@@ -2730,7 +2814,7 @@ import { Color } from '@archiyou/meshup/src/Color'
          }
 
          const writer = new DxfWriter();
-         writer.setUnits(UNITS_TO_DXF_UNITS[this._brep._units as ModelUnits] || Units.Unitless);
+         writer.setUnits(UNITS_TO_DXF_UNITS[hostUnits(this) as ModelUnits] || Units.Unitless);
          const modelSpace = writer.document.modelSpace;
 
          shapeEdges.forEach( edge => {
@@ -2751,11 +2835,20 @@ import { Color } from '@archiyou/meshup/src/Color'
          */
       }
 
-      /** Export 3D Shape to GLTF */
-      async toGLTF(options?:ExportGLTFOptions): Promise<ArrayBuffer>
+      /** Export this ShapeCollection as a GLB binary — see Shape.toGLTF() for the route. */
+      async toGLTF(_options?:ExportGLTFOptions): Promise<ArrayBuffer>
       {
-         // We use centralized export functions from Exporter
-         return await new Exporter({ brep: this._brep }).exportToGLTF(this, options);
+         const { brepShapeToMeshup } = await import('./toMeshup');
+         const { SceneNode } = await import('@archiyou/meshup/src/SceneNode');
+
+         const root = SceneNode.root('scene');
+         this.shapes.forEach(s =>
+         {
+            const exported = brepShapeToMeshup(s as any);
+            if(exported){ root.add(exported as any) }
+         });
+
+         return await root.toGLB() as unknown as ArrayBuffer;
       }
 
       /** Convenience method for saving files in browser and node */
@@ -2763,7 +2856,7 @@ import { Color } from '@archiyou/meshup/src/Color'
       {
          const shapesToSave = ShapeCollection.isShapeCollection(shapes) ? shapes : this;
 
-         return await new Exporter({ brep: this._brep } as ArchiyouApp)
+         return await new Exporter({} as ArchiyouApp)
             .save(filename, options, shapesToSave);
       }
 

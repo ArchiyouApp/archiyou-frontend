@@ -35,6 +35,13 @@ type IFace = Face
 type IShell = Shell
 type ISolid = Solid
 
+
+// Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
+// run at class-definition time, before it has finished initialising.
+import { sceneAdd, sceneCarry } from '@archiyou/meshup/src/sceneDecorators'
+import { checkInput, protectOC } from './decorators'
+import { hostAnnotator } from './host'
+
 export class Wire extends Shape
 {   
     /* 
@@ -101,6 +108,7 @@ export class Wire extends Shape
     }
 
     /** Try to convert something into a Wire */
+    @checkInput('MakeWireInput', 'auto')
     fromAll(o:MakeWireInput):Wire
     {
         /* Reasonable inputs for a Wire:
@@ -125,6 +133,7 @@ export class Wire extends Shape
     }
  
     /** Sequentually build a Wire */
+    @checkInput('MakeWireInput', 'auto')
     _addEntities(entities:MakeWireInput)
     {   
         const entitiesArray = flattenEntitiesToArray(entities);
@@ -136,6 +145,7 @@ export class Wire extends Shape
     }
 
     /** Process Shapes sequentially and combine them into a Wire */
+    @checkInput('ShapeCollection', 'ShapeCollection')
     _fromShapeCollection(shapes:ShapeCollection):Wire
     {
 
@@ -204,6 +214,7 @@ export class Wire extends Shape
 
     //// PUBLIC CREATION METHODS ////
 
+    @checkInput('AnyShapeSequence', 'ShapeCollection')
     fromEdges(edges:AnyShapeSequence, ...args):Wire
     {
         /** Attempt to create a Wire from connecting Edges 
@@ -243,6 +254,7 @@ export class Wire extends Shape
     }
 
     /** Create Wire with Line Edges from Vertices **/
+    @checkInput('PointLikeSequence', 'VertexCollection')
     fromVertices(vertices: PointLikeSequence, ...args):Wire
     {
         let vertexCollection = vertices as VertexCollection; // auto converted
@@ -265,12 +277,14 @@ export class Wire extends Shape
     }
 
     /** Create Wire from Points (Vertices or an Array or coords) */
+    @checkInput('PointLikeSequence', 'VertexCollection')
     fromPoints(points: PointLikeSequence)
     {
         return this.fromVertices(points as VertexCollection); 
     }
 
     /** Create flat Rectangular Wire */
+    @checkInput([[Number, WIRE_RECT_WIDTH], [Number, WIRE_RECT_DEPTH], ['PointLike', WIRE_RECT_POSITION] ], ['auto','auto', 'Vector'])
     makeRect(width?:number, depth?:number, position?:PointLike):Wire
     {
         let positionVec = position as Vector; 
@@ -284,6 +298,7 @@ export class Wire extends Shape
     /** Create a (righthand or lefthand) Helix with a radius, height and angle. Advanced coneSemiAngle (angle at top) for making a changing Helix radius (- for smaller to top) */
     // Taken from CadQuery: https://github.com/CadQuery/cadquery/blob/3032e0f8fe4856b037313def4b0bf431cae87708/cadquery/occ_impl/shapes.py
     // But simplified API
+    @checkInput([[Number,50],[Number,100],[Number,360],['PointLike',[0,0,0]],['PointLike',[0,0,1]],[Boolean, false],[Number, null]], ['auto','auto','auto','Point','Vector', 'auto', 'auto'])
     makeHelix(radius?:number, height?:number, angle?:number, pivot?:PointLike, direction?:PointLike, lefthand?:boolean, coneSemiAngle?:number)
     {
         /* OC docs:
@@ -343,6 +358,7 @@ export class Wire extends Shape
     /** Make 2D Spiral */
     // Approach from FreeCad: https://github.com/FreeCAD/FreeCAD/blob/48aafc3f8b36ded8dc80fbf83ec608898ed16d4a/src/Mod/Part/App/TopoShape.cpp
     // With slightly different API
+    @checkInput([[Number,100],[Number,50],[Number,360],[Boolean, false]], ['auto','auto','auto'])
     makeSpiral(firstRadius:number, secondRadius:number, angle:number, lefthand:boolean)
     {
         /* Oc docs:
@@ -423,6 +439,7 @@ export class Wire extends Shape
     }
 
     /** Return the first Edge (comes in handy when using Wire methods on single Edge Wire) */
+    @sceneAdd
     toEdge()
     {
         return this._toEdge();
@@ -447,6 +464,7 @@ export class Wire extends Shape
     }
 
     /** Try to convert Wire to Face */
+    @sceneAdd
     toFace():IFace
     {
         return this._toFace();
@@ -663,6 +681,7 @@ export class Wire extends Shape
     
 
     /** Get Edge that contains or is closest to Point */
+    @checkInput('PointLike', 'Vertex')
     edgeAtPoint(point:PointLike, ...args):Edge
     {
         let vertex = point as Vertex; // auto converted
@@ -678,6 +697,7 @@ export class Wire extends Shape
     /** Get the normal on a Point on the Wire  */
     // NOTE: Normals of 3D Wires can be underdetermined (like with all Edges)
     // But if the Wire is planar the normal will lying on that plane (for good 2D use)
+    @checkInput('PointLike', 'Point')
     normalAt(point:PointLike, ...args):Vector // ...args for flattened x,y,z input
     {
         // get Edge where the given point is on or closest to
@@ -705,6 +725,7 @@ export class Wire extends Shape
         return this.workPlaneNormal();
     }
 
+    @checkInput('PointLike', Vertex)
     directionAt(point:PointLike, ...args):Vector
     {
         let vertex = point as Vertex; // auto converted
@@ -713,6 +734,7 @@ export class Wire extends Shape
     }
 
     /** Get a Point at a certain percentage of the Wire */
+    @checkInput(Number, Number)
     pointAt(perc:number):Vector  // TODO: rename to Vertex at? 
     {
         // NOTE: The same as Edge - combine?
@@ -737,6 +759,7 @@ export class Wire extends Shape
         return v;
     }
 
+    @checkInput(Number, Number)
     pointAtParam(param:number):Vector
     {
         let v = new Vector()._fromOcPoint(this._toOcCurve().Value(param)); 
@@ -747,6 +770,8 @@ export class Wire extends Shape
     /** Generate a Collection of a given number of Vertices equally spaces over this Wire including the start and end 
      *  IMPORTANT: Parameters on a Wire are not homogenous with length units: We need a bit more advanced solution 
      */
+    @checkInput([[Number,WIRE_POPULATE_NUM]], Number)
+    @sceneAdd
     populated(num?:number):ShapeCollection
     {
         // Forward to Edge if only one 
@@ -918,6 +943,7 @@ export class Wire extends Shape
     }
 
     /** Connect two Wires together into new one: introducing new line Edges distance is less than radius */
+    @checkInput(['Wire',[Number, WIRE_COMBINE_RADIUS]], ['auto','auto'])
     combined(other:Wire, radius?:number):Wire
     {
         // !!!! OC can be very weird with order of Edges in a Wire: use a own method
@@ -926,6 +952,7 @@ export class Wire extends Shape
     }
 
     /** Extra algorithm to combine Edges into Wire - The OC WireBuilder does this mostly too - but this is triggered as last resort */
+    @checkInput(['AnyShapeSequence',[Number,WIRE_COMBINE_RADIUS]], [ShapeCollection, 'auto'] )
     combineEdges(edges:AnyShapeSequence, radius?:number):Wire
     {        
         edges = (edges as ShapeCollection).getShapesByType('Edge');
@@ -940,6 +967,7 @@ export class Wire extends Shape
 
     /** We get unconnected Edges a lot ( because OC is somewhat loose with Edges in Wires )
         This algorithm reconstructs a Collection of Array of Edges into a ordered (by number of Edges) Array of Wires */
+    @checkInput(['AnyShapeSequence',[Number,WIRE_COMBINE_RADIUS]], ['ShapeCollection', 'auto'])
     _groupEdges(edges:AnyShapeSequence, radius?:number):Array<Array<Edge>>
     {
         const EDGE_ISCONNECTED_RANGE = radius;
@@ -1063,6 +1091,8 @@ export class Wire extends Shape
     //// SHAPE OPERATIONS ON WIRE ////
 
     /** Make a Solid by lofting from one Wire through section Wires (private: without adding to Scene)  */
+    @protectOC([]) // TODO: hints
+    @checkInput(['AnyShapeOrCollection', [Boolean, WIRE_LOFTED_SOLID ]], ['ShapeCollection', 'auto'])
     _lofted(sections:AnyShapeOrCollection, solid?:boolean):IShell|Solid
     {
         // OC docs: https://dev.opencascade.org/doc/occt-7.5.0/refman/html/class_b_rep_offset_a_p_i___thru_sections.html
@@ -1124,12 +1154,15 @@ export class Wire extends Shape
     }
 
     /** Make a new Solid by lofting from a flat Shape through a number of sections */
+    @checkInput(['AnyShapeOrCollection', [Boolean, WIRE_LOFTED_SOLID ]], ['ShapeCollection', 'auto'])
+    @sceneAdd
     lofted(sections:AnyShapeOrCollection, solid?:boolean):IShell|Solid
     {
         return this._lofted(sections, solid);
     }
 
     /** Make a Solid by lofting a flat Shape through a number of sections  */
+    @checkInput(['AnyShapeOrCollection', [Boolean, WIRE_LOFTED_SOLID ]], ['ShapeCollection', 'auto'])
     loft(sections:AnyShapeOrCollection, solid?:boolean):IShell|Solid
     {
         let loftedShape = this._lofted(sections,solid);
@@ -1140,6 +1173,7 @@ export class Wire extends Shape
     /** Sweep a profile Wire or Face ( see Face.ts implementation: splitting inner and outerwires) along a path to create a Shell or Solid  
      *  TODO: holes in profile from Face
     */
+    @checkInput(['LinearShape',['Boolean', WIRE_SWEEPED_SOLID],[Boolean, WIRE_SWEEPED_AUTOROTATE],['Alignment', null]],['auto','auto','auto','auto'])
     _sweeped(path:LinearShape, solid?:boolean, autoRotate?:boolean, alignToPath?:Alignment):IFace|Shell|Solid
     {
         // OC docs: https://dev.opencascade.org/doc/refman/html/class_b_rep_offset_a_p_i___make_pipe_shell.html
@@ -1209,12 +1243,15 @@ export class Wire extends Shape
     }
 
     /** Sweep a profile Wire or Face ( see Face.ts implementation: splitting inner and outerwires) along a path to create a Shell or Solid  */
+    @checkInput(['LinearShape',['Boolean', WIRE_SWEEPED_SOLID],[Boolean, WIRE_SWEEPED_AUTOROTATE],['Alignment', null]],['auto','auto','auto','auto'])
+    @sceneAdd
     sweeped(path:LinearShape, solid?:boolean, autoRotate?:boolean, alignToPath?:Alignment):IFace|Shell|Solid
     {
         return this._sweeped(path,solid,autoRotate,alignToPath);
     }
 
     /** Sweep a profile Wire or Face ( see Face.ts implementation: splitting inner and outerwires) along a path to create a Shell or Solid  */
+    @checkInput(['LinearShape',['Boolean', WIRE_SWEEPED_SOLID],[Boolean, WIRE_SWEEPED_AUTOROTATE],['Alignment', null]],['auto','auto','auto','auto'])
     sweep(path:LinearShape, solid?:boolean, autoRotate?:boolean, alignToPath?:Alignment):IFace|Shell|Solid
     {
         let sweepedShape = this._sweeped(path,solid,autoRotate);
@@ -1228,6 +1265,7 @@ export class Wire extends Shape
      *   @param direction PointLike or Side (top,bottom,left,right,front,back)
      *   @param onPlaneNormal Force the resulting Face to be on a specific plane given by its normal
     */
+    @checkInput([[Number,WIRE_THICKEN_AMOUNT],['ThickenDirection', WIRE_THICKEN_DIRECTION], ['PointLike', null]], ['auto', 'auto', 'Vector'])
     _thickened(amount:number, direction?:ThickenDirection, onPlaneNormal?:PointLike):IFace
     {
         let planeVec = (onPlaneNormal as Vector) || this.workPlaneNormal();
@@ -1284,6 +1322,8 @@ export class Wire extends Shape
         return newFace
     }
 
+    @checkInput([[Number,WIRE_THICKEN_AMOUNT],['ThickenDirection', WIRE_THICKEN_DIRECTION], ['PointLike', null]], ['auto', 'auto', 'Vector'])
+    @sceneAdd
     thickened(amount:number, direction?:ThickenDirection, onPlaneNormal?:PointLike):IFace
     {
         return this._thickened(amount, direction, onPlaneNormal);
@@ -1292,6 +1332,7 @@ export class Wire extends Shape
     /** Thicken (2D) Wire to create a thick Face  
         @param direction PointLike or Side (top,bottom,left,right,front,back)
     */
+    @checkInput([[Number,WIRE_THICKEN_AMOUNT],['ThickenDirection', WIRE_THICKEN_DIRECTION], ['PointLike', null]], ['auto', 'auto', 'Vector'])
     thicken(amount:number, direction?:ThickenDirection, onPlaneNormal?:PointLike):IFace
     {
         let newShape = this._thickened(amount, direction, onPlaneNormal);
@@ -1305,6 +1346,7 @@ export class Wire extends Shape
      *  TODO: Offsetting a simple Wire can generate unordered Edges and problems later on. Need to introduce checks
      *  ex: polyline([0,0,25],[50,0,50],[100,0,25]).offsetted(5)  => 2 vertices!              
     */
+    @checkInput([[Number,WIRE_OFFSET_AMOUNT],[String, WIRE_OFFSET_TYPE], ['PointLike', null]], ['auto', 'auto', 'Vector'])
     _offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):Wire
     {
         // TODO: can we use onPlaneNormal for open 3D Wires?
@@ -1376,12 +1418,15 @@ export class Wire extends Shape
     }
 
     /** Offset Wire to create a new parallel Wire at given distance */
+    @checkInput([[Number,WIRE_OFFSET_AMOUNT],[String, WIRE_OFFSET_TYPE], ['PointLike', null]], ['auto', 'auto', 'Vector'])
+    @sceneAdd
     offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):Wire
     {
         return this._offsetted(amount,type,onPlaneNormal);
     }
 
     /** Create a new version of current Wire that is parallel at a given distance */
+    @checkInput([[Number,WIRE_OFFSET_AMOUNT],[String, WIRE_OFFSET_TYPE], ['PointLike',null]], ['auto', 'auto', 'Vector'])
     offset(amount?:number, type?:string, onPlaneNormal?:PointLike):Wire
     {
         const newWire = this._offsetted(amount, type, onPlaneNormal);
@@ -1391,6 +1436,7 @@ export class Wire extends Shape
     }
 
     /** Extrude a Wire while rotating around the center with a given angle (private: without adding to Scene) */
+    @checkInput([[Number,100],[Number, 360],['PointLike', null],['PointLike',[0,0,1]],[Boolean,false]],['auto','auto', 'Point', 'Vector','auto'])
     _twistExtruded(amount?:number, angle?:number, pivot?:PointLike, direction?:PointLike, lefthand?:boolean):ISolid
     {
         /*
@@ -1409,12 +1455,15 @@ export class Wire extends Shape
         return new Shape()._fromOcShape(newOcSolid) as Solid;
     }
 
+    @checkInput([[Number,100],[Number, 360],['PointLike', null],['PointLike',[0,0,1]],[Boolean,false]],['auto','auto', 'Point', 'Vector','auto'])
+    @sceneAdd
     twistExtruded(amount?:number, angle?:number, pivot?:PointLike, direction?:PointLike, lefthand?:boolean):ISolid
     {
         let newSolid = this._twistExtruded(amount,angle,pivot,direction,lefthand)
         return newSolid;
     }
 
+    @checkInput([[Number,100],[Number, 360],['PointLike', null],['PointLike',[0,0,1]],[Boolean,false]],['auto','auto', 'Point', 'Vector','auto'])
     twistExtrude(amount?:number, angle?:number, pivot?:PointLike, direction?:PointLike, lefthand?:boolean):ISolid
     {
         let newSolid = this._twistExtruded(amount,angle,pivot,direction,lefthand)
@@ -1432,6 +1481,7 @@ export class Wire extends Shape
      *  NOTE: Converted from code by Roger Maitland for CadQuery: https://github.com/CadQuery/cadquery/issues/562
      
      */
+    @checkInput(['AnyShape', ['PointLike',null], ['PointLike', null]], ['auto','Vector', 'Vector'])
     _projectTo(other:AnyShape, direction:Vector, center?:Vector):ShapeCollection|null
     {
         if(['Vertex', 'Edge', 'Wire'].includes(other.type)){ throw new Error(`Wire._projectTo: Please supply a Face, Shell or Solid to project on!`);}
@@ -1511,12 +1561,15 @@ export class Wire extends Shape
         return (c.length > 0) ? c : null;
     }
 
+    @checkInput(['AnyShape', ['PointLike',null], ['PointLike', null]], ['auto','Vector', 'Vector'])
+    @sceneAdd
     projectTo(other:AnyShape, direction:Vector, center:Vector):ShapeCollection|null
     {
         return this._projectTo(other,direction,center);
     }
 
     /** Aligning linear Shapes to each other so they form a connected Line */
+    @checkInput(['LinearShape','LinearShapeTail'],['auto','auto'])
     alignTo(other:LinearShape, pivot:LinearShapeTail='start', alignment:LinearShapeTail='end'):this
     {
         let destVec = other[alignment]().toVector(); // either end() or start()
@@ -1526,6 +1579,8 @@ export class Wire extends Shape
     }
 
     /** Fillet Wire at given Vertices or all */
+    @protectOC('At least 2 Edges')
+    @checkInput([[Number, WIRE_FILLET_RADIUS],['PointLikeOrVertexCollection',null]],['auto','VertexCollection'])
     fillet(radius?:number, at?:PointLikeOrVertexCollection )
     {
         /* IMPORTANT: Closing Wires to create Faces can quickly result in badly shaped Faces
@@ -1628,6 +1683,8 @@ export class Wire extends Shape
     }
 
     /** Fillet Wire at given Vertices or all */
+    @protectOC('At least 2 Edges')
+    @checkInput([[Number,WIRE_CHAMFER_DISTANCE],[Number,WIRE_CHAMFER_ANGLE],['PointLikeOrVertexCollection', null]],['auto','auto', 'VertexCollection', 'VertexCollection'])
     chamfer(distance?:number, angle?:number, vertices?:PointLikeOrVertexCollection )
     {
         // check given vertices
@@ -1725,6 +1782,7 @@ export class Wire extends Shape
 
     //// CONTEXT PREDICATES ////
 
+    @checkInput('LinearShape', 'auto')
     _intersectionsWithWire(other:Wire|Edge):ShapeCollection
     {
         // We use the intersection functions on Edges for now 
@@ -1801,13 +1859,15 @@ export class Wire extends Shape
     /** Simply generate dimension lines for all visible Edges in this Face 
      *  TODO: make sure offsets are right, skip same edges in boxes
     */
+    @checkInput([['DimensionOptions',null]], ['auto'])
     dimension(dim?:DimensionOptions):DimensionLine|Array<DimensionLine>
     {
         // centralized creation in the Annotator (see DimensionLine.fromShape)
-        return this._brep._annotator.dimensionLine().fromShape(this, dim) as DimensionLine|Array<DimensionLine>;
+        return hostAnnotator(this, 'Wire::dimension()').dimensionLine().fromShape(this, dim) as DimensionLine|Array<DimensionLine>;
     }
 
     /** Alias for dimension() */
+    @checkInput([['DimensionOptions',null]], ['auto'])
     dim(dim?:DimensionOptions):DimensionLine|Array<DimensionLine>
     {
         return this.dimension(dim);

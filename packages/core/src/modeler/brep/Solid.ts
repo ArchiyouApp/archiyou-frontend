@@ -20,6 +20,11 @@ import { Vector, Point, Shape, Vertex, Edge, Wire, Face, Shell, ShapeCollection 
 import { toRad } from '.'; // utils
 import { targetOcForGarbageCollection, removeOcTargetForGarbageCollection } from '.';
 
+
+// Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
+// run at class-definition time, before it has finished initialising.
+import { checkInput, protectOC } from './decorators'
+
 export class Solid extends Shape
 {   
     
@@ -41,6 +46,7 @@ export class Solid extends Shape
         }
     }
 
+    @checkInput(isMakeSolidInput, ShapeCollection)
     fromAll(shells:MakeSolidInput, ...args):Solid // args are used in decorator to create ShapeCollection
     {   
         const shapes = shells as ShapeCollection; // auto converted
@@ -62,6 +68,7 @@ export class Solid extends Shape
     }
 
     /** Created an solid out of closed Shell */
+    @checkInput(Shell, 'auto')
     fromShell(shell: Shell) 
     {
         const ocSolid = new this._oc.ShapeFix_Solid_1().SolidFromShell(shell._ocShape);
@@ -69,6 +76,7 @@ export class Solid extends Shape
     }
 
     /** Create Solid by sewing multiple Shells */
+    @checkInput('AnyShapeOrCollection', 'ShapeCollection')
     fromShells(shells:AnyShapeOrCollection):Solid
     {
         // We need to sew the Shells together to create a valid Solid
@@ -157,6 +165,7 @@ export class Solid extends Shape
 
     /** Creates a box of size given by width, depth and height and position */
     //@cacheOperation
+    @checkInput([ [Number,SOLID_MAKEBOX_SIZE], [Number, null], [Number, null], ['PointLike',[0,0,0]]], ['auto','auto','auto','PointLike'])
     makeBox(width?:number, depth?:number, height?:number, position?:PointLike):Solid
     {
         // OC docs: https://dev.opencascade.org/doc/occt-7.5.0/refman/html/class_b_rep_prim_a_p_i___make_box.html
@@ -179,6 +188,7 @@ export class Solid extends Shape
 
     /** Creates a Box by giving two extreme points ( not the same, and not on the same axis ) */
     //@cacheOperation
+    @checkInput(['PointLike', 'PointLike'], ['Point','Point'] ) // this automatically transforms Types
     makeBoxBetween(from:PointLike, to:PointLike): Solid
     {
         let fromP = from as Point; // auto converted by checkInput
@@ -198,6 +208,7 @@ export class Solid extends Shape
 
     /** Creates a Sphere Solid */
     //@cacheOperation   
+    @checkInput([ [Number,SOLID_MAKESPHERE_RADIUS],['PointLike',[0,0,0]],[Number,SOLID_MAKESPHERE_ANGLE]], ['auto', 'Point', 'auto']) // this automatically transforms Types
     makeSphere( radius?:number, position?:PointLike, angle?:number): Solid
     {
         // OC docs: https://dev.opencascade.org/doc/occt-7.5.0/refman/html/class_b_rep_prim___sphere.html
@@ -210,6 +221,8 @@ export class Solid extends Shape
     
     /** Creates a Cone Solid */
     //@cacheOperation
+    @checkInput([ [Number,SOLID_MAKECONE_BOTTOM_RADIUS],[Number, SOLID_MAKECONE_TOP_RADIUS],[Number, SOLID_MAKECONE_HEIGHT],['PointLike', [0,0,0]]], 
+        ['auto','auto','auto', Point, 'auto'])
     makeCone( bottomRadius?:number, topRadius?:number, height?:number, position?:PointLike, angle?:number):Solid
     {
         // OC docs: https://dev.opencascade.org/doc/occt-7.5.0/refman/html/class_b_rep_prim_a_p_i___make_cone.html#afd899db3f2bc7e2b570305678ba8b40b
@@ -224,6 +237,12 @@ export class Solid extends Shape
 
     /** Creates a Cylinder with a given radius, height and position */
     //@cacheOperation
+    @checkInput([ [Number, SOLID_CYLINDER_RADIUS], [Number,SOLID_CYLINDER_HEIGHT], ['PointLike', [0,0,0]], [Number, SOLID_CYLINDER_ANGLE]],
+        ['auto','auto','Point','auto']
+        ) // TODO: these long parameter sequences are good candidates for using input models
+    @checkInput([ [Number, SOLID_CYLINDER_RADIUS], [Number,SOLID_CYLINDER_HEIGHT], ['PointLike', [0,0,0]], [Number, SOLID_CYLINDER_ANGLE]],
+        ['auto','auto','Point','auto']
+        ) // TODO: these long parameter sequences are good candidates for using input models
     makeCylinder(radius?:number, height?:number, position?:PointLike, angle?:number):Solid
     {
         // OC docs: https://dev.opencascade.org/doc/occt-7.5.0/refman/html/class_b_rep_prim_a_p_i___make_cylinder.html
@@ -317,6 +336,8 @@ export class Solid extends Shape
     }
 
     /** Give the Solid rounded corners at its Edges with a given radius */
+    @protectOC(['Fillet size cannot be bigger then length of filleted Edge'])
+    @checkInput([[Number,SOLID_FILLET_RADIUS], ['AnyShapeOrCollectionOrSelectionString',null]], ['auto','auto'])
     fillet(radius?:number, at?:null|AnyShapeOrCollectionOrSelectionString):this
     {
         /* OC Docs: 
@@ -431,12 +452,14 @@ export class Solid extends Shape
     }
 
     /** Alias for filleted but with making copy  */
+    @checkInput([[Number,SOLID_FILLET_RADIUS], ['AnyShapeOrCollectionOrSelectionString',null]], ['auto','auto'])
     filleted(radius?:number, edges?:AnyShapeOrCollectionOrSelectionString):Solid
     {
         return (this.copy() as Solid).fillet(radius, edges);
     }
 
     /** Chamfer Solid at given Edges with given size */
+    @checkInput([[Number, SOLID_CHAMFER_DISTANCE],['AnyShapeOrCollectionOrSelectionString',null]], ['auto','auto'])
     chamfer(distance?:number, edges?:AnyShapeOrCollectionOrSelectionString, ):this
     {
          /* OC Docs: 
@@ -548,30 +571,35 @@ export class Solid extends Shape
     }
 
     /** Same of chamfer but with a copied Shape */
+    @checkInput([[Number, SOLID_CHAMFER_DISTANCE],['AnyShapeOrCollectionOrSelectionString',null]], ['auto','auto'])
     chamfered(distance?:number, edges?:AnyShapeOrCollectionOrSelectionString, ):Solid
     {
         return (this.copy() as Solid).chamfer(distance, edges);
     }
 
     /** Alias for chamfer */
+    @checkInput([[Number, SOLID_CHAMFER_DISTANCE],'AnyShapeOrCollection'], ['auto','ShapeCollection'])
     bevel(distance?:number, edges?:AnyShapeOrCollection):Solid
     {
         return this.chamfer(distance, edges);
     }
 
     /** Alias for chamfered */
+    @checkInput([[Number, SOLID_CHAMFER_DISTANCE],'AnyShapeOrCollection'], ['auto','ShapeCollection'])
     beveled(distance?:number, edges?:AnyShapeOrCollection):Solid
     {
         return this.chamfered(distance, edges);
     }
 
     /** Alias for shelled with same API as thicken in Wire/Edge and Shell */
+    @checkInput([[Number,SOLID_THICKEN_AMOUNT],['ThickenDirection',SOLID_THICKEN_DIRECTION],['AnyShapeOrCollectionOrSelectionString', []] ], ['auto','auto'])
     thickened(amount?:number, direction?:ThickenDirection, excludeFaces?:AnyShapeOrCollectionOrSelectionString):Solid
     {   
         // TODO: implement thicken direction
         return this.shelled(amount, excludeFaces);
     }
 
+    @checkInput([[Number,SOLID_THICKEN_AMOUNT],['ThickenDirection',SOLID_THICKEN_DIRECTION],['AnyShapeOrCollectionOrSelectionString', []] ], ['auto','auto'])
     thicken(amount:number, direction?:ThickenDirection, excludeFaces?:AnyShapeOrCollectionOrSelectionString):Solid
     {
         return this.shell(amount,excludeFaces);

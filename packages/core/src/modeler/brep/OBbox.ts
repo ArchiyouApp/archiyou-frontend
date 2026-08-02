@@ -6,6 +6,12 @@ import type { PointLike, MainAxis } from '.' // types
 import { Point, Vector, Shape, Edge, Face, Solid, AnyShape } from '.'
 
 import { roundToTolerance } from '.'
+import { getOc } from './index' // OC global getter
+
+
+// Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
+// run at class-definition time, before it has finished initialising.
+import { checkInput } from './decorators'
 
 export class OBbox
 {
@@ -20,6 +26,10 @@ export class OBbox
     /** Create 2D or 3D Bbox from a Shape */
     constructor(shape:AnyShape)
     {
+        // Grab the OC handle like Point/Bbox/Shape do — without it create() dies on
+        // `new this._oc.Bnd_OBB_1()`.
+        this._oc = getOc();
+
         if(shape)
         {
             this.create(shape)
@@ -117,11 +127,13 @@ export class OBbox
         return this.corners()[0]
     }
 
+    @checkInput('MainAxis', 'auto')
     minAtAxis(a:MainAxis)
     {
         // TODO: For BBox compat
     }
 
+    @checkInput('MainAxis', 'auto')
     maxAtAxis(a:MainAxis)
     {
         // TODO: For BBox compat
@@ -236,6 +248,7 @@ export class OBbox
     }
 
     /** Get position of Bbox based on percentages of x,y,z */
+    @checkInput('PointLike', 'Point')
     getPositionAtPerc(p:PointLike, ...args)//:Point
     {
         // TODO
@@ -340,6 +353,7 @@ export class OBbox
     }
 
     /** Get size of current Bbox along given axis */
+    @checkInput([['MainAxis', 'x']], ['auto'])
     sizeAlongAxis(axis:MainAxis):number
     {
         const AXIS_TO_SIDE = { 

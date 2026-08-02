@@ -39,6 +39,8 @@ declare global {
 }
 
 
+import { getOc } from './index' // OC global getter
+
 export class Exporter
 {
     //// SETTINGS ////
@@ -93,12 +95,12 @@ export class Exporter
         // Export given shape(s) or all in Brep instance
         const sceneShapes = (shapesToExport.length) 
                                 ? shapesToExport 
-                                : this._ay.brep.all().filter(s => s.visible());
+                                : this._visibleSceneShapes();
         const sceneCompoundShape = new ShapeCollection(sceneShapes).toOcCompound(); // filter might return only one Shape
 
         console.info(`Exporter::exportToSTEP: Output of ${sceneCompoundShape.NbChildren()} Shapes`);
 
-        const oc = this._ay.brep._oc;
+        const oc = getOc();
         
         let ocWriter = new oc.STEPControl_Writer_1();
         let ocTransferResult = ocWriter.Transfer(sceneCompoundShape, 0, true, new oc.Message_ProgressRange_1()); 
@@ -140,7 +142,7 @@ export class Exporter
     */
     exportToSTL(shapes?:AnyShape|ShapeCollection, options:Record<string,any> = {}, filename?:string):Uint8Array
     {
-        const oc = this._ay.brep._oc;
+        const oc = getOc();
         
         filename = (filename || this._getFileName());
         if(!filename.includes(".stl")) filename += '.stl';
@@ -149,7 +151,7 @@ export class Exporter
 
         const visibleShapes = (shapesToExport.length) 
                                     ? shapesToExport 
-                                    : this._ay.brep.all().filter(s => s.visible());
+                                    : this._visibleSceneShapes();
 
         // IMPORTANT: Make sure all shapes are triangulated before exporting to STL
         // TODO: avoid doing this multiple times if already done before GLTF
@@ -197,179 +199,54 @@ export class Exporter
         - VisMaterialPBR: https://dev.opencascade.org/doc/refman/html/struct_x_c_a_f_doc___vis_material_p_b_r.html
 
     */
-    async exportToGLTF(shapes?:AnyShapeOrCollection, options?:ExportGLTFOptions, filename?:string):Promise<ArrayBuffer|null>
-    {
-        const startGLTFExport = performance.now();
-
-        const oc = this._ay.brep._oc;
-        options = (!options) ? { ... this.DEFAULT_GLTF_OPTIONS } : { ... this.DEFAULT_GLTF_OPTIONS, ...options };
-        
-        const meshingQuality = options?.quality || this.DEFAULT_MESH_QUALITY;
-        filename = (typeof filename === 'string') ? filename : `file.${(options.binary) ? 'glb' : 'gltf'}`;
-
-        const docHandle = new oc.Handle_TDocStd_Document_2(new oc.TDocStd_Document(new oc.TCollection_ExtendedString_1()));
-
-        const ocShapeTool = oc.XCAFDoc_DocumentTool.prototype.constructor.ShapeTool(docHandle.get().Main()).get(); // autonaming is on by default
-        let ocIncMesh;
-
-        /* For now we export all visible shapes in a flattened scene (without nested scenegraph) 
-            and export as much properties (id, color) as possible 
-            NOTE: OC only exports Solids to GLTF - use custom method to export Vertices/Edges/Wires
-        */
-
-        const shapesToExport = new ShapeCollection(shapes);
-        const exportShapes = shapesToExport.length
-                                ? shapesToExport 
-                                : this._ay.brep.all().filter(s => s.visible() && !['Vertex','Edge','Wire'].includes(s.type));
-
-        if(exportShapes.length === 0)
-        {
-            console.error(`Exporter::exportToGLTF: No visible shapes to export`);
-            return null;
-        }
-
-        exportShapes
-            .forEach(entity => {
-                if(Shape.isShape(entity)) // probably entities are all shapes but just to make sure
-                {
-                    const shape = entity as AnyShape;
-                    const ocShape = shape._ocShape;
-                    const ocShapeLabel = ocShapeTool.AddShape(ocShape,false,false); // Shape, makeAssembly, makePrepare
-
-                    const shapeName = `${shape.getId()}__${shape.getName()}`; // save obj_id and name into GLTF node
-                    
-                    oc.TDataStd_Name.Set_2(ocShapeLabel, 
-                                    oc.TDataStd_Name.GetID(), 
-                                    new oc.TCollection_ExtendedString_2(shapeName, false)); // Set_2 not according to docs (no Set_3)
-
-                    // Export basic material to GLTF
-                    if (shape._getColorRGBA() !== null)
-                    {
-                        const ocMaterialTool = oc.XCAFDoc_DocumentTool.prototype.constructor.VisMaterialTool(ocShapeLabel).get(); // returns Handle< XCAFDoc_VisMaterialTool >
-                        const ocMaterial = new oc.XCAFDoc_VisMaterial();
-                        const ocPBRMaterial = new oc.XCAFDoc_VisMaterialPBR(); // this is a struct
-                        ocPBRMaterial.BaseColor = new oc.Quantity_ColorRGBA_5(...shape._getColorRGBA()); // [ r,g,b,a]
-                        ocMaterial.SetPbrMaterial(ocPBRMaterial);
-                        const ocMaterialLabel = ocMaterialTool.AddMaterial_1( new oc.Handle_XCAFDoc_VisMaterial_2(ocMaterial), new oc.TCollection_AsciiString_2(shapeName)); // returns TDF_Label
-                        ocMaterialTool.SetShapeMaterial_1(ocShapeLabel, ocMaterialLabel);
-
-                        // NOTE: do we need to delete these OC classes (not here because we need them still). Save the references?
-                    }
-                    
-                    // triangulate BREP to mesh
-                    ocIncMesh = new oc.BRepMesh_IncrementalMesh_2(ocShape, meshingQuality.linearDeflection, false, meshingQuality.angularDeflection, false);
-                }
-        })
-
-        const ocGLFTWriter = new oc.RWGltf_CafWriter(new oc.TCollection_AsciiString_2(filename), meshingQuality);
-        
-        const ocCoordSystemConverter = ocGLFTWriter.CoordinateSystemConverter();
-        ocCoordSystemConverter.SetInputCoordinateSystem_2(oc.RWMesh_CoordinateSystem.RWMesh_CoordinateSystem_Zup);
-        ocGLFTWriter.SetCoordinateSystemConverter(ocCoordSystemConverter);
-        ocGLFTWriter.SetForcedUVExport(true); // to output UV coords
-        ocGLFTWriter.Perform_2(docHandle, new oc.TColStd_IndexedDataMapOfStringString_1(), new oc.Message_ProgressRange_1());
-        
-        const gltfFile = oc.FS.readFile(`./${filename}`, { encoding: 'binary' }); // only binary for now
-        let gltfContent =  new Uint8Array(gltfFile.buffer) as Uint8Array; 
-        oc.FS.unlink("./" + filename);
-        
-        // clean up OC classes (if any shapes)
-        ocShapeTool?.delete();
-        ocIncMesh?.delete();
-        ocGLFTWriter?.delete();
-        ocCoordSystemConverter?.delete();
-
-        console.info(`Exporter::exportToGLTF: Exported ${exportShapes.length} OC Shapes in ${Math.round(performance.now() - startGLTFExport)}ms`);
-        const startGLTFExtra = performance.now();
-
-        // Force inclusion of points and lines to export
-        if (options.includePointsAndLines)
-        {
-            const startGLTFPointsAndLines = performance.now();
-            const pointAndLineShapes:ShapeCollection = new ShapeCollection(
-                        this._ay.brep.all()
-                        .filter(s => (s.visible() && ['Vertex','Edge','Wire'].includes(s.type))));
-            if (pointAndLineShapes.length > 0)
-            {
-                gltfContent = await new GLTFBuilder().addPointsAndLines(gltfContent, pointAndLineShapes, meshingQuality); 
-            }
-            console.info(`Exporter::exportToGLTF: Exported ${pointAndLineShapes.length} Points and Lines in ${Math.round(performance.now() - startGLTFPointsAndLines)}ms`);
-        }
-
-        // extra vertices and lines for specific visualization styles
-        if (options?.extraShapesAsPointLines)
-        {
-            console.info(`Exporter::exportToGLTF: Flag extraShapesAsPointLines: Exporting extra Shapes as Points and Lines. `);
-            const startGLTFExtraShapes = performance.now();
-            const extraOutputShapes = new ShapeCollection(this._ay.brep.all().filter(s => (s.visible() && !['Vertex','Edge','Wire'].includes(s.type))));
-            if( extraOutputShapes.length > 0)
-            {
-                gltfContent = await new GLTFBuilder().addSeperatePointsAndLinesForShapes(gltfContent, extraOutputShapes, meshingQuality); 
-            }
-            console.info(`Exporter::exportToGLTF: Exported extra ${extraOutputShapes.length} Shapes in ${Math.round(performance.now() - startGLTFExtraShapes)}ms`);            
-        }
-
-        // Add special archiyou data in GLTF asset.extras section
-        if(options?.archiyouFormat)
-        {
-            console.info(`Exporter::exportToGLTF: Flag archiyouFormat: Exporting Archiyou data inside GLTF extras. Settings: ${JSON.stringify(options?.archiyouOutput)}`);
-            // We do some performance measurements here
-            const startGLTFArchiyouData = performance.now();
-            gltfContent = await new GLTFBuilder().addArchiyouData(gltfContent, this._ay, options?.archiyouOutput || {}); 
-            console.info(`Exporter::exportToGLTF: Exported archiyou data in ${Math.round(performance.now() - startGLTFArchiyouData)}ms`);	
-        }
-        else {
-            console.info(`Exporter::exportToGLTF: Skipped Archiyou data export. Set export flag data to true and set metrics, tables, docs flags for output`);
-        }
-
-        console.info(`Exporter::exportToGLTF: Exported extra data in ${Math.round(performance.now() - startGLTFExtra)}ms`);	
-
-        return gltfContent.buffer as ArrayBuffer; // convert Uint8Array to ArrayBuffer
-    }
-
-    /** Needs to be called before before STL 
-     *  Also with GLTF but keep it seperate for now
-     *  Return OcIncMesh instance to be able to delete them
+    /**
+     *  GLB export for brep geometry now goes through the SHARED exporter, not OpenCascade's
+     *  RWGltf_CafWriter. See Shape.toGLTF() / ShapeCollection.toGLTF(), which tessellate into
+     *  meshup shapes (brep/toMeshup.ts) and write the file with the mesh kernel's GLTF builder.
+     *
+     *  The OpenCascade route that used to live here was already dead: it called four
+     *  GLTFBuilder methods (addPointsAndLines, addSeperatePointsAndLinesForShapes,
+     *  addArchiyouData, toGLTFBuffer) that no longer exist, so it threw on its default options.
+     *  Routing through one exporter also means brep and mesh runs emit the same extensions,
+     *  extras and node names.
      */
+    /** Ensure every Shape carries a triangulation before an OC writer walks it. */
     _triangulateShapes(shapes:ShapeCollection, meshingQuality?:MeshingQualitySettings):Array<any>
     {
-        const oc = this._ay.brep._oc;
+        const oc = getOc();
         meshingQuality = meshingQuality || this.DEFAULT_MESH_QUALITY;
         const ocIncMeshes = [] as Array<any>;
         new ShapeCollection(shapes)
-        .forEach(entity => {
-            if(Shape.isShape(entity)) // probably entities are all shapes but just to make sure
+            .forEach(entity =>
             {
-                const ocShape = entity._ocShape;
-                const ocIncMesh = new oc.BRepMesh_IncrementalMesh_2(ocShape, meshingQuality.linearDeflection, false, meshingQuality.angularDeflection, false);
-                ocIncMeshes.push(ocIncMesh);
-            }
-        });
+                if(Shape.isShape(entity))
+                {
+                    const ocShape = (entity as any)._ocShape;
+                    ocIncMeshes.push(new oc.BRepMesh_IncrementalMesh_2(
+                        ocShape, meshingQuality.linearDeflection, false, meshingQuality.angularDeflection, false));
+                }
+            })
         return ocIncMeshes;
     }
 
-    /** Export GLTF (binary or text) to the browser window */
-    async exportToGLTFWindow(content?:Uint8Array|string)
+    /** Every visible Shape in the host Modeler's scene, or an empty collection when this
+     *  Exporter has no host (a standalone brep session). Replaces the old Brep.all(). */
+    _visibleSceneShapes():ShapeCollection
     {
-        const mime = (typeof content === 'string') 
-                    ? 'text/plain'
-                    : 'application/octet-stream';
-
-        const ext = (typeof content === 'string') ? 'gltf' : 'glb';
-        const gltfContent = content || await this.exportToGLTF();
-        await this._exportToFileWindow(gltfContent, mime, ext, 'GLTF file');
+        const all = (this._ay as any)?.modeler?.all?.();
+        if(!all){ return new ShapeCollection() }
+        return new ShapeCollection(all.toArray().filter((s:any) => s.visible?.() !== false));
     }
 
-    async exportToGLTFAnimation(frameGLBs:Array<Uint8Array>):Promise<Uint8Array>
+    async exportToGLTF(shapes?:AnyShapeOrCollection, _options?:ExportGLTFOptions, _filename?:string):Promise<ArrayBuffer|null>
     {
-        const gltfExporter = new GLTFBuilder();
-        await gltfExporter.createAnimation(frameGLBs);
-        return gltfExporter.toGLTFBuffer();
-    }
-
-    async exportToGLTFAnimationWindow(content:Uint8Array)
-    {
-        await this._exportToFileWindow(content, 'application/octet-stream', 'glb', 'GLTF file');
+        const target = shapes ?? null;
+        if(!target)
+        {
+            console.error(`Exporter::exportToGLTF(): No shapes to export`);
+            return null;
+        }
+        return await (target as any).toGLTF();
     }
 
     /** Export entire (visual) model by creating a isometric 2D view  
@@ -379,7 +256,7 @@ export class Exporter
     {
         const shapesToExport = ShapeCollection.isShapeCollection(shapes) 
                                     ? shapes // only selected shapes
-                                    : this._ay.brep.all().filter(s => s.visible()); // all visible ones in scene
+                                    : this._visibleSceneShapes(); // all visible ones in scene
 
         // if user forces only 2D export or shapes are all 2D anyway
         if(options?.only2D || shapesToExport.toArray().every(s => s.is2DXY()))
@@ -479,7 +356,7 @@ export class Exporter
         const shapesToExport = new ShapeCollection(shapes);
         const exportShapes = (shapesToExport.length) 
                             ? shapesToExport 
-                            : this._ay.brep.all().filter(s => s.visible());
+                            : this._visibleSceneShapes();
 
         if(exportShapes.length === 0)
         {

@@ -58,6 +58,7 @@ export class ScriptStore {
       presets: (row.presets ?? {}) as ScriptData['presets'],
       published: (row.published ?? null) as ScriptData['published'],
       shared: (row.shared ?? null) as ScriptData['shared'],
+      thumbnail: row.thumbnail ?? null,
       created: row.created.toISOString(),
       updated: row.updated.toISOString(),
     };
@@ -82,6 +83,9 @@ export class ScriptStore {
       presets: (data.presets ?? null) as ScriptData['presets'],
       published: (data.published ?? null) as ScriptData['published'],
       shared: opts.shared,
+      // Server-stamped URL only (routes/scripts.ts writes the file first). Clients cannot
+      // set this to an arbitrary value: the routes overwrite it before we ever get here.
+      thumbnail: data.thumbnail ?? null,
       created: opts.now,
       updated: opts.now,
     };
@@ -247,6 +251,54 @@ export class ScriptStore {
       .where(and(eq(scriptVersions.id, versionId), eq(scriptVersions.author, author.toLowerCase())))
       .run();
     return this.rowToData({ ...row, published: (published ?? null) as ScriptVersionRow['published'], updated: now });
+  }
+
+  /** One version by id, or null. Unlike getVersion() this needs no fileId and never
+   *  throws — the translation job looks up a row that may have been deleted or
+   *  un-published while it was running. */
+  findVersionById(author: string, versionId: string): ScriptData | null {
+    const row = db
+      .select()
+      .from(scriptVersions)
+      .where(and(eq(scriptVersions.id, versionId), eq(scriptVersions.author, author.toLowerCase())))
+      .get();
+    return row ? this.rowToData(row) : null;
+  }
+
+  /**
+   * An existing translation set for the SAME source strings in the SAME source language,
+   * from any published version of this file.
+   *
+   * This is what stops a version bump whose copy did not change from re-paying for ten
+   * languages — the common case, since most republishes change geometry, not wording.
+   * Matching on `sourceLocale` too matters: correcting a mis-detected source language
+   * must produce a fresh translation, not silently reuse the wrong one.
+   */
+  findTranslationsByHash(
+    author: string,
+    fileId: string,
+    sourceHash: string,
+    sourceLocale?: string,
+  ): NonNullable<ScriptData['published']>['translations'] | null {
+    const rows = db
+      .select()
+      .from(scriptVersions)
+      .where(and(
+        eq(scriptVersions.fileId, fileId),
+        eq(scriptVersions.author, author.toLowerCase()),
+        isNotNull(scriptVersions.published),
+      ))
+      .all();
+
+    for (const row of rows) {
+      const translations = (row.published as ScriptData['published'])?.translations;
+      if (!translations) continue;
+      if (translations.sourceHash !== sourceHash) continue;
+      if (sourceLocale && translations.sourceLocale !== sourceLocale) continue;
+      if (Object.keys(translations.locales ?? {}).length === 0) continue;
+      return translations;
+    }
+    return null;
   }
 
   /** Un-publish a single version: clear its `published` metadata (the version row
@@ -422,6 +474,23 @@ export class ScriptStore {
     const row = this.toRow(data, author, { id, fileId, version: data.version, shared, now });
     this.insertRow(row);
     return this.rowToData({ ...row, created: now, updated: now } as ScriptVersionRow);
+  }
+
+  /**
+   * Stamp a version's thumbnail URL (ownership-checked). Separate from publish()/share()
+   * because the URL embeds the version id, which those generate internally — and because
+   * writing the file is async while this store is synchronous (better-sqlite3). The route
+   * inserts first, writes the file, then calls this; a failure to write simply leaves the
+   * column null and the publish itself is already committed.
+   *
+   * Deliberately does NOT touch `updated`: stamping a thumbnail is not a content edit and
+   * must not reshuffle "newest first" list ordering.
+   */
+  setThumbnail(author: string, versionId: string, thumbnail: string | null): void {
+    db.update(scriptVersions)
+      .set({ thumbnail })
+      .where(and(eq(scriptVersions.id, versionId), eq(scriptVersions.author, author.toLowerCase())))
+      .run();
   }
 
   /** Set/clear sharing metadata on all versions of a file (ownership-checked). */

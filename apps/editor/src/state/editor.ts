@@ -596,6 +596,9 @@ export function saveAsPreset(name: string): void
   s.presets[name] = Object.fromEntries(
     Object.values(s.params).map(p => [p.name, p.toData()]),
   );
+  // Reveal the result: the presets menu starts collapsed, so saving one would
+  // otherwise look like nothing happened.
+  presetMenuCollapsed.set(false);
   bumpScript();
   saveCore();
 }

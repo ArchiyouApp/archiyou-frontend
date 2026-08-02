@@ -120,6 +120,99 @@ describe('Make', async () =>
         expect((wall as any).openingJackStuds.length).toBe(4)
     })
 
+    it('should board up an area with stock elements', async () =>
+    {
+        const localModeler = new Modeler()
+        await localModeler.load()
+        await localModeler.make.packReady()
+
+        // 2440x1220 sheets over a 5000x2000 area, laid horizontally
+        const boards = localModeler.make.boarding({
+            width: 5000,
+            height: 2000,
+            stockWidth: 2440,
+            stockHeight: 1220,
+            direction: 'horizontal',
+        })
+
+        expect(boards).toBeInstanceOf(SmartShapeCollection)
+        expect(boards.length).toBeGreaterThan(0)
+
+        // every element sits inside the area, and together they cover it exactly
+        const bb = boards.bbox()!
+        expect(bb.minX()).toBeCloseTo(0, 5)
+        expect(bb.minY()).toBeCloseTo(0, 5)
+        expect(bb.maxX()).toBeCloseTo(5000, 5)
+        expect(bb.maxY()).toBeCloseTo(2000, 5)
+
+        const covered = boards.toArray().reduce((sum, s: any) => sum + (s.area?.() ?? 0), 0)
+        expect(covered).toBeCloseTo(5000 * 2000, 0)
+
+        // stats: 2 full sheets per row (2440 + 2440), the rest is cut
+        expect(localModeler.make.stats.full.length).toBeGreaterThan(0)
+        expect(localModeler.make.stats.cut.length).toBeGreaterThan(0)
+        expect(localModeler.make.stats.numStock).toBeGreaterThanOrEqual(localModeler.make.stats.full.length)
+
+        await save(`${TEST_OUTPUT_DIR}/boarding.glb`, await boards.toGLB())
+    }, 30_000)
+
+    it('should snap boarding elements to a grid', async () =>
+    {
+        const localModeler = new Modeler()
+        await localModeler.load()
+
+        const boards = localModeler.make.boarding({
+            width: 3000,
+            height: 1000,
+            stockWidth: 1220,
+            stockHeight: 1000,
+            direction: 'horizontal',
+            grid: 610,
+            stats: false, // no nesting needed for this assertion
+        })
+
+        // every element that is not the last of a row ends on a multiple of the grid
+        const ends = boards.toArray()
+            .map((s: any) => s.bbox().maxX())
+            .filter(x => x < 3000 - 1)
+        ends.forEach(x => expect(Math.abs(x % 610)).toBeLessThan(1e-6))
+    }, 30_000)
+
+    it('should fit a strut diagonally into a rectangular space', async () =>
+    {
+        const localModeler = new Modeler()
+        await localModeler.load()
+
+        const SPACE: [number, number] = [1000, 600]
+        const WIDTH = 100
+
+        const strut = localModeler.make.fitRectStrut(WIDTH, SPACE) as any
+
+        // a flat quad on the XY plane, spanning the space corner to corner. The strut is
+        // aligned to the diagonal of the space *inset by its own width*, so its far corner
+        // lands on the space corner give or take a fraction of the width.
+        expect(strut.type).toBe('Polygon')
+        const bb = strut.bbox()
+        expect(bb.height()).toBeCloseTo(0, 6)   // flat: no z extent
+        expect(bb.maxX()).toBeCloseTo(SPACE[0], 6)
+        expect(bb.maxY()).toBeCloseTo(SPACE[1], -1)
+        expect(bb.minX()).toBeGreaterThanOrEqual(-1e-6)
+        expect(bb.minY()).toBeCloseTo(0, 6)
+
+        // it really is WIDTH wide (area / diagonal length)
+        const diagonal = Math.hypot(SPACE[0] - WIDTH, SPACE[1] - WIDTH)
+        expect(strut.area() / diagonal).toBeGreaterThan(WIDTH * 0.9)
+
+        // and it extrudes into a solid, as the scripts use it
+        const solid = strut.extrude(50, [0, 0, 1])
+        expect(solid.volume()).toBeGreaterThan(0)
+
+        // withSpace also hands back the space outline
+        const withSpace = localModeler.make.fitRectStrut(WIDTH, SPACE, true) as any
+        expect(withSpace).toBeInstanceOf(SmartShapeCollection)
+        expect(withSpace.length).toBe(2)
+    }, 30_000)
+
     it('should pack three boxes onto a sheet', async () =>
     {
         await modeler.make.packReady()

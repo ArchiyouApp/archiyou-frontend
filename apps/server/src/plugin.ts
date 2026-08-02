@@ -13,6 +13,9 @@
  * read routes still serve if Redis is down (only /execute degrades → 503).
  */
 
+import { mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 
 import { config } from './config';
@@ -26,6 +29,7 @@ import { registerProxyRoutes } from './routes/proxy';
 import { ValidationError } from './validate';
 import { UserError } from './services/UserService';
 import { ScriptStoreError } from './services/ScriptStore';
+import { translationQueue } from './translation/TranslationQueue';
 
 const EXECUTION_INIT_TIMEOUT_MS = 5000;
 
@@ -60,6 +64,41 @@ export async function serverApiPlugin(fastify: FastifyInstance): Promise<void> {
 
   await fastify.register(import('@fastify/jwt'), { secret: config.jwtSecret });
 
+  // Script thumbnails as static files (services/ThumbnailStore.ts writes them). Filenames
+  // are content-addressed, which is what makes `immutable` safe: a regenerated thumbnail
+  // gets a new name, so a cached one can never go stale.
+  //
+  // The bytes originate from our own exporter but arrive over a client-controlled request
+  // body, so they are allowlist-validated on the way in (services/svgSanitize.ts) AND
+  // served defensively here: `sandbox` + `default-src 'none'` neuter anything that somehow
+  // got through, and `nosniff` stops a rejected document being re-interpreted as HTML.
+  // @fastify/static throws at registration when root is missing, and the directory is
+  // otherwise only created on the first write — so ensure it here rather than making
+  // boot depend on someone having published something.
+  const thumbnailRoot = resolve(config.thumbnails.path);
+  mkdirSync(thumbnailRoot, { recursive: true });
+
+  await fastify.register(import('@fastify/static'), {
+    root: thumbnailRoot,
+    prefix: `${config.thumbnails.urlPrefix}/`,
+    index: false,
+    dotfiles: 'deny',
+    immutable: true,
+    maxAge: '1y',
+    setHeaders: (res) => {
+      res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+      // helmet defaults every response to CORP same-origin, which blocks the
+      // <img> whenever the frontend is not on this origin (dev: :5173 vs :4100,
+      // and any split-host deploy) — Chrome reports
+      // ERR_BLOCKED_BY_RESPONSE.NotSameOrigin and the thumbnail silently
+      // disappears. Embedding is the entire point of these files, and the CSP
+      // above already neuters the SVG itself, so opt this route back out.
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    },
+  });
+
   // preHandler that rejects unauthenticated requests.
   fastify.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -88,6 +127,12 @@ export async function serverApiPlugin(fastify: FastifyInstance): Promise<void> {
     console.warn('    Library read routes are served; /scripts/published/execute will 503 until Redis is reachable.');
   }
   fastify.decorate('executionManager', manager);
+
+  // Background translation of published configurators. Worked in THIS process (pure IO,
+  // no script evaluation — unlike the execution queue). Best-effort: with no Redis or no
+  // Gemini key, configurators are simply served in the language they were authored in.
+  await translationQueue.init();
+  fastify.addHook('onClose', async () => { await translationQueue.close(); });
 
   fastify.get('/health', async () => ({ status: 'healthy', timestamp: new Date().toISOString() }));
 

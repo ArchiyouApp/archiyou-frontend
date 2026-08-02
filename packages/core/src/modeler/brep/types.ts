@@ -1,8 +1,20 @@
 import { Point, Vector, Shape, Vertex, Edge, Wire, Face, Shell,
-        Solid, ShapeCollection, VertexCollection, Bbox, BaseAnnotation,
-        Obj, Script, ScriptParam  } from '.'
+        Solid, ShapeCollection, VertexCollection, Bbox } from '.'
 
-import type { Brep, Beams, Exporter, Make } from '.'
+import type { Brep, Beams, Exporter } from '.'
+
+/*  This file still holds a slab of legacy APP types (Doc/Container/Script/Runner/Metric)
+    from before the monorepo split — they predate those modules having their own type files.
+    The names below are what they refer to; importing them from their real homes keeps this
+    file honest until the legacy section is moved out for good. */
+import type { BaseAnnotation } from '../../annotator/AnnotatorBaseAnnotation'
+import type { Make } from '../Make'
+import type { Script } from '../../Script'
+import type { ScriptParam } from '../../execution/ScriptParam'
+import type { Metric, DataRows } from '../../calc/types'
+import type { ParamOperation, ScriptOutputData, PublishLicense } from '../../execution/types'
+import type { DocPathStyle } from '../../docs/types'
+import type { RunnerScriptExecutionRequest } from '../../runner/types'
 import type { Docs } from '../../docs/Docs'
 import type { Container } from '../../docs/Container'
 import type { View } from '../../docs/View'
@@ -25,6 +37,8 @@ import type { Console } from '../../console/Console'
 export type ModelUnits = 'mm'|'cm'|'dm'|'m'|'km'|'inch'|'feet'|'yd'|'mi'; // matches ModelUnitsSchema (modeler/schemas.ts)
 export type Units = DocUnits | ModelUnits
 export type UnitsWithPerc = Units | '%'
+import type { StyleData } from '@archiyou/meshup/src/Style'
+
 export type Coord = number|string
 export type MainAxis = 'x'|'y'|'z'
 export type Plane = 'xy' | 'xz' | 'yz'
@@ -284,9 +298,9 @@ export interface RunnerScriptExecutionResult
  *   - docs -> Docs
  *
 */
-export type ImportComponentOutput = Obj|Record<string,Metric>|Calc|Docs|null
+export type ImportComponentOutput = ShapeCollection|Record<string,Metric>|Calc|Docs|null
 export interface ImportComponentResultPipeline {
-    model?: Obj|null,
+    model?: ShapeCollection|null,
     metrics?: Record<string,Metric>|null,
     tables?:CalcDb|null,
     docs?: Docs|null
@@ -350,22 +364,6 @@ export interface SceneGraphNodeDetails {
     numWires?:number,
 }
 
-
-export interface BaseStyle 
-{
-    color?: number|string,  // color int or string
-    opacity? : number,
-    size?: number,
-    dashed?: boolean // line dashed
-    width?: number // line width
-}
-
-export interface ObjStyle 
-{
-    point?: BaseStyle,
-    line?: BaseStyle,
-    fill?: BaseStyle
-}
 
 export interface Gizmo
 {
@@ -856,7 +854,7 @@ export interface MeshShape {
     vertices : Array<VertexMesh>,
     edges : Array<EdgeMesh>,
     faces : Array<FaceMesh>,
-    style? : ObjStyle,
+    style? : StyleData, // meshup Style data - see Shape._getObjStyle()
 }
 
 export interface MeshInfo {

@@ -327,7 +327,14 @@ export class Library
         // Get Script variant id
         const script = Script.fromData(req.script);
         const scriptVariantId = await script.getVariantId(req.params);
-        return scriptVariantId;
+        if(!scriptVariantId){ return scriptVariantId }
+
+        /*  The kernel is part of the cache identity: the same script and params built by the
+            mesh and BREP kernels are different geometry (different tessellation, different
+            output bytes). Without this they would overwrite each other in the result cache.
+            'mesh' is left unsuffixed so every already-cached result stays valid. */
+        const kernel = req.kernel ?? 'mesh';
+        return (kernel === 'mesh') ? scriptVariantId : `${scriptVariantId}-${kernel}`;
     }
 
     /**

@@ -5,6 +5,14 @@ import { SignalWatcher } from '@lit-labs/signals';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import { editorScript } from '@archiyou/editor/src/state/workspace';
+import { translate } from '@archiyou/editor/src/state/locale';
+import { assetUrl } from '@archiyou/editor/src/services/api';
+
+import {
+  TITLE_KEY, DESCRIPTION_KEY, DETAILS_KEY,
+} from '@archiyou/core/src/i18n/keys';
+
+import './configurator-locale-select.js';
 
 @customElement('configurator-header')
 export class ConfiguratorHeader extends SignalWatcher(LitElement)
@@ -13,14 +21,21 @@ export class ConfiguratorHeader extends SignalWatcher(LitElement)
   override render()
   {
     const script  = editorScript.get();
-    const name    = script?.published?.title ?? script?.name ?? 'Untitled';
+    const t       = translate.get();
+    // Source strings stay the fallback for every key, so a missing translation degrades
+    // to the author's own words rather than to a blank.
+    const name    = t(TITLE_KEY, script?.published?.title ?? script?.name ?? 'Untitled');
     const author  = script?.author ?? null;
     const version = script?.version ?? null;
 
     return html`
       <div class="header">
-        <!-- Stub avatar: a flat primary-color disc until author avatars exist. -->
-        <div class="avatar" aria-hidden="true">${this._initial(author ?? name)}</div>
+        <!-- The configurator's own generated preview when it has one; otherwise the
+             stub disc (a flat primary-color initial) that stood here alone before. -->
+        ${script?.thumbnail
+          ? html`<img class="thumb" src=${assetUrl(script.thumbnail)} alt="" loading="lazy"
+                      @error=${(e: Event) => { (e.target as HTMLElement).style.display = 'none'; }}>`
+          : html`<div class="avatar" aria-hidden="true">${this._initial(author ?? name)}</div>`}
 
         <div class="titles">
           <span class="name" title=${name}>${name}</span>
@@ -30,6 +45,7 @@ export class ConfiguratorHeader extends SignalWatcher(LitElement)
         </div>
 
         ${version ? html`<span class="version">${version}</span>` : nothing}
+        <configurator-locale-select></configurator-locale-select>
       </div>
 
       ${this._renderAbout(script)}
@@ -40,8 +56,9 @@ export class ConfiguratorHeader extends SignalWatcher(LitElement)
    *  `details` text stays behind a Show more / Show less toggle. */
   private _renderAbout(script: ReturnType<typeof editorScript.get>)
   {
-    const description = (script?.published?.description ?? script?.description ?? '').trim();
-    const details     = (script?.details ?? '').trim();
+    const t = translate.get();
+    const description = t(DESCRIPTION_KEY, (script?.published?.description ?? script?.description ?? '')).trim();
+    const details     = t(DETAILS_KEY, script?.details ?? '').trim();
 
     if (!description && !details) return nothing;
 
@@ -108,6 +125,17 @@ export class ConfiguratorHeader extends SignalWatcher(LitElement)
       font-weight: 600;
       line-height: 1;
       user-select: none;
+    }
+
+    /* Square rather than a disc: this is the model's drawing, not a person's avatar,
+       and a circular crop would clip the corners of the framed geometry. */
+    .thumb
+    {
+      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      border-radius: var(--radius-sm, 4px);
     }
 
     .titles

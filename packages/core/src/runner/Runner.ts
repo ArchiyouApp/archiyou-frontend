@@ -50,6 +50,7 @@ import { Db } from '../calc/Db';
 // Archiyou modules
 import { Console, NATIVE_CONSOLE } from '../console/Console';
 import { Modeler } from '../modeler/Modeler';
+import type { ModelMode } from '../modeler/types';
 import { isAnyShape } from '../modeler/types';
 import { Annotator } from '../annotator/Annotator';
 import { Interactor } from '../interaction/Interactor';
@@ -187,13 +188,13 @@ export class Runner
                     console.warn(`Runner: Detected a function definition in scope '${name}' with name '${String(key)}'. \nPlease make sure you don't use variables from outside the function scope, \nbecause they will be locked in at the time of function creation (lexical closure). \nUse explicit arguments instead!`);
                 }
 
-                if (typeof target[key] === 'object' && target[key] !== null)
-                {
-                    Object.assign(target[key], value);
-                } 
-                else {
-                    target[key] = value;
-                }
+                // Plain rebinding. NEVER Object.assign onto the value already under `key`:
+                // re-assigning a variable to a shape of a DIFFERENT class (the common
+                // `beam = beam.extrude(10)`, Polygon → Mesh) would then smear the new
+                // shape's own fields onto the old instance and keep the old prototype —
+                // leaving an object that reports type 'Mesh' but still runs Polygon's
+                // methods, which fails much later with a confusing error.
+                target[key] = value;
                 return true;
             }
         });
@@ -266,10 +267,21 @@ export class Runner
         // Add basic globals to the state
         Object.assign(state,
             {
-                Math: Math, 
+                Math: Math,
                 JSON: JSON, // for debugging
                 Array: Array,
                 Object: Object,
+                // Primitive constructors/parsers: scripts need these to convert values,
+                // most commonly an options param (always a string) used as a number
+                Number: Number,
+                String: String,
+                Boolean: Boolean,
+                parseInt: parseInt,
+                parseFloat: parseFloat,
+                isNaN: isNaN,
+                isFinite: isFinite,
+                // Errors, so a script can throw something meaningful
+                Error: Error,
                 roundTo: roundTo,
                 toRad: toRad,
                 toDeg: toDeg,
@@ -297,7 +309,7 @@ export class Runner
             calc: state._archiyou.calc,
             materials: state._archiyou.materials,
             exporter: state._archiyou.exporter,
-            make: state._archiyou.make,
+            make: state._archiyou.modeler.make, // Make lives on Modeler, not directly on ArchiyouModules
             interactor: state._archiyou.interactor,
             // add services too
             services: state._archiyou.services,
@@ -462,6 +474,28 @@ export class Runner
      *  @request - string with code or object with script and params
      *  @result - return the result of the execution
     */
+    /** Load the kernel a run asks for, on the Runner's own Modeler.
+     *
+     *  Scope Modelers pick the loaded kernel objects up through inheritKernels(), so this is
+     *  the single place the (async, potentially 10MB) load happens — once per Runner, not once
+     *  per run. Selecting brep keeps mesh loaded too: it owns the scene, the styles and the
+     *  exporters both kernels share. */
+    private async _ensureKernel(kernel?: ModelMode): Promise<void>
+    {
+        const wanted: ModelMode = kernel ?? 'mesh';
+        if (!this._modeler) { return }
+        if (this._modeler.mode() === wanted && this._modeler.loaded()) { return }
+
+        this._modeler.mode(wanted);
+        await this._modeler.load();
+
+        // Scopes built BEFORE this load inherited only what was loaded then, so hand the
+        // newly loaded kernel to the Modelers that already exist. inheritKernels() only fills
+        // gaps, so this is safe to repeat.
+        Object.values(this._localScopes).forEach((scope: any) =>
+            scope?._archiyou?.modeler?.inheritKernels(this._modeler));
+    }
+
     public async execute(request: string|RunnerScriptExecutionRequest):Promise<RunnerScriptExecutionResult>
     {
         const { missing } = await this._prefetchComponentScripts(request);
@@ -495,6 +529,10 @@ export class Runner
         {
             request = { script: { code: request } } as RunnerScriptExecutionRequest;
         }
+
+        // Make sure the kernel this run asks for is actually loaded. Has to happen here:
+        // loading is async and the per-scope setup (_executionStartRunInScope) is not.
+        await this._ensureKernel(request.kernel);
 
         // Per-statement mode: split the script and execute statement-by-statement so a
         // single failure halts with a partial model instead of losing the whole run, and
@@ -1029,6 +1067,10 @@ ${contextLines.join('\n')}
         
         // Reset some modules
         scope._archiyou.modeler.reset(); // reset before we begin
+        // Select the kernel for this run. The actual (async) kernel load already happened in
+        // execute() -> _ensureKernel(); the scope Modeler inherited the loaded kernels, so this
+        // only has to point it at the right one. Whole-run only: no switching mid-script.
+        scope._archiyou.modeler.mode(request.kernel ?? 'mesh');
         // Apply the display unit-system preference (presentation only). Geometry
         // stays in the script's model unit (mm unless $modeler.units() is set);
         // dimension lines / doc SVG convert to metric/imperial for display.
@@ -1817,7 +1859,17 @@ ${contextLines.join('\n')}
                     break;
 
                 case 'svg': // 2D SVG export (via the new Modeler pipeline)
-                    outp = scope.modeler.toSVG();
+                {
+                    // `thumbnail`/`view`/`cam` opt into the 3D hidden-line projection, which
+                    // does not need the script to have authored any 2D geometry. Without them
+                    // this is byte-identical to the pre-projection behaviour, so every existing
+                    // 'default/model/svg' path keeps working exactly as before.
+                    const svgOpts = (outputPath?.formatOptions ?? {}) as any;
+                    outp = svgOpts.thumbnail
+                            ? (scope.modeler.toThumbnailSVG(svgOpts)?.svg ?? null)
+                         : (svgOpts.view || svgOpts.cam)
+                            ? scope.modeler.toProjectionSVG(svgOpts)
+                            : scope.modeler.toSVG();
                     if(outp)
                     {
                         outputs.push({
@@ -1826,6 +1878,7 @@ ${contextLines.join('\n')}
                         } as ScriptOutputData);
                     }
                     break;
+                }
 
                 case 'dxf': // 2D DXF export (via the new Modeler pipeline)
                     outp = scope.modeler.toDXF(outputPath?.formatOptions as any);

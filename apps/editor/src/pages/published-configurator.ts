@@ -18,6 +18,7 @@ import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@archiyou/ui/configurator/configurator.js';
 
 import { openSharedScript } from '../state/workspace';
+import { applyLocaleFromQuery } from '../state/locale';
 import { fetchPublishedScriptVersion } from '../services/publishing.js';
 
 @customElement('page-published-configurator')
@@ -31,6 +32,9 @@ export class PagePublishedConfigurator extends SignalWatcher(LitElement)
   override connectedCallback()
   {
     super.connectedCallback();
+    // ?lang=de wins over the browser's preference: a link shared in one language should
+    // open in that language for whoever follows it.
+    applyLocaleFromQuery(window.location.search);
     void this._load();
   }
 

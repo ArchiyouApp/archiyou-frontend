@@ -20,3 +20,8 @@ target/
 
 # OS cruft
 .DS_Store
+
+# TMP output fileas
+*.svg
+*.glb
+*.gltf

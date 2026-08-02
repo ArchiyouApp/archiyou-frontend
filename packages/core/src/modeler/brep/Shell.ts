@@ -20,6 +20,12 @@ import { flattenEntities } from '.' // utils
 // this can disable TS errors when subclasses are not initialized yet
 type ISolid = Solid
 
+
+// Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
+// run at class-definition time, before it has finished initialising.
+import { sceneAdd, sceneCarry } from '@archiyou/meshup/src/sceneDecorators'
+import { checkInput, protectOC } from './decorators'
+
 export class Shell extends Shape
 {   
     
@@ -79,6 +85,7 @@ export class Shell extends Shape
         }
     }
 
+    @checkInput('MakeShellInput', 'ShapeCollection')
     fromAll(entities:MakeShellInput): Shell
     {
         const shapes = entities as ShapeCollection; // auto converted
@@ -96,6 +103,7 @@ export class Shell extends Shape
         }
     }
 
+    @checkInput('Face', 'auto')
     fromFace(face:Face):Shell
     {
         // BRep_Builder: https://dev.opencascade.org/doc/refman/html/class_b_rep___builder.html
@@ -108,6 +116,7 @@ export class Shell extends Shape
         return shell
     }
 
+    @checkInput(['MakeShellInput',[Boolean,false]], ['ShapeCollection', 'auto'])
     fromFaces(faces:MakeShellInput, forceShell?:boolean):Shell|AnyShapeOrCollection|null
     {
         let shapes = faces as ShapeCollection; // auto converted
@@ -157,6 +166,7 @@ export class Shell extends Shape
 
     /** Creates an Shell by interpolating between two (=Loft) or more Edges 
      *  Generally used in the context of filling but might be handy as seperate function */
+    @checkInput('AnyShapeSequence', 'ShapeCollection')
     fromEdges(edges:AnyShapeSequence):Shell
     {
          /* OC Docs:
@@ -238,6 +248,7 @@ export class Shell extends Shape
      *  See: https://old.opencascade.com/doc/occt-7.5.0/overview/html/occt_user_guides__modeling_algos.html
      *  docs: https://dev.opencascade.org/doc/refman/html/class_b_o_p_algo___tools.html
     */
+    @checkInput('AnyShapeOrCollection', 'ShapeCollection')
     fromWireFrame(wireframe:AnyShapeOrCollection):this
     {
         const ANG_TOL = 1e-3;
@@ -295,6 +306,7 @@ export class Shell extends Shape
     }
 
     /** Get the outer Wire of Shell */
+    @sceneAdd
     toWire():Wire
     {
         return this._toWire();
@@ -306,6 +318,7 @@ export class Shell extends Shape
         return this.faces()[0];
     }
 
+    @sceneAdd
     toFace():Face
     {
         return this._toFace();
@@ -316,6 +329,7 @@ export class Shell extends Shape
         return new Solid().fromShell(this);
     }
 
+    @sceneAdd
     toSolid():ISolid
     {
         return new Solid().fromShell(this);
@@ -406,6 +420,7 @@ export class Shell extends Shape
     */ 
 
     /** Thicken the shell to create a Solid (private: without adding to Scene) */
+    @checkInput([Number,'ThickenDirection'],['auto','auto'])
     _thickened(amount:number, direction:ThickenDirection):ISolid
     {   
         /*
@@ -461,12 +476,14 @@ export class Shell extends Shape
     }
 
     /** Thicken the shell to create a Solid (private: without adding to Scene) */
+    @checkInput([Number,'ThickenDirection'],['auto','auto'])
     thickened(amount:number, direction:ThickenDirection):ISolid
     {
         return this._thickened(amount,direction);
     }
 
     /** Private method that is used by thickened */
+    @checkInput(Number, 'auto')
     _bridgeThickened(amount:number):ISolid
     {        
         let result = this._offsetted(amount);
@@ -492,6 +509,8 @@ export class Shell extends Shape
     }
 
     /** Stitch two Shells together to create a Solid (EXPERIMENTAL) */
+    @protectOC([`This is an experimental method. Might not work!`])
+    @checkInput(Shell, 'auto')
     _bridge(other:Shell):ISolid
     {
         const offsetShellWire = (other as Shell).outerWire();

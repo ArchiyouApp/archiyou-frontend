@@ -21,6 +21,8 @@ import {
   setConfiguratorParamMenuCollapsed,
 } from '@archiyou/editor/src/state/configurator';
 import { configuratorParams, configuratorValueFor, setConfiguratorValue } from '@archiyou/editor/src/state/configurator';
+import { translate } from '@archiyou/editor/src/state/locale';
+import { groupKey } from '@archiyou/core/src/i18n/keys';
 
 import type { ScriptParam, ParamValueChangeDetail } from '@archiyou/editor/src/state/workspace';
 
@@ -48,7 +50,7 @@ export class ConfiguratorParams extends SignalWatcher(LitElement)
             ? this._renderGroup('main', params)
             : html`
                 <wa-tab-group>
-                  ${groups.map(g => html`<wa-tab panel=${g}>${g}</wa-tab>`)}
+                  ${groups.map(g => html`<wa-tab panel=${g}>${translate.get()(groupKey(g), g)}</wa-tab>`)}
                   ${groups.map(g => html`
                     <wa-tab-panel name=${g}>
                       ${this._renderGroup(g, params)}
@@ -99,7 +101,7 @@ export class ConfiguratorParams extends SignalWatcher(LitElement)
     // The number control draws its own label row (label + value box on one line,
     // slider underneath), so param-item stands back for it.
     return groupParams.map(p => html`
-      <param-item .param=${p} readonly mode="presentation" ?hideLabel=${p.type === 'number'}>
+      <param-item .param=${p} .t=${translate.get()} readonly mode="presentation" ?hideLabel=${p.type === 'number'}>
         ${this._renderControl(p)}
       </param-item>
     `);

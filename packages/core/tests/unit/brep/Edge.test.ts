@@ -15,9 +15,9 @@ test("Edge Basics", () =>
 {
     // Basics: Line Edge
     const l = new brep.Edge().makeLine([0,0],[100,0]);
-    expect(l.type()).toEqual('Edge');
+    expect(l.type).toEqual('Edge');
     expect(l.edgeType()).toEqual('Line');
-    expect(l.toWire().type()).toEqual('Wire');
+    expect(l.toWire().type).toEqual('Wire');
     expect(l.start().toArray()).toEqual([0,0,0]);
     expect(l.end().toArray()).toEqual([100,0,0]);
     expect(l.is2DXY()).toEqual(true);
@@ -28,7 +28,7 @@ test("Edge Basics", () =>
     // Circle Edge
     const radius = 100;
     const c = new brep.Edge().makeCircle(radius);
-    expect(c.type()).toEqual('Edge');
+    expect(c.type).toEqual('Edge');
     expect(c.edgeType()).toEqual('Circle');
     expect(c.length()).toEqual(brep.roundToTolerance(radius*Math.PI*2));
     expect(Math.round(c.bbox().width())).toEqual(200);

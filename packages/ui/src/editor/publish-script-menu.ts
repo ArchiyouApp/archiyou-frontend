@@ -32,6 +32,8 @@ import '@awesome.me/webawesome/dist/components/option/option.js';
 import '@awesome.me/webawesome/dist/components/spinner/spinner.js';
 
 import { CC_LICENCES, FULFILLMENT_DELIVERIES } from '@archiyou/core/src/ScriptSchema';
+import { THUMBNAIL_OUTPUT_PATH } from '@archiyou/core/src/constants';
+import { getOutput } from '@archiyou/core/src/runner/worker/output';
 import type { CCLicence, FulfillmentDelivery, ScriptPublishedFulfillmentData } from '@archiyou/core/src/ScriptSchema';
 import type { ScriptData, ScriptMeta } from '@archiyou/core/src/execution/types';
 import type { RunnerScriptExecutionRequest } from '@archiyou/core/src/runner/types';
@@ -121,6 +123,11 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
   @state() private _duration: number | null = null;
   @state() private _tooHeavy        = false;
   @state() private _meta: ScriptMeta | null = null;
+  /** Iso line drawing captured from the precheck run, sent alongside the script on
+   *  publish. Entirely automatic and not surfaced in the form: the author cannot
+   *  influence it, so showing it would only add noise. Null when the script has no 3D
+   *  geometry or the drawing exceeded its size cap — publishing is never blocked by it. */
+  @state() private _thumbnailSvg: string | null = null;
 
   // ── Form state ──
   @state() private _view: 'form' | 'fulfillment' = 'form';
@@ -562,6 +569,7 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
     this._tooHeavy = false;
     this._duration = null;
     this._meta = null;
+    this._thumbnailSvg = null;
     this._success = null;
     this._view = 'form';
     this._public = true;
@@ -591,16 +599,24 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
       if (!scriptData) { this._precheckError = 'No active script to publish.'; return; }
 
       await warmupWorker();
+      // The thumbnail rides along on the precheck run rather than costing a second
+      // execution: the hidden-line projection is cheap next to the script itself, and
+      // this run already has to happen to measure duration and collect ScriptMeta.
       const result = await runScript({
         kernel:     'mesh',
         script:     scriptData,
-        outputs:    ['default/model/glb'],
+        outputs:    ['default/model/glb', THUMBNAIL_OUTPUT_PATH],
         messages:   ['error'],
         unitSystem: scriptData.units ?? 'metric',
       } as RunnerScriptExecutionRequest);
 
       this._duration = result?.duration ?? 0;
       this._meta = result?.meta ?? null;
+      // Best-effort: a script with no 3D geometry (2D-only, docs-only) or one whose
+      // drawing blew the size cap simply gets no preview. Never blocks publishing.
+      this._thumbnailSvg = result
+        ? ((getOutput(result, THUMBNAIL_OUTPUT_PATH) as string | undefined) ?? null)
+        : null;
 
       // Heaviness only blocks a fresh publish — an already-published configurator
       // must stay editable.
@@ -834,7 +850,7 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
     this._error = '';
     try
     {
-      const stored = await publishScript(script);
+      const stored = await publishScript(script, this._thumbnailSvg);
       // Reflect the stored metadata + version on the active script.
       script.published = stored.published ?? script.published;
       script.version = stored.version ?? script.version;
@@ -886,7 +902,10 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
     this._error = '';
     try
     {
-      const stored = await updateConfigurator(payload);
+      // Edit mode re-runs the script in _prepare(), so this also regenerates the
+      // preview — an existing configurator can get a fresh thumbnail without a
+      // version bump (the filename is content-addressed, so the URL changes with it).
+      const stored = await updateConfigurator(payload, this._thumbnailSvg);
       const author = stored.author ?? editData.author ?? userState.get().id ?? 'me';
       const name   = stored.name ?? editData.name ?? 'script';
       this._success = {

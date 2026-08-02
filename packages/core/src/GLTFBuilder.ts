@@ -1,9 +1,10 @@
-import {
-    Brep, AnyShape, Vector, Vertex, Edge, Wire, Face, ShapeCollection, SceneGraphNode, Gizmo,
-    DimensionLineData, DocData, ArchiyouApp, StatementResult, ConsoleMessage, Shape, VertexCollection,
-} from './modeler/brep'
-
-import { toRad, MeshingQualitySettings, ArchiyouData, ArchiyouOutputSettings } from './modeler/brep'
+// Vector/toRad come from the MESH kernel on purpose. They used to be imported from
+// ./modeler/brep, which pulled the 10MB OpenCascade barrel into every mesh-only run — and
+// worse, brep's Point constructor calls getOc(), so `new Vector(1,0,0)` below threw outright
+// whenever the brep kernel had not been loaded.
+import { Vector } from '@archiyou/meshup/src/Vector'
+import { rad as toRad } from '@archiyou/meshup/src/utils'
+import type { ArchiyouData } from './modeler/brep/types'
 import { Document, Accessor, Animation, AnimationChannel, AnimationSampler, Scene as GltfScene, Node as GltfNode } from '@gltf-transform/core'
 
 import {

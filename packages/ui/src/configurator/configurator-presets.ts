@@ -10,6 +10,8 @@ import {
   configuratorPresetMenuCollapsed,
   setConfiguratorPresetMenuCollapsed,
 } from '@archiyou/editor/src/state/configurator';
+import { translate } from '@archiyou/editor/src/state/locale';
+import { presetKey } from '@archiyou/core/src/i18n/keys';
 
 @customElement('configurator-presets')
 export class ConfiguratorPresets extends SignalWatcher(LitElement)
@@ -35,11 +37,15 @@ export class ConfiguratorPresets extends SignalWatcher(LitElement)
 
       ${!collapsed ? html`
         <div class="preset-grid">
-          ${presets.map(p => html`
-            <button class="preset-btn" title=${`Apply preset "${p.name}"`}
+          ${presets.map(p => {
+            // p.name stays the identifier used to apply the preset; only the caption
+            // shown on the button is translated.
+            const label = translate.get()(presetKey(p.name), p.name);
+            return html`
+            <button class="preset-btn" title=${`Apply preset "${label}"`}
               @click=${() => this._apply(p.name)}
-            >${p.name}</button>
-          `)}
+            >${label}</button>
+          `;})}
         </div>
       ` : nothing}
     `;

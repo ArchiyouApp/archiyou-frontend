@@ -100,8 +100,8 @@ export class ParamItemNumber extends SignalWatcher(LitElement)
                     @dragstart=${(e: DragEvent) => e.stopPropagation()}
                 >
                     <div class="pres-top">
-                        <param-help .text=${this.param?.description ?? ''}></param-help>
                         <span class="pres-label">${this.param?.label || this.param?.name}</span>
+                        <param-help .text=${this.param?.description ?? ''}></param-help>
                         <span class="pres-spacer"></span>
                         ${frac}
                         ${numUnit}

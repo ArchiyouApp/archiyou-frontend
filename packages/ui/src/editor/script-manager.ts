@@ -11,11 +11,27 @@ import type { ScriptData } from '@archiyou/core/src/execution/types';
 
 import { scripts, editorScript } from '@archiyou/editor/src/state/workspace';
 import { fetchPublicShared, fetchSharedWithMe } from '@archiyou/editor/src/services/sharing';
+import { fetchMyConfigurators } from '@archiyou/editor/src/services/publishing';
 import { OVERLAY_MENU_WIDTH, OVERLAY_MENU_HEIGHT } from '@archiyou/editor/src/settings';
 
 import './script-manager-item.js';
 
 type ManagerTab = 'mine' | 'public' | 'shared-with-me';
+
+/** Numeric-segment compare ("0.10" > "0.9"); unparsed segments sort as 0.
+ *  Enough for the "which of these is the later release" question here — a full
+ *  semver dependency would be overkill for a list pill. */
+function compareVersions(a: string, b: string): number
+{
+  const pa = a.split('.').map(n => Number.parseInt(n, 10) || 0);
+  const pb = b.split('.').map(n => Number.parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++)
+  {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
 
 @customElement('script-manager')
 export class ScriptManager extends SignalWatcher(LitElement)
@@ -34,6 +50,12 @@ export class ScriptManager extends SignalWatcher(LitElement)
   /** fileId → ScriptData for the shared lists, to resolve a selection to its
    *  full payload (shared scripts aren't in the local collection). */
   private _sharedById = new Map<string, ScriptData>();
+
+  /** fileId → highest known released version, merged from every bulk list we
+   *  already fetch. Local working copies reset `version` to null on save (see
+   *  ScriptStore), so without this My Scripts would show no version at all for
+   *  files that have in fact been published or shared. */
+  @state() private _latestVersions = new Map<string, string>();
 
   private static readonly TABS: { id: ManagerTab; label: string }[] = [
     { id: 'mine',           label: 'My Scripts' },
@@ -137,6 +159,7 @@ export class ScriptManager extends SignalWatcher(LitElement)
         .script=${s}
         readonly
         author=${s.author ?? ''}
+        version=${this._versionFor(s)}
         ?selected=${this._selectedFileId === s.fileId}
         @script-item-select=${this._onSelect}
       ></script-manager-item>`);
@@ -159,10 +182,38 @@ export class ScriptManager extends SignalWatcher(LitElement)
     return list.map(s => html`
       <script-manager-item
         .script=${s}
+        version=${this._versionFor(s)}
         ?selected=${this._selectedFileId === s.fileId}
         @script-item-select=${this._onSelect}
         @script-delete=${this._onDelete}
       ></script-manager-item>`);
+  }
+
+  /** The version to show for a row: the highest of the script's own version and
+   *  anything a bulk list told us about that file. Taking the max matters for a
+   *  local copy that was published again elsewhere — its stored version is then
+   *  behind the library's. '' renders no pill. */
+  private _versionFor(s: Script): string
+  {
+    const own    = s.version ?? '';
+    const known  = this._latestVersions.get(s.fileId) ?? '';
+    if (!own)   return known;
+    if (!known) return own;
+    return compareVersions(known, own) > 0 ? known : own;
+  }
+
+  /** Merge released versions into the map, keeping the highest per file. Assigns
+   *  a new Map so the @state identity check fires and the rows re-render. */
+  private _mergeVersions(entries: Array<{ fileId?: string; version?: string | null }>): void
+  {
+    const next = new Map(this._latestVersions);
+    for (const { fileId, version } of entries)
+    {
+      if (!fileId || !version) continue;
+      const current = next.get(fileId);
+      if (!current || compareVersions(version, current) > 0) next.set(fileId, version);
+    }
+    this._latestVersions = next;
   }
 
   private _applyFilter(list: Script[]): Script[]
@@ -188,6 +239,23 @@ export class ScriptManager extends SignalWatcher(LitElement)
       // Drop cached shared lists so re-opening reflects fresh server state.
       this._publicShared = null;
       this._sharedWithMe = null;
+      this._latestVersions = new Map();
+      void this._loadLatestVersions();
+    }
+  }
+
+  /** One best-effort bulk call so My Scripts can show a version for files that
+   *  have been published — their local working copy carries none. Silent on
+   *  failure (signed out, offline): the pills simply stay absent. */
+  private async _loadLatestVersions()
+  {
+    try
+    {
+      this._mergeVersions(await fetchMyConfigurators());
+    }
+    catch (err)
+    {
+      console.debug('script-manager: no published versions available for version pills', err);
     }
   }
 
@@ -215,6 +283,9 @@ export class ScriptManager extends SignalWatcher(LitElement)
         const s = Script.fromData(d);
         if (s) list.push(s);
       }
+      // A library row is a release, so it also teaches My Scripts the latest
+      // version of any file the user happens to own.
+      this._mergeVersions(data);
       if (tab === 'public') this._publicShared = list;
       else                  this._sharedWithMe = list;
     } catch (err) {

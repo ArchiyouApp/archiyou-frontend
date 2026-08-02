@@ -60,6 +60,22 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return response.json() as Promise<T>;
 }
 
+/**
+ * Absolute URL for an asset the API serves as a static file (script thumbnails —
+ * see apps/server ThumbnailStore).
+ *
+ * Those URLs are stored root-relative ("/thumbnails/…"), which only resolves when
+ * the frontend and the API share an origin. In dev they do not (editor :5173, API
+ * :4100), so an `<img src="/thumbnails/…">` fetches the SPA's index.html instead,
+ * the image errors, and the thumbnail silently disappears. Same for any split-host
+ * deployment. Already-absolute and data: URLs pass through untouched.
+ */
+export function assetUrl(path: string | null | undefined): string | undefined {
+  if (!path) return undefined;
+  if (/^(https?:)?\/\//i.test(path) || path.startsWith('data:')) return path;
+  return `${BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
 export const api = {
   get<T>(path: string): Promise<T> {
     return request<T>('GET', path);

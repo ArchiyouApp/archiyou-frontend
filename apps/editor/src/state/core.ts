@@ -16,6 +16,7 @@ import { signal, computed } from '@lit-labs/signals';
 
 import { Script } from '@archiyou/core/src/Script';
 import type { RunnerScriptExecutionResult } from '@archiyou/core/src/runner/types';
+import type { ModelMode } from '@archiyou/core/src/modeler/types';
 import { uuid4 } from '@archiyou/core/src/utils';
 
 import { EDITOR_START_SCRIPT } from '../settings';
@@ -199,6 +200,15 @@ export const perStatement     = signal<boolean>(true);
  *  changes (and on load / unit flip). When off, the user runs manually via the
  *  Run button. Toggled in the Run options menu. Session-only. */
 export const autoRun          = signal<boolean>(true);
+
+/** Geometry kernel for the next run: the fast, robust mesh kernel (meshup/csgrs) or the
+ *  accurate BREP kernel (OpenCascade). Toggled in the Run options menu, applied per whole
+ *  run — a script cannot switch mid-way.
+ *
+ *  Session-only, deliberately: this is a testing/comparison switch, not a property of the
+ *  script (unlike units, which live on the Script). Note the brep kernel loads a ~10MB WASM
+ *  on first use, so the first brep run is slower. */
+export const kernel           = signal<ModelMode>('mesh');
 
 /** Combined view — use when you need the full core shape. */
 export const core = computed<WorkspaceCoreState>(() => ({

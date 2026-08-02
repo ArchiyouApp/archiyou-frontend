@@ -88,6 +88,11 @@ export class Script
     get shared(): null|ScriptSharedData { return this._shared ?? null; }
     set shared(v: null|ScriptSharedData|undefined) { this._shared = v ?? null; }
 
+    /** URL of this version's thumbnail image (null when none). Server-stamped; the SVG
+     *  bytes live on disk, not here — see ScriptSchema.thumbnail. */
+    get thumbnail(): string|null { return this._thumbnail ?? null; }
+    set thumbnail(v: string|null|undefined) { this._thumbnail = v ?? null; }
+
     // Dates: convert wire ISO string <-> Date on the boundary.
     get created(): Date { return this._created ? new Date(this._created) : new Date(); }
     set created(v: Date|string|null|undefined) { this._created = v == null ? null : (v instanceof Date ? v.toISOString() : v); }
@@ -486,6 +491,7 @@ export class Script
         script._presets = data.presets || {};
         script._published = data.published || null; // will be validated in validate()
         script._shared = (data as any).shared || null;
+        script._thumbnail = (data as any).thumbnail || null;
 
         // Validate the script after loading
         try {
@@ -528,6 +534,7 @@ export class Script
             presets: this.presets,
             published: this.published,
             shared: this.shared,
+            thumbnail: this.thumbnail,
         };
     }
 

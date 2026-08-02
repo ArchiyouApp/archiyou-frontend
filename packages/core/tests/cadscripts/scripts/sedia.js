@@ -1,12 +1,9 @@
-export default {
-  id: "archiyou/sedia/0.35.0",
-  name: "sedia",
-  author: "archiyou",
-  description: "The famous Sedia chair by Enzo Mari",
-  tags: [],
-  created: "2025-02-13T14:45:42.834Z",
-  updated: "2024-12-12T16:51:06.000Z",
-  code: `// Archiyou 0.17
+// sedia
+// The famous Sedia chair by Enzo Mari
+
+$PARAMS.define('WIDTH_NUM_BOARDS', 'number', { label: "Width in number of boards", order: 0, default: 4, minimum: 4, maximum: 10, multipleOf: 1 });
+
+// Archiyou 0.17
 
 //// MATERIAL SETTINGS ////
 
@@ -34,11 +31,11 @@ seatFrontTop = boxbetween(
                 [0,0,0],
                 [SEAT_WIDTH+BEAM_SMALL*4, BEAM_SMALL, BEAM_LARGE])
                 .moveZ(SEAT_START_HEIGHT+BEAM_LARGE)
-seatFrontBottom = seatFrontTop.moved(0,0,-BEAM_LARGE)
+seatFrontBottom = seatFrontTop.copy().move(0,0,-BEAM_LARGE)
                 
-seatBackTop = seatFrontTop.moved(0,SEAT_DEPTH, -SEAT_ANGLE_OFFET)
+seatBackTop = seatFrontTop.copy().move(0,SEAT_DEPTH, -SEAT_ANGLE_OFFET)
                 
-seatBackBottom = seatFrontBottom.moved(0,SEAT_DEPTH, -SEAT_ANGLE_OFFET)
+seatBackBottom = seatFrontBottom.copy().move(0,SEAT_DEPTH, -SEAT_ANGLE_OFFET)
 
 seatFrontTop.moveZ(SEAT_ANGLE_OFFET);
 seatFrontBottom.moveZ(SEAT_ANGLE_OFFET);
@@ -49,10 +46,10 @@ seatSideLeftBottom = boxbetween(
                         )
                 .move(BEAM_SMALL, 0, SEAT_START_HEIGHT)
 
-seatSideLeftTop = seatSideLeftBottom.moved(0,0,BEAM_LARGE)
+seatSideLeftTop = seatSideLeftBottom.copy().move(0,0,BEAM_LARGE)
 
-seatSideRightBottom = seatSideLeftBottom.mirroredY((SEAT_WIDTH+BEAM_SMALL*4)/2);
-seatSideRightTop = seatSideLeftTop.mirroredY((SEAT_WIDTH+BEAM_SMALL*4)/2);
+seatSideRightBottom = seatSideLeftBottom.copy().mirrorX((SEAT_WIDTH+BEAM_SMALL*4)/2);
+seatSideRightTop = seatSideLeftTop.copy().mirrorX((SEAT_WIDTH+BEAM_SMALL*4)/2);
 
 
 seatBoardLeftLine = line(
@@ -61,10 +58,10 @@ seatBoardLeftLine = line(
                         
 
 seatBoardLeft = seatBoardLeftLine
-                    .extruded(BEAM_LARGE, [1,0,0])
+                    .extrude(BEAM_LARGE, [1,0,0])
                     .extrude(-BEAM_SMALL)
                     .move(BEAM_SMALL*2)
-boards = seatBoardLeft.arrayX(SEAT_WIDTH_BOARDS, BEAM_LARGE)
+boards = seatBoardLeft.array([SEAT_WIDTH_BOARDS,1,1],[BEAM_LARGE,0,0])
 
 /* NOTE: In later versions the seating is slightly recessed
         So the front end of the base plank is aligned with the sides and legs
@@ -86,12 +83,12 @@ legFrontLeft = boxbetween([0,0,0],[-BEAM_SMALL, BEAM_MID,SEAT_START_HEIGHT+2*BEA
                 .move(BEAM_SMALL,BEAM_SMALL)
                 .name('leg front left')      
 
-legFrontRight = legFrontLeft.moved(seatFrontTop.bbox().width()-BEAM_SMALL)     
+legFrontRight = legFrontLeft.copy().move(seatFrontTop.bbox().width()-BEAM_SMALL)     
                         .name('leg front right');
                         
-legBackLeft = legFrontLeft.moved(0,SEAT_DEPTH-BEAM_MID*1.5)
+legBackLeft = legFrontLeft.copy().move(0,SEAT_DEPTH-BEAM_MID*1.5)
                 .name('leg back left');
-legBackRight = legBackLeft.moved(seatFrontTop.bbox().width()-BEAM_SMALL)
+legBackRight = legBackLeft.copy().move(seatFrontTop.bbox().width()-BEAM_SMALL)
                         .name('leg back right');
 
 //// BACK ////
@@ -99,35 +96,35 @@ legBackRight = legBackLeft.moved(seatFrontTop.bbox().width()-BEAM_SMALL)
 layer('back').color('green');
 
 backLineBase = line(
-                legBackLeft.select('V||toprightfront').moved(0,-BACK_ANGLE_OFFSET,-BEAM_LARGE*2),
+                legBackLeft.select('V||toprightfront').copy().move(0,-BACK_ANGLE_OFFSET,-BEAM_LARGE*2),
                 legBackLeft.select('V||toprightfront')
                 )
                 .hide();
 
 backLine = line(
                 backLineBase.start(),
-                backLineBase.start().moved(backLineBase.direction().normalized().scale(BACK_LENGTH))
+                backLineBase.start().copy().move(backLineBase.direction().normalized().scale(BACK_LENGTH))
                 )
                 .hide();
 
-backSideLeft = backLine.extruded(BEAM_SMALL, [-1,0,0]).extrude(-BEAM_MID)
-backSideRight = backSideLeft.mirroredY(seatFrontTop.bbox().width()/2);
+backSideLeft = backLine.extrude(BEAM_SMALL, [-1,0,0]).extrude(-BEAM_MID)
+backSideRight = backSideLeft.copy().mirrorX(seatFrontTop.bbox().width()/2);
 
 backHorizontalLine = line(
-                backSideLeft.select('V[4]'),
-                backSideRight.select('V[4]')
+                backSideLeft.select('V||topleftfront'),
+                backSideRight.select('V||topleftfront')
                 )
 
-backHorizontalTop = backHorizontalLine.extruded(BEAM_LARGE, backLine.direction().reverse())
+backHorizontalTop = backHorizontalLine.extrude(BEAM_LARGE, backLine.direction().reverse())
                         .extrude(BEAM_SMALL)
 
-backHorizontalBottom = backHorizontalTop.moved(
+backHorizontalBottom = backHorizontalTop.copy().move(
                                 backLine.direction().reversed().normalized().scaled(BEAM_LARGE)
                         )
 
 //// ORGANIZE FOR PART LIST ////
 
-seat = group(
+seat = collection(
         seatFrontTop.name('base front'),
         seatFrontBottom.name('base front'),
         seatBackTop.name('base back'),
@@ -139,17 +136,17 @@ seat = group(
         boards.name('boards').forEach(s => s.name('seat board'))
         ).name('seat')
 
-legs = group(legBackLeft, legBackRight, legFrontLeft, legFrontRight)
+legs = collection(legBackLeft, legBackRight, legFrontLeft, legFrontRight)
         .name('legs');
 
-back = group(
+back = collection(
         backSideLeft.name('back rest diagonal'),
         backSideRight.name('back rest diagonal'),
         backHorizontalTop.name('back rest plank'),
         backHorizontalBottom.name('back rest plank')
 ).name('back')
 
-chair = group(seat, legs, back)
+chair = collection(seat, legs, back)
 
 //// DATA ////
 
@@ -157,8 +154,8 @@ make.partList(chair, 'parts'); // Automatic part table generation
 // TODO: add sum to partList
 /*
 calc.table('parts').addRow({ length: '---- +' })
-calc.table('parts').addRow({ subpart: 'TOTAL', section: \`\${BEAM_SMALL}x\${BEAM_LARGE}\`});
-calc.table('parts').addRow({ subpart: 'TOTAL', section: \`\${BEAM_SMALL}x\${BEAM_MID}\`});
+calc.table('parts').addRow({ subpart: 'TOTAL', section: `${BEAM_SMALL}x${BEAM_LARGE}`});
+calc.table('parts').addRow({ subpart: 'TOTAL', section: `${BEAM_SMALL}x${BEAM_MID}`});
 */
 
 //// METRICS ////
@@ -190,7 +187,7 @@ function docPipeline()
                         boards
                         )
 
-        elevation = elevationCollection.flattened('x')
+        elevation = elevationCollection.copy().flatten('x')
                         .moveY(1000)
                         .rotateY(90)
                         .rotateZ(90)
@@ -198,27 +195,27 @@ function docPipeline()
                         .move(4000)
 
         // Elevation dimensions
-        elevation['leg back left'].select('E<<Y').dim();
+        elevation['leg back left'].select('E||front').dim();
 
-        elevation['leg front left'].select('E>>X').dim({ offset: 80 });
+        elevation['leg front left'].select('E||right').dim({ offset: 80 });
         elevation['back rest diagonal']
-                .select('V<<Y')
+                .select('V||front')
                 .lineTo(elevation['leg back left'])
                 .dim({ offsetVec:[0,-1,0], offset: 50 })
                 .link(elevation); // linking dimension to ShapeCollection
 
         line(elevation['base back']
-                .select('E>>Y') // some problems with bbox selector
-                .select('V>>X'),
+                .select('E||back') // some problems with bbox selector
+                .select('V||right'),
                         elevation['leg back left']
-                        .select('E>>Y').select('V<<X'))  
+                        .select('E||back').select('V||left'))  
                         .dim( { offsetVec: [-1,0,0], offset: 50 })
                         .link(elevation);
         line(elevation['base front']
-                .select('E>>Y') // some problems with side selector
-                .select('V<<X'),
+                .select('E||back') // some problems with side selector
+                .select('V||left'),
                         elevation['leg front left']
-                        .select('E>>Y').select('V>>X'))  
+                        .select('E||back').select('V||right'))  
                         .dim( { offsetVec: [-1,0,0], offset: 50 })
                         .link(elevation);
 
@@ -267,62 +264,4 @@ manual = doc.create('plan')
             .width(0.28)
             .height(0.4)
 
-`,
-  params: {
-    WIDTH_NUM_BOARDS: {
-      name: "WIDTH_NUM_BOARDS",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Width in number of boards",
-      default: 4,
-      _value: undefined,
-      min: 4,
-      max: 10,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    }
-  },
-  presets: {},
-  published: {
-    url: "/archiyou/sedia:0.35.0",
-    version: "0.35.0",
-    title: "Sedia",
-    public: true,
-    published: "2025-02-13T15:45:42.834566",
-    description: "The famous Sedia chair by Enzo Mari",
-    params: {
-      WIDTH_NUM_BOARDS: {
-        MAX_TEXT_LENGTH: 255,
-        name: "WIDTH_NUM_BOARDS",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Width in number of boards",
-        default: 4,
-        min: 4,
-        max: 10,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: null,
-        order: 0,
-        iterable: true,
-        description: null
-      }
-    },
-    presets: {},
-    libraryUrl: "http://localhost:4000"
-  }
-};
+

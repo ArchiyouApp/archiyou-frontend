@@ -17,6 +17,8 @@ import '@awesome.me/webawesome/dist/components/split-panel/split-panel.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/checkbox/checkbox.js';
+import '@awesome.me/webawesome/dist/components/select/select.js';
+import '@awesome.me/webawesome/dist/components/option/option.js';
 
 // CodeMirror imports
 import { EditorView, basicSetup } from 'codemirror';
@@ -28,7 +30,7 @@ import { autocompletion, acceptCompletion, completionStatus } from '@codemirror/
 import { archiyouCompletions } from './completions.js';
 
 import { SignalWatcher } from '@lit-labs/signals';
-import { executing, executionResult, perStatement, autoRun } from '@archiyou/editor/src/state/workspace';
+import { executing, executionResult, perStatement, autoRun, kernel } from '@archiyou/editor/src/state/workspace';
 
 const lightTheme = EditorView.theme({}, { dark: false });
 const themeCompartment = new Compartment();
@@ -122,6 +124,16 @@ export class CodeBox extends SignalWatcher(LitElement)
                     ?checked=${autoRun.get()}
                     @change=${this._handleAutoRunChange}
                 >Automatic execute</wa-checkbox>
+                <label class="options-field">
+                  <span class="options-field-label">Geometry kernel</span>
+                  <wa-select
+                      size="small"
+                      @change=${this._handleKernelChange}
+                      title="Mesh is fast and robust; BREP (OpenCascade) is accurate but slower and loads a large WASM on first use">
+                    <wa-option value="mesh" ?selected=${kernel.get() === 'mesh'}>Mesh</wa-option>
+                    <wa-option value="brep" ?selected=${kernel.get() === 'brep'}>BREP</wa-option>
+                  </wa-select>
+                </label>
               </div>
             ` : ''}
           </div>
@@ -375,6 +387,15 @@ export class CodeBox extends SignalWatcher(LitElement)
   {
     e.stopPropagation(); // same reason as _handlePerStatementChange
     autoRun.set((e.target as HTMLInputElement).checked);
+  }
+
+  private _handleKernelChange(e: Event)
+  {
+    e.stopPropagation(); // same reason as _handlePerStatementChange
+    // NOTE: wa-select emits `change` (not `wa-change`), and a `.value` set before its
+    // options are slotted is dropped — hence `?selected` on the options above.
+    const value = (e.target as HTMLInputElement).value;
+    if (value === 'mesh' || value === 'brep') { kernel.set(value); }
   }
 
   private _toggleOptions()
@@ -631,6 +652,20 @@ export class CodeBox extends SignalWatcher(LitElement)
 
     .options-menu wa-checkbox {
       font-size: var(--text-xs, 0.75rem);
+    }
+
+    .options-field {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      font-size: var(--text-xs, 0.75rem);
+      color: var(--color-text);
+    }
+
+    .options-field wa-select {
+      flex: 0 0 auto;
+      min-width: 6.5rem;
     }
 
     .options-menu wa-checkbox::part(label) {

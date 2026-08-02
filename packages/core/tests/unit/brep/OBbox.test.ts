@@ -22,5 +22,5 @@ test("Bbox2D", () =>
 {
     const r = new brep.Face().makePlane(100,10).moveY(-100).rotateZ(30);
     expect(r.obbox().is2D()).toEqual(true);
-    expect(r.obbox().depthHalfLine().type()).toEqual('Edge');
+    expect(r.obbox().depthHalfLine().type).toEqual('Edge');
 })

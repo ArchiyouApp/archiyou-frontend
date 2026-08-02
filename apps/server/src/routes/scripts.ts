@@ -12,11 +12,36 @@ import type { ScriptData, ScriptShared } from '@archiyou/core/src/execution/type
 
 import { config } from '../config';
 import { scriptStore } from '../services/ScriptStore';
+import { thumbnailStore } from '../services/ThumbnailStore';
+import { translationQueue } from '../translation/TranslationQueue';
 import { userService } from '../services/UserService';
 
 /** Public URL where a published configurator is served (frontend origin). */
 function configuratorUrl(author: string, name: string, version: string): string {
   return `${config.frontendUrl}/configurators/${author}/${name}:${version}`;
+}
+
+/** Publish/share bodies carry the thumbnail SVG source alongside the ScriptData, in a field
+ *  that is deliberately NOT part of ScriptSchema — so the bytes can never round-trip through
+ *  Script.fromData()/toData() or turn up in a library list response. Only the resulting URL
+ *  is persisted (on ScriptData.thumbnail). */
+interface WithThumbnailSvg { thumbnailSvg?: unknown }
+
+/**
+ * Store the thumbnail that came with a publish/share and stamp its URL onto the stored
+ * version. Runs AFTER the row is committed, so a bad or unwritable thumbnail can never
+ * fail the publish — it just leaves the script without a preview.
+ */
+async function attachThumbnail(
+  author: string,
+  fileId: string,
+  stored: ScriptData,
+  svg: unknown,
+): Promise<ScriptData> {
+  const url = await thumbnailStore.write(author, fileId, stored.id as string, svg);
+  if (!url) return stored;
+  scriptStore.setThumbnail(author, stored.id as string, url);
+  return { ...stored, thumbnail: url };
 }
 
 export async function registerScriptRoutes(fastify: FastifyInstance): Promise<void> {
@@ -89,7 +114,20 @@ export async function registerScriptRoutes(fastify: FastifyInstance): Promise<vo
       if (body.name && body.version) {
         published.url = configuratorUrl(request.user.sub, body.name, body.version);
       }
-      return scriptStore.updatePublishedVersion(request.user.sub, request.params.versionId, published);
+      const stored = scriptStore.updatePublishedVersion(request.user.sub, request.params.versionId, published);
+      // An in-place edit changes the title/description/fulfillments, so the stored
+      // translations are now about text that no longer exists — re-translate. The job
+      // re-checks the source hash before writing, so a stale result is discarded.
+      void translationQueue.enqueue({
+        author: request.user.sub, versionId: request.params.versionId, fileId: stored.fileId as string,
+      }).catch(() => undefined);
+      // Doubles as the thumbnail-regeneration path: an existing configurator can get a new
+      // preview without a version bump. Content-addressed filenames mean the URL changes,
+      // so a cached old image can never be shown.
+      return attachThumbnail(
+        request.user.sub, stored.fileId as string, stored,
+        (request.body as WithThumbnailSvg)?.thumbnailSvg,
+      );
     },
   );
 
@@ -116,6 +154,10 @@ export async function registerScriptRoutes(fastify: FastifyInstance): Promise<vo
   // Delete a file and all its versions.
   fastify.delete<{ Params: { user: string; fileId: string } }>('/scripts/:user/:fileId', auth, async (request, reply) => {
     scriptStore.deleteFile(request.user.sub, request.params.fileId);
+    // Every version of the file is gone, so its whole thumbnail directory can go too.
+    // (Un-publishing a version deliberately does NOT delete its thumbnail: the row
+    // survives and may still be shared, which would leave that listing without an image.)
+    await thumbnailStore.remove(request.user.sub, request.params.fileId);
     reply.code(204);
   });
 
@@ -141,7 +183,10 @@ export async function registerScriptRoutes(fastify: FastifyInstance): Promise<vo
     async (request, reply) => {
       const stored = scriptStore.share(request.user.sub, request.params.fileId, request.body);
       reply.code(201);
-      return stored;
+      return attachThumbnail(
+        request.user.sub, request.params.fileId, stored,
+        (request.body as WithThumbnailSvg)?.thumbnailSvg,
+      );
     },
   );
 
@@ -160,7 +205,16 @@ export async function registerScriptRoutes(fastify: FastifyInstance): Promise<vo
       }
       const stored = scriptStore.publish(request.user.sub, request.params.fileId, body);
       reply.code(201);
-      return stored;
+      // Fire-and-forget: the row is already committed, so translation can never fail the
+      // publish. The author is not told this is happening and never waits for it — the
+      // translations simply appear on the configurator a little later.
+      void translationQueue.enqueue({
+        author: request.user.sub, versionId: stored.id as string, fileId: request.params.fileId,
+      }).catch(() => undefined);
+      return attachThumbnail(
+        request.user.sub, request.params.fileId, stored,
+        (request.body as WithThumbnailSvg)?.thumbnailSvg,
+      );
     },
   );
 

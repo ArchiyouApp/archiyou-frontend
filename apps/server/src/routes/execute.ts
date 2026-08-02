@@ -92,7 +92,7 @@ export async function registerExecuteRoutes(fastify: FastifyInstance): Promise<v
       }
 
       const executionRequest: RunnerScriptExecutionRequest = {
-        kernel: (body.kernel as any) || 'mesh', // initial kernel; can be switched in-script
+        kernel: (body.kernel as any) || 'mesh', // geometry kernel for the whole run: 'mesh' | 'brep'
         script,
         params: checkedParamValues,
         preset: body.preset,

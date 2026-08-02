@@ -31,6 +31,7 @@ import type { ScriptData } from '@archiyou/core/src/execution/types';
 
 import { userState } from '@archiyou/editor/src/state/workspace';
 import { fetchMyConfigurators, unpublishConfigurator } from '@archiyou/editor/src/services/publishing';
+import { assetUrl } from '@archiyou/editor/src/services/api';
 import { OVERLAY_MENU_WIDTH, OVERLAY_MENU_HEIGHT } from '@archiyou/editor/src/settings';
 
 /** Format an ISO date string as "DD/MM/YYYY HH:MM" (locale-aware). */
@@ -171,6 +172,12 @@ export class ManageConfiguratorsMenu extends SignalWatcher(LitElement)
 
     return html`
       <div class="item">
+        <div class="item-thumb">
+          ${item.thumbnail
+            ? html`<img src=${assetUrl(item.thumbnail)} alt="" loading="lazy"
+                        @error=${(e: Event) => { (e.target as HTMLElement).style.display = 'none'; }}>`
+            : html`<wa-icon library="lucide" name="image"></wa-icon>`}
+        </div>
         <div class="item-main">
           <div class="item-title-row">
             <span class="item-title" title=${title}>${title}</span>
@@ -393,6 +400,16 @@ export class ManageConfiguratorsMenu extends SignalWatcher(LitElement)
       border-radius: var(--radius-sm, 4px);
       background: var(--color-bg);
     }
+    /* contain: the drawing is already square-framed with padding — see the note in
+       script-manager-item. Republishing this version regenerates it (the filename is
+       content-addressed, so a new drawing always gets a new URL). */
+    .item-thumb {
+      flex: none; width: 40px; height: 40px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--color-text-muted);
+    }
+    .item-thumb img { width: 100%; height: 100%; object-fit: contain; }
+
     .item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 
     .item-title-row { display: flex; align-items: center; gap: 6px; min-width: 0; }

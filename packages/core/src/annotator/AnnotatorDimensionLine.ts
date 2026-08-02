@@ -319,7 +319,7 @@ export class DimensionLine extends BaseAnnotation
     updatePosition()
     {
         // TODO: AFTER REFACTOR FIX
-        if(this.targetShape && (this.targetShape.type() === 'Curve' || (this.targetShape as any).type() === 'Edge'))
+        if(this.targetShape && (this.targetShape.type === 'Curve' || (this.targetShape as any).type === 'Edge'))
         {
             const linkedEdge = (this.targetShape as Curve);
             this.targetStart = linkedEdge.start().toPoint();

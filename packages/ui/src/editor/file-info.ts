@@ -88,8 +88,7 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
 
         ${this._editingName && !readOnly
           ? (() => {
-              const trimmed = this._nameDraft.trim();
-              const taken = !!trimmed && isScriptNameTaken(trimmed, script?.fileId);
+              const taken = this._nameCollides(this._nameDraft);
               return html`
                 <input
                   id=${`fm-name-header-${this._uid}`}
@@ -210,8 +209,7 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
         <div class="form">
 
           ${this._renderField('name', (() => {
-            const trimmed = this._draft.projectName.trim();
-            const taken = !!trimmed && isScriptNameTaken(trimmed, script?.fileId);
+            const taken = this._nameCollides(this._draft.projectName);
             return html`
               <input
                 id=${`fm-name-form-${this._uid}`}
@@ -609,13 +607,30 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
     });
   }
 
+  /** Would renaming the active file to `candidate` clash with another file?
+   *
+   *  Keeping the name it already has is never a clash. Without that check a file
+   *  whose name happens to duplicate another one (say, one of several
+   *  "untitled") warns the moment the panel opens and refuses to save, even
+   *  though the user never touched the name. */
+  private _nameCollides(candidate: string): boolean
+  {
+    const name = candidate.trim();
+    if (!name) return false;
+
+    const script = editorScript.get();
+    if (!script) return false;
+    if (name.toLowerCase() === (script.name ?? '').trim().toLowerCase()) return false;
+
+    return isScriptNameTaken(name, script.fileId);
+  }
+
   private _commitNameEdit()
   {
     const name = this._nameDraft.trim();
     if (!name) { this._editingName = false; return; }
 
-    const script = editorScript.get();
-    if (script && isScriptNameTaken(name, script.fileId))
+    if (this._nameCollides(name))
     {
       this._showNameError('header', name);
       return; // keep editor open so the user can correct
@@ -701,7 +716,7 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
     const newName = this._draft.projectName.trim();
     if (newName)
     {
-      if (isScriptNameTaken(newName, script.fileId))
+      if (this._nameCollides(newName))
       {
         this._showNameError('form', newName);
         return; // abort save — keep the panel open

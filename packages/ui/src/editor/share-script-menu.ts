@@ -24,11 +24,15 @@ import '@awesome.me/webawesome/dist/components/option/option.js';
 import '@awesome.me/webawesome/dist/components/spinner/spinner.js';
 
 import { CC_LICENCES } from '@archiyou/core/src/ScriptSchema';
+import { THUMBNAIL_OUTPUT_PATH } from '@archiyou/core/src/constants';
+import { getOutput } from '@archiyou/core/src/runner/worker/output';
+import type { RunnerScriptExecutionRequest } from '@archiyou/core/src/runner/types';
 import type { CCLicence } from '@archiyou/core/src/ScriptSchema';
 import type { ScriptData } from '@archiyou/core/src/execution/types';
 import type { PublicUser } from '@archiyou/types';
 
 import { editorScript, userState, bumpScript } from '@archiyou/editor/src/state/workspace';
+import { runScript, warmupWorker } from '@archiyou/editor/src/services/execution-service';
 import {
   shareScript,
   fetchSharedScript,
@@ -111,6 +115,9 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
   @state() private _loading     = false;
   @state() private _submitting  = false;
   @state() private _error       = '';
+  /** Iso line drawing for this share, generated in the background (see
+   *  _prepareThumbnail). Null until it lands — sharing never waits for it. */
+  @state() private _thumbnailSvg: string | null = null;
 
   private _searchTimer: number | null = null;
 
@@ -281,7 +288,15 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
   override updated(changed: Map<string, unknown>)
   {
     // Don't prefetch shared data for an anonymous user (no handle to query).
-    if (changed.has('open') && this.open && !userState.get().anonymous) void this._prefill();
+    if (changed.has('open') && this.open && !userState.get().anonymous)
+    {
+      void this._prefill();
+      // Fire-and-forget, deliberately NOT awaited and never gating the Share button:
+      // unlike publishing, sharing has no precheck run to piggyback on, and making the
+      // user wait on a preview would be a worse trade than occasionally shipping
+      // without one. If it lands before submit it rides along.
+      void this._prepareThumbnail();
+    }
 
     // Keep the licence dropdown in sync once it has options (its value lags the
     // slotted options on first paint, and prefill arrives after the fetch).
@@ -290,6 +305,33 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
   }
 
   // ── Behaviour ──
+
+  /** Generate the preview in the background. Every failure is swallowed: a share with no
+   *  thumbnail is a perfectly good share, and this must never surface an error. */
+  private async _prepareThumbnail()
+  {
+    this._thumbnailSvg = null;
+    const scriptData = editorScript.get()?.toData();
+    if (!scriptData) return;
+    try
+    {
+      await warmupWorker();
+      const result = await runScript({
+        kernel:     'mesh',
+        script:     scriptData,
+        outputs:    [THUMBNAIL_OUTPUT_PATH],
+        messages:   ['error'],
+        unitSystem: scriptData.units ?? 'metric',
+      } as RunnerScriptExecutionRequest);
+      this._thumbnailSvg = result
+        ? ((getOutput(result, THUMBNAIL_OUTPUT_PATH) as string | undefined) ?? null)
+        : null;
+    }
+    catch
+    {
+      this._thumbnailSvg = null;
+    }
+  }
 
   /** Load the last shared version and prefill every field. */
   private async _prefill()
@@ -421,7 +463,7 @@ export class ShareScriptMenu extends SignalWatcher(LitElement)
     this._submitting = true;
     this._error = '';
     try {
-      const stored = await shareScript(script);
+      const stored = await shareScript(script, this._thumbnailSvg);
       // Reflect the stored shared metadata + version on the active script.
       script.shared = stored.shared ?? script.shared;
       script.version = stored.version ?? script.version;

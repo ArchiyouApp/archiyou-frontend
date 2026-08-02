@@ -6,6 +6,8 @@ import './param-help.js';
 
 import type { ScriptParam } from '@archiyou/editor/src/state/workspace';
 import { toVariableName, isProgrammatic } from '@archiyou/editor/src/state/workspace';
+import { paramLabelKey, paramDescriptionKey } from '@archiyou/core/src/i18n/keys';
+import type { TranslatorFn } from '@archiyou/core/src/i18n/resolve';
 
 /** UI density of a parameter row.
  *  - `compact`      — the editor's authoring row: one dense line, grip + inline
@@ -27,6 +29,10 @@ export class ParamItem extends LitElement
   /** Set when the slotted control draws its own label row (the number control in
    *  presentation mode puts label and value box on one line above its slider). */
   @property({ type: Boolean }) hideLabel = false;
+  /** Content translator, supplied by the configurator. Defaults to the identity, so the
+   *  EDITOR's authoring rows are a compile-time no-op — this component is shared between
+   *  both, and importing configurator locale state here would couple them. */
+  @property({ attribute: false }) t: TranslatorFn = (_key, fallback) => fallback;
 
   @state() private _editingLabel = false;
   @state() private _labelDraft = '';
@@ -47,13 +53,18 @@ export class ParamItem extends LitElement
    *  the control supplies its own label row and we only host the control. */
   private _renderPresentation()
   {
-    const label = this.param?.label || this.param?.name || '';
+    // Presentation mode only: the end-user's view is the one that gets translated.
+    // _renderCompact() (the authoring row) is deliberately untouched — the author must
+    // always see, and edit, their own source strings.
+    const name = this.param?.name ?? '';
+    const label = this.t(paramLabelKey(name), this.param?.label || name || '');
+    const description = this.t(paramDescriptionKey(name), this.param?.description ?? '');
 
     return html`
       ${this.hideLabel ? nothing : html`
         <div class="pres-label-row">
-          <param-help .text=${this.param?.description ?? ''}></param-help>
-          <span class="pres-label" title=${this.param?.description ?? ''}>${label}</span>
+          <span class="pres-label" title=${description}>${label}</span>
+          <param-help .text=${description}></param-help>
         </div>`}
       <div class="pres-slot"><slot></slot></div>
     `;

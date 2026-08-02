@@ -1,12 +1,13 @@
-export default {
-  id: "archiyou/maritavolo/0.6.0",
-  name: "maritavolo",
-  author: "archiyou",
-  description: "The classical table of Enzo Mari",
-  tags: [],
-  created: "2025-02-13T14:45:44.184Z",
-  updated: "2024-12-23T10:39:55.000Z",
-  code: `// Archiyou 0.15
+// maritavolo
+// The classical table of Enzo Mari
+
+$PARAMS.define('DEPTH', 'number', { label: "Depth", units: "cm", order: 0, default: 80, minimum: 40, maximum: 120, multipleOf: 1 });
+$PARAMS.define('LENGTH', 'number', { label: "Length", units: "cm", order: 0, default: 200, minimum: 150, maximum: 220, multipleOf: 1 });
+$PARAMS.define('HEIGHT', 'number', { label: "Height", units: "cm", order: 0, default: 70, minimum: 50, maximum: 120, multipleOf: 1 });
+$PARAMS.define('BEAM_WIDTH', 'number', { label: "Beam Width", units: "mm", order: 0, default: 50, minimum: 40, maximum: 80, multipleOf: 1 });
+$PARAMS.define('BEAM_THICKNESS', 'number', { label: "Beam Thickness", units: "mm", order: 0, default: 25, minimum: 15, maximum: 40, multipleOf: 1 });
+
+// Archiyou 0.15
 units('mm');
 
 
@@ -32,54 +33,52 @@ sideHorMid = boxbetween([0,0,0], [TABLE_WIDTH, STRUT_HEIGHT, STRUT_WIDTH])
                 .move(0,-STRUT_HEIGHT, TABLE_HEIGHT/2-STRUT_WIDTH) // horizontal is aligned from top to middle of height
                 .name('sideH');
 
-sideHorMidIn = sideHorMid.moved(0, STRUT_HEIGHT*2).name('sideH')
+sideHorMidIn = sideHorMid.copy().move(0, STRUT_HEIGHT*2).name('sideH')
 
-sideHorTop = sideHorMid.moved(0,0,TABLE_HEIGHT/2).name('sideH')
-sideHorTopIn = sideHorMidIn.moved(0,0,TABLE_HEIGHT/2).name('sideH');
+sideHorTop = sideHorMid.copy().move(0,0,TABLE_HEIGHT/2).name('sideH')
+sideHorTopIn = sideHorMidIn.copy().move(0,0,TABLE_HEIGHT/2).name('sideH');
 
 sideCenterLine = line(
                     [TABLE_WIDTH/2],
                     [TABLE_WIDTH/2, 0, TABLE_HEIGHT]
                     ).hide();
-sidePostRight = sidePostLeft.mirroredY(sideCenterLine.center().x).name('sideV');
+sidePostRight = sidePostLeft.copy().mirrorX(sideCenterLine.center().x).name('sideV');
 
 layer('diagonalLeft').color('purple')
 
 diagLineStart = sideHorMid.select('V||leftbackbottom')
-                    .moved(STRUT_WIDTH*2)
+                    .copy().move(STRUT_WIDTH*2)
                     .color('blue')
 
 diagLineEnd = sideCenterLine.end()
-                .moved(-STRUT_WIDTH*2,0,-STRUT_WIDTH)
+                .copy().move(-STRUT_WIDTH*2,0,-STRUT_WIDTH)
                 .color('blue')
 diagLine = line(diagLineStart,diagLineEnd)
 diagLineVec = diagLineEnd.toVector().subtract(diagLineStart);
-diagLineWidthVec = diagLineVec.rotated(-90, [0,0,0], [0,1,0])
+diagLineWidthVec = vector(diagLineVec).rotate([0,1,0], -90) // rotated() would mutate diagLineVec
 diagStrutVertexLeftBottom = diagLineStart 
-                            .moved(diagLineWidthVec.normalize().scale(STRUT_WIDTH))
+                            .copy().move(diagLineWidthVec.normalize().scale(STRUT_WIDTH))
                             .color('yellow')
                             .hide();
 diagStrutTestLine = line(
                         diagStrutVertexLeftBottom, 
-                        diagStrutVertexLeftBottom.moved(diagLineVec.normalized().scale(1000)).hide()
+                        diagStrutVertexLeftBottom.copy().move(diagLineVec.normalized().scale(1000)).hide()
                     ).hide();
 
 
-diagStrutLineLeftEnd = diagStrutTestLine.intersection(sideHorTop.select('E||topback'))
-                            .copy()
-                            .hide();
+diagStrutLineLeftEnd = diagStrutTestLine.intersect(sideHorTop.select('E||topback'))[0]; // intersect() gives Points for open Curves
 
 diagStrutLeft = line(diagStrutVertexLeftBottom, diagStrutLineLeftEnd)
                 .extrude(STRUT_WIDTH, diagLineWidthVec.reversed())
                 .extrude(STRUT_HEIGHT, [0,1,0])
                 .name('sideD');
 
-diagStrutLeft.mirroredY(sideCenterLine.center().x)
+diagStrutLeft.copy().mirrorX(sideCenterLine.center().x)
             .name('sideD')
 
 sideFront = all().visible().color('red').name('sideFront');
 sideBack =  sideFront
-            .clone()
+            .copy()
             .move(0,spineWidth+STRUT_HEIGHT)
             .name('sideBack')
             .color('red');
@@ -95,8 +94,8 @@ trussesInsideRect = rectbetween(
     [0,0,0], [spineWidth, spineHeight-STRUT_HEIGHT] // slightly lower due to montage rotat
     ).hide();
 
-verticalStrutsMid = group();
-trussInsideSegmentsArr = group();
+verticalStrutsMid = collection();
+trussInsideSegmentsArr = collection();
 
 new Array(4).fill(null)
                         .forEach( (v,i, arr) => {
@@ -134,33 +133,35 @@ diagonalStruts = trussInsideSegmentsArr.map( (segmRect,i) =>
 
     if(i % 2 == 1)
     {
-        d = d.hide().mirrored(d.center(), [1,0,0]);
+        // mirrored(planePoint, planeNormal) => copy().mirror(planeNormal, planePoint)
+        d = d.hide().copy().mirror([1,0,0], d.center());
     }
     d.hide();
     return d;
 })
-diagonalStruts = diagonalStruts.extruded(STRUT_WIDTH, [0,0,1])
-                    .forEach((s,i) => s.name(\`strutD\`))
+// map() gives a plain Array - back into a collection so it has extrude()
+diagonalStruts = collection(...diagonalStruts).extrude(STRUT_WIDTH, [0,0,1])
+diagonalStruts.forEach((s,i) => s.name(`strutD`))
 
 spineStrutLeft = boxbetween([-STRUT_HEIGHT,-STRUT_WIDTH, 0],
                             [0,spineHeight+STRUT_WIDTH,STRUT_WIDTH]
                             ).name('strutV ends')
 
-spineStrutRight = spineStrutLeft.mirroredY(spineWidth/2).name('strutV ends')
+spineStrutRight = spineStrutLeft.copy().mirrorX(spineWidth/2).name('strutV ends')
 
 spineHorFrontTop = boxbetween(
                         [-STRUT_HEIGHT*2,0, STRUT_WIDTH],
                         [spineWidth+STRUT_WIDTH,STRUT_WIDTH, STRUT_WIDTH+STRUT_HEIGHT])
                         .name('strutH');
 
-spineHorFrontBottom = spineHorFrontTop.mirroredZ(STRUT_WIDTH/2).name('strutH')
-spineHorBackTop = spineHorFrontTop.mirroredX(spineHeight/2).moveY(-STRUT_HEIGHT)
+spineHorFrontBottom = spineHorFrontTop.copy().mirrorZ(STRUT_WIDTH/2).name('strutH')
+spineHorBackTop = spineHorFrontTop.copy().mirrorY(spineHeight/2).moveY(-STRUT_HEIGHT)
                         .name('strutH')
-spineHorBackBottom = spineHorBackTop.mirroredZ(STRUT_WIDTH/2)
+spineHorBackBottom = spineHorBackTop.copy().mirrorZ(STRUT_WIDTH/2)
                         .name('strutH')
 // cleanup and group spine
 
-spine = group(verticalStrutsMid, 
+spine = collection(verticalStrutsMid, 
                 diagonalStruts,
                 spineStrutLeft,
                 spineStrutRight,
@@ -181,11 +182,11 @@ spine.align(sideFront, 'topfrontcenter', 'topfrontcenter')
 layer('tabletop').color('brown');
 topNumPlanks = Math.round(TABLE_WIDTH/STRUT_WIDTH);
 topPlank = box(STRUT_WIDTH, TABLE_DEPTH, STRUT_HEIGHT);
-topPlanks = topPlank.arrayX(topNumPlanks, topPlank.bbox().width())
+topPlanks = topPlank.array([topNumPlanks,1,1],[topPlank.bbox().width(),0,0])
 topPlanks.align(spine, 'bottomcenter', 'topcenter').name('top')
 
 //// COMBINE MODEL /////
-table = group(sideFront, sideBack, spine, topPlanks);
+table = collection(sideFront, sideBack, spine, topPlanks);
 
 
 //// DATA ////
@@ -232,7 +233,7 @@ plan =  doc.create('plan')
             .titleblock({ title: 'Tavolo', designer: 'Enzo Mari', designLicense: 'CC-BY-NC', manualLicence: 'CC-BY-NC' })
             .text('Tavolo Rettangolare', { size: '10mm' })
             .position(0,1.0)
-            .text(\`\${$LENGTH}x\${$DEPTH} H\${$HEIGHT} \${STRUT_HEIGHT}x\${STRUT_WIDTH}\`, { size: '6mm' })
+            .text(`${$LENGTH}x${$DEPTH} H${$HEIGHT} ${STRUT_HEIGHT}x${STRUT_WIDTH}`, { size: '6mm' })
             .position(0,0.93)
             .view('iso')
             .shapes('iso')
@@ -258,230 +259,4 @@ plan =  doc.create('plan')
             .width(0.2)
             .height(0.3)
             
-            `,
-  params: {
-    DEPTH: {
-      name: "DEPTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Depth",
-      default: 80,
-      _value: undefined,
-      min: 40,
-      max: 120,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "cm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    LENGTH: {
-      name: "LENGTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Length",
-      default: 200,
-      _value: undefined,
-      min: 150,
-      max: 220,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "cm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    HEIGHT: {
-      name: "HEIGHT",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Height",
-      default: 70,
-      _value: undefined,
-      min: 50,
-      max: 120,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "cm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BEAM_WIDTH: {
-      name: "BEAM_WIDTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Beam Width",
-      default: 50,
-      _value: undefined,
-      min: 40,
-      max: 80,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BEAM_THICKNESS: {
-      name: "BEAM_THICKNESS",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Beam Thickness",
-      default: 25,
-      _value: undefined,
-      min: 15,
-      max: 40,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    }
-  },
-  presets: {},
-  published: {
-    url: "/archiyou/maritavolo:0.6.0",
-    version: "0.6.0",
-    title: "MariTavolo",
-    public: true,
-    published: "2025-02-13T15:45:44.184544",
-    description: "The classical table of Enzo Mari",
-    params: {
-      DEPTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "DEPTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Depth",
-        default: 80,
-        min: 40,
-        max: 120,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "cm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      LENGTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "LENGTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Length",
-        default: 200,
-        min: 150,
-        max: 220,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "cm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      HEIGHT: {
-        MAX_TEXT_LENGTH: 255,
-        name: "HEIGHT",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Height",
-        default: 70,
-        min: 50,
-        max: 120,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "cm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BEAM_WIDTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BEAM_WIDTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Beam Width",
-        default: 50,
-        min: 40,
-        max: 80,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BEAM_THICKNESS: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BEAM_THICKNESS",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Beam Thickness",
-        default: 25,
-        min: 15,
-        max: 40,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      }
-    },
-    presets: {},
-    libraryUrl: "http://localhost:4000"
-  }
-};
+            

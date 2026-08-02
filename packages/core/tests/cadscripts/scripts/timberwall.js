@@ -1,12 +1,19 @@
-export default {
-  id: "archiyou/timberwall/1.0.0",
-  name: "timberwall",
-  author: "archiyou",
-  description: "Basic framed wall according to traditional standards",
-  tags: [],
-  created: "2025-02-13T14:45:41.521Z",
-  updated: "2024-12-17T16:10:09.000Z",
-  code: `// Archiyou 0.22
+// timberwall
+// Basic framed wall according to traditional standards
+
+$PARAMS.define('WIDTH', 'number', { label: "Width", units: "mm", order: 0, default: 3000, minimum: 1000, maximum: 4000, multipleOf: 1 });
+$PARAMS.define('HEIGHT', 'number', { label: "Height", units: "mm", order: 0, default: 2500, minimum: 1000, maximum: 3000, multipleOf: 1 });
+$PARAMS.define('DEPTH', 'options', { label: "Depth", order: 0, default: "120", options: ["89","120","140","184","235"] });
+$PARAMS.define('OPENING', 'boolean', { label: "With opening", order: 0, default: false });
+$PARAMS.define('OPENING_START', 'number', { label: "Opening Start", units: "mm", order: 0, default: 1000, minimum: 0, maximum: 3000, multipleOf: 1 });
+$PARAMS.define('OPENING_SILL', 'number', { label: "Opening Sill", units: "mm", order: 0, default: 1000, minimum: 0, maximum: 3000, multipleOf: 1 });
+$PARAMS.define('OPENING_WIDTH', 'number', { label: "Opening Width", units: "mm", order: 0, default: 1000, minimum: 200, maximum: 2000, multipleOf: 1 });
+$PARAMS.define('OPENING_HEIGHT', 'number', { label: "Opening Height", units: "mm", order: 0, default: 1000, minimum: 200, maximum: 2500, multipleOf: 1 });
+$PARAMS.define('BOARDS', 'options', { label: "Boards", order: 0, default: "none", options: ["none","OSB39","OSB318"] });
+$PARAMS.define('INSULATION', 'options', { label: "Insulation", order: 0, default: "hempflax", options: ["hempflax","glasswool","none","woodwool"] });
+$PARAMS.define('TOP_CONNECT', 'boolean', { label: "Double Top", order: 0, default: false });
+
+// Archiyou 0.22
 
 STUD_THICKNESS = 38;
 BOARDING_STOCK_WIDTH = 1220;
@@ -72,17 +79,17 @@ line([$WIDTH,0,0],[$WIDTH,0,$HEIGHT])
     .bindParam('HEIGHT');
 
 
-wall = make.wallFrame(
+wall = make.wall(
                 $WIDTH,
                 $HEIGHT-$TOP_CONNECT*STUD_THICKNESS,
-                $DEPTH, 
+                Number($DEPTH), // options param values are strings
                 STUD_THICKNESS, 
                 610, 
                 ($OPENING) ? openings : []);
 
 
 wall.openingDiagrams.hide();
-wall.grid.hide();
+wall.gridlines.hide();
 if($INSULATION == 'none'){ wall.insulation.hide () };
 
 // make extra connecting top-plate
@@ -101,9 +108,9 @@ boardKgM3 = BOARDS_OPTIONS_TO_DATA[$BOARDS].kgm3;
 boardCostM2 = BOARDS_OPTIONS_TO_DATA[$BOARDS].eurm2;
 
 // We make sections based on openings
-boards = group();
-wallOpenings = wall.openingDiagrams.shallowCopy();
-wallOpenings.sort((s1,s2) => s1.min().x - s2.min().x);
+boards = collection();
+// clone() is the shallow copy (shares the shapes); sort() returns a new collection
+wallOpenings = wall.openingDiagrams.clone().sort((s1,s2) => s1.bbox().min().x - s2.bbox().min().x);
 
 function makeSectionBoarding(start,end,height)
 {
@@ -112,7 +119,7 @@ function makeSectionBoarding(start,end,height)
         let offset = 0;
         if (start !== 0)
         {
-            let nextGridLine = wall.grid.find(gl => gl.center().x > start);
+            let nextGridLine = wall.gridlines.find(gl => gl.center().x > start);
             offset = (nextGridLine) ? nextGridLine.center().x - start : 0;  
         }
 
@@ -125,7 +132,6 @@ function makeSectionBoarding(start,end,height)
                 grid: 610,
                 gridOffset: offset,
                 leftover: true })
-                    .addToScene()
                     .move(start)
         boards.add(boarding)
         return boarding;
@@ -141,19 +147,19 @@ if(boardThickness)
         wallOpenings.forEach((o,i,all) =>
         {
             // before opening section
-            let sectionBeforeStartX = (i === 0) ? 0 : all[i-1].max().x + STUD_THICKNESS;
-            let sectionBeforeEndX = o.min().x - STUD_THICKNESS;
+            let sectionBeforeStartX = (i === 0) ? 0 : all[i-1].bbox().max().x + STUD_THICKNESS;
+            let sectionBeforeEndX = o.bbox().min().x - STUD_THICKNESS;
             makeSectionBoarding(sectionBeforeStartX,sectionBeforeEndX, $HEIGHT);
             // after opening section
-            let sectionAfterStartX = o.max().x + STUD_THICKNESS
+            let sectionAfterStartX = o.bbox().max().x + STUD_THICKNESS
             let sectionAfterEndX = (i < all.length - 1 )
-                        ? all[i+1].min().x - STUD_THICKNESS // to next opening
+                        ? all[i+1].bbox().min().x - STUD_THICKNESS // to next opening
                         : $WIDTH // to end of wall
             makeSectionBoarding(sectionAfterStartX,sectionAfterEndX, $HEIGHT);
             // bottom of opening
-            makeSectionBoarding(sectionBeforeEndX,sectionAfterStartX, o.min().z - STUD_THICKNESS)
+            makeSectionBoarding(sectionBeforeEndX,sectionAfterStartX, o.bbox().min().z - STUD_THICKNESS)
             // top of opening
-            makeSectionBoarding(sectionBeforeEndX,sectionAfterStartX, $HEIGHT-o.max().z- STUD_THICKNESS).moveY(o.max().z + STUD_THICKNESS)
+            makeSectionBoarding(sectionBeforeEndX,sectionAfterStartX, $HEIGHT-o.bbox().max().z- STUD_THICKNESS).moveY(o.bbox().max().z + STUD_THICKNESS)
         })
     }
     else {
@@ -173,7 +179,7 @@ if(boardThickness)
 
 //// TABLES: MATERIALS ////
 
-allWoodBeams = group(wall.studs, wall.plates, wall.cripplesTop, wall.cripplesBottom, wall.openingFramesHorizontals, wall.openingFramesVerticals, wall.openingKingStuds, wall.openingJackStuds );
+allWoodBeams = collection(wall.studs, wall.plates, wall.cripplesTop, wall.cripplesBottom, wall.openingFramesHorizontals, wall.openingFramesVerticals, wall.openingKingStuds, wall.openingJackStuds );
 woodVolumeM3 = allWoodBeams.volume()/Math.pow(10,9); 
 woodLengthM = allWoodBeams.reduce((agg,s) => agg + s.length(), 0)/1000;
 openingsM2 = (wall.openingDiagrams.length) ? wall.openingDiagrams.reduce((agg,s) => agg + s.bbox().front().area(), 0) / Math.pow(10,6) : 0
@@ -205,11 +211,11 @@ numScrews90 = wall.studs.length * 4;
 numScrews140 = wall.studs.length * 2;
 
 materialRows = [
-        ['wood SLS',\`\${STUD_THICKNESS}x\${$DEPTH}\`, 'length', roundTo(woodLengthM,2), 'm', roundTo(MATERIALS.WOOD.EUR_M3*(STUD_THICKNESS*$DEPTH/1000000),2), roundTo(woodVolumeM3 * MATERIALS.WOOD.EUR_M3,2)]];
+        ['wood SLS',`${STUD_THICKNESS}x${$DEPTH}`, 'length', roundTo(woodLengthM,2), 'm', roundTo(MATERIALS.WOOD.EUR_M3*(STUD_THICKNESS*$DEPTH/1000000),2), roundTo(woodVolumeM3 * MATERIALS.WOOD.EUR_M3,2)]];
 
 if($INSULATION !== 'none')
 {
-    materialRows.push(['insulation',\`\${$INSULATION}\`, 'volume', roundTo(insulationM3,2), 'm3', insulationEUR_M3, roundTo(insulationM3 * insulationEUR_M3, 2)]);
+    materialRows.push(['insulation',`${$INSULATION}`, 'volume', roundTo(insulationM3,2), 'm3', insulationEUR_M3, roundTo(insulationM3 * insulationEUR_M3, 2)]);
 }
 
 // boards and water barrier
@@ -227,7 +233,7 @@ materialRows = materialRows.concat([
     ]);
 // manual sum
 materialRows.push(['','', '', '', '', '', '----- +']);
-materialRows.push(['TOTAL MATERIAL COST EST','', '', '', '', '', \`€ \${roundTo(materialRows.reduce((sum,row) => sum+((typeof row[6] === 'number') ? row[6] : 0), 0),2)}\`])
+materialRows.push(['TOTAL MATERIAL COST EST','', '', '', '', '', `€ ${roundTo(materialRows.reduce((sum,row) => sum+((typeof row[6] === 'number') ? row[6] : 0), 0),2)}`])
 
 // total screw cost for price metric calculation 
 hardwareCost = roundTo(numScrews90*SCREW_90_COST_PC,2) + roundTo(numScrews140*SCREW_140_COST_PC,2) + roundTo(numScrews70*SCREW_70_COST_PC,2);
@@ -296,7 +302,7 @@ calc.metric('weight', weight, { label: 'Mass', unit: 'kg', icon: 'weight-kilogra
 //// TABLES: PARTS
 
 PART_COLUMNS = ['part','subpart', 'material', 'section (mm)', 'dim (mm)', 'quantity']
-section = \`\${STUD_THICKNESS}x\${$DEPTH}\`;
+section = `${STUD_THICKNESS}x${$DEPTH}`;
 
 parts = [
     ['base wall frame',  'top & bottom plate', 'wood SLS', section, wall.plates[0].bbox().width(), wall.plates.length],
@@ -321,14 +327,14 @@ boardParts = [];
 
 if(wholeBoards && wholeBoards.length > 0){
     boardParts.push(
-        ['boards', 'uncut', $BOARDS, \`\${wholeBoards.first().bbox().width()}x\${wholeBoards.first().bbox().height()}\`, boardThickness, wholeBoards.length]
+        ['boards', 'uncut', $BOARDS, `${wholeBoards.first().bbox().width()}x${wholeBoards.first().bbox().height()}`, boardThickness, wholeBoards.length]
     )
 }
 if(cutBoards && cutBoards.length > 0) // TODO: improve by make.partList non-beam shapes too!
 {
     cutBoards.forEach(cutBoard => 
         boardParts.push(
-            ['boards', 'cut',  $BOARDS, \`\${cutBoard.bbox().width()}x\${cutBoard.bbox().height()}\`, boardThickness, 1]
+            ['boards', 'cut',  $BOARDS, `${cutBoard.bbox().width()}x${cutBoard.bbox().height()}`, boardThickness, 1]
     ))
 }
 // aggregate by section
@@ -370,7 +376,7 @@ function docPipeline()
     layout.bbox().right().dim({ offset: 100 })
 
     // Board saw plan
-    sawplan = group(); // empty
+    sawplan = collection(); // empty
     if(boards.length)
     {
         sawplan = boards.pack({ 
@@ -395,7 +401,7 @@ spec = doc
     .titleblock({ title: 'Framed wall', designer: 'traditional', designLicense: 'public', manualLicense: 'CC-BY-NC' })
     .text('Framed Wall', { size: '10mm' })
     .position(0,1.0)
-    .text(\`\${$WIDTH}x\${$HEIGHT}x\${$DEPTH} - \${STUD_THICKNESS}x\${$DEPTH}\`, { size: '5mm' })
+    .text(`${$WIDTH}x${$HEIGHT}x${$DEPTH} - ${STUD_THICKNESS}x${$DEPTH}`, { size: '5mm' })
     .position(0,0.93)
     .view('iso')
     .shapes('iso')
@@ -439,517 +445,7 @@ if($BOARDS !== 'none')
         .height(0.2)
         .text('sawplan', { size: '5mm'})
         .position(0,0.6)
-        .text(\`stock \${BOARDING_STOCK_WIDTH}x\${BOARDING_STOCK_HEIGHT}\`, { size: '3mm'})
+        .text(`stock ${BOARDING_STOCK_WIDTH}x${BOARDING_STOCK_HEIGHT}`, { size: '3mm'})
         .position(0,0.56)
 }
-`,
-  params: {
-    WIDTH: {
-      name: "WIDTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Width",
-      default: 3000,
-      _value: undefined,
-      min: 1000,
-      max: 4000,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    HEIGHT: {
-      name: "HEIGHT",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Height",
-      default: 2500,
-      _value: undefined,
-      min: 1000,
-      max: 3000,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    DEPTH: {
-      name: "DEPTH",
-      id: undefined,
-      type: "options",
-      enabled: true,
-      visible: undefined,
-      label: "Depth",
-      default: "120",
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: [
-        "89",
-        "120",
-        "140",
-        "184",
-        "235"
-      ],
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    OPENING: {
-      name: "OPENING",
-      id: undefined,
-      type: "boolean",
-      enabled: true,
-      visible: undefined,
-      label: "With opening",
-      default: false,
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    OPENING_START: {
-      name: "OPENING_START",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Opening Start",
-      default: 1000,
-      _value: undefined,
-      min: 0,
-      max: 3000,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    OPENING_SILL: {
-      name: "OPENING_SILL",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Opening Sill",
-      default: 1000,
-      _value: undefined,
-      min: 0,
-      max: 3000,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    OPENING_WIDTH: {
-      name: "OPENING_WIDTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Opening Width",
-      default: 1000,
-      _value: undefined,
-      min: 200,
-      max: 2000,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    OPENING_HEIGHT: {
-      name: "OPENING_HEIGHT",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Opening Height",
-      default: 1000,
-      _value: undefined,
-      min: 200,
-      max: 2500,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BOARDS: {
-      name: "BOARDS",
-      id: undefined,
-      type: "options",
-      enabled: true,
-      visible: undefined,
-      label: "Boards",
-      default: "none",
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: [
-        "none",
-        "OSB39",
-        "OSB318"
-      ],
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    INSULATION: {
-      name: "INSULATION",
-      id: undefined,
-      type: "options",
-      enabled: true,
-      visible: undefined,
-      label: "Insulation",
-      default: "hempflax",
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: [
-        "hempflax",
-        "glasswool",
-        "none",
-        "woodwool"
-      ],
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    TOP_CONNECT: {
-      name: "TOP_CONNECT",
-      id: undefined,
-      type: "boolean",
-      enabled: true,
-      visible: undefined,
-      label: "Double Top",
-      default: false,
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    }
-  },
-  presets: {},
-  published: {
-    url: "/archiyou/framedwall:0.9.2",
-    version: "1.0.0",
-    title: "FramedWall",
-    public: true,
-    published: "2025-02-13T15:45:41.521588",
-    description: "Basic framed wall according to traditional standards",
-    params: {
-      WIDTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "WIDTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Width",
-        default: 3000,
-        min: 1000,
-        max: 4000,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      HEIGHT: {
-        MAX_TEXT_LENGTH: 255,
-        name: "HEIGHT",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Height",
-        default: 2500,
-        min: 1000,
-        max: 3000,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      DEPTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "DEPTH",
-        id: undefined,
-        type: "options",
-        enabled: true,
-        visible: undefined,
-        label: "Depth",
-        default: "120",
-        min: undefined,
-        max: undefined,
-        step: undefined,
-        options: [
-          "89",
-          "100",
-          "120",
-          "140",
-          "150",
-          "184",
-          "200",
-          "235"
-        ],
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: null,
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      OPENING: {
-        MAX_TEXT_LENGTH: 255,
-        name: "OPENING",
-        id: undefined,
-        type: "boolean",
-        enabled: true,
-        visible: undefined,
-        label: "With opening",
-        default: false,
-        min: undefined,
-        max: undefined,
-        step: undefined,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: null,
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      OPENING_START: {
-        MAX_TEXT_LENGTH: 255,
-        name: "OPENING_START",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Opening Start",
-        default: 1000,
-        min: 0,
-        max: 3000,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      OPENING_SILL: {
-        MAX_TEXT_LENGTH: 255,
-        name: "OPENING_SILL",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Opening Sill",
-        default: 1000,
-        min: 0,
-        max: 3000,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      OPENING_WIDTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "OPENING_WIDTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Opening Width",
-        default: 1000,
-        min: 200,
-        max: 2000,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      OPENING_HEIGHT: {
-        MAX_TEXT_LENGTH: 255,
-        name: "OPENING_HEIGHT",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Opening Height",
-        default: 1000,
-        min: 200,
-        max: 2500,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BOARDS: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BOARDS",
-        id: undefined,
-        type: "options",
-        enabled: true,
-        visible: undefined,
-        label: "Boards",
-        default: "none",
-        min: undefined,
-        max: undefined,
-        step: undefined,
-        options: [
-          "none",
-          "OSB39",
-          "OSB318"
-        ],
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: null,
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      INSULATION: {
-        MAX_TEXT_LENGTH: 255,
-        name: "INSULATION",
-        id: undefined,
-        type: "options",
-        enabled: true,
-        visible: undefined,
-        label: "Insulation",
-        default: "woodwool",
-        min: undefined,
-        max: undefined,
-        step: undefined,
-        options: [
-          "none",
-          "woodwool",
-          "glasswool"
-        ],
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: null,
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      TOP_CONNECT: {
-        MAX_TEXT_LENGTH: 255,
-        name: "TOP_CONNECT",
-        id: undefined,
-        type: "boolean",
-        enabled: true,
-        visible: undefined,
-        label: "Double Top",
-        default: false,
-        min: undefined,
-        max: undefined,
-        step: undefined,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: null,
-        order: 0,
-        iterable: true,
-        description: null
-      }
-    },
-    presets: {},
-    libraryUrl: "http://localhost:4000"
-  }
-};
+

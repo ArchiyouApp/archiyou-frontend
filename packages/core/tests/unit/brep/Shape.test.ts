@@ -32,9 +32,9 @@ test("Shape Basics", () =>
     // Basic Shape properties
     expect(box.center().toArray()).toEqual([0,0,0]);
 
-    // Obj Styling
+    // Styling (meshup Style — see scene.test.ts)
     box.color('blue');
-    expect(box.object().getColor()).toEqual(255); // is converted to int
+    expect(box.getColor()).toEqual(255); // is converted to int
 
     // Shape subshapes
     expect(box.vertices().length).toEqual(8);

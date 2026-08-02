@@ -15,6 +15,11 @@ import { SIDES, SIDE_TO_AXIS } from './constants'
 
 import { getOc } from './index' 
 
+
+// Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
+// run at class-definition time, before it has finished initialising.
+import { checkInput } from './decorators'
+
 export class Bbox
 {
     //// SETTINGS ////
@@ -61,6 +66,7 @@ export class Bbox
         this._parent = p
     }
 
+    @checkInput(['PointLike', 'PointLike'], ['Vector', 'Vector'])
     create(min:PointLike, max:PointLike)
     {
         let minv = min as Vector; // auto converted
@@ -155,11 +161,13 @@ export class Bbox
         return new Point(this.bounds[0], this.bounds[2], this.bounds[4]);
     }
 
+    @checkInput('MainAxis', 'auto')
     minAtAxis(a:MainAxis)
     {
         return this['min'+a.toUpperCase()]();
     }
 
+    @checkInput('MainAxis', 'auto')
     maxAtAxis(a:MainAxis)
     {
         return this['max'+a.toUpperCase()]();
@@ -371,6 +379,7 @@ export class Bbox
     }
 
     /** Get position of Bbox based on percentages of x,y,z */
+    @checkInput('PointLike', 'Point')
     getPositionAtPerc(p:PointLike, ...args):Point
     {
         const point = p as Point;
@@ -499,6 +508,7 @@ export class Bbox
     }
 
     /** Get size of current Bbox along given axis */
+    @checkInput([['MainAxis', 'x']], ['auto'])
     sizeAlongAxis(axis:MainAxis):number
     {
         const AXIS_TO_SIDE = { 

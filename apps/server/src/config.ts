@@ -128,6 +128,55 @@ export const config = {
     timeWindow: process.env.SERVER_AUTH_RATE_WINDOW ?? '5 minutes',
   },
 
+  /**
+   * Maximum request body size. Fastify's default is 1 MiB, which script bodies were
+   * already approaching (code + params + presets) before thumbnails added an SVG on
+   * top — a 413 on publish is not a failure mode worth having.
+   */
+  bodyLimitBytes: Number(process.env.SERVER_BODY_LIMIT_BYTES ?? 4 * 1024 * 1024),
+
+  /**
+   * Script thumbnails: iso line drawings generated in the BROWSER at publish/share time
+   * (server-side execution is disabled — see `execution` above), written here as files and
+   * served statically at `/thumbnails/`. Filenames are content-addressed, so the URL changes
+   * whenever the drawing does and `Cache-Control: immutable` is always correct.
+   *
+   * ⚠️  `path` must be a persistent volume in production, or thumbnails vanish on redeploy
+   * while the DB still points at them (clients fall back to a placeholder icon).
+   */
+  thumbnails: {
+    path: process.env.SERVER_THUMBNAIL_PATH ?? './data/thumbnails',
+    /** Public prefix the files are served under. Relative → same origin as the API. */
+    urlPrefix: process.env.SERVER_THUMBNAIL_URL_PREFIX ?? '/thumbnails',
+    /** Hard cap on a stored thumbnail. Matches the client-side budget in THUMBNAIL_OUTPUT_PATH. */
+    maxBytes: Number(process.env.SERVER_THUMBNAIL_MAX_BYTES ?? 65_536),
+  },
+
+  /**
+   * Google Gemini, used to translate a published configurator's end-user-facing copy
+   * into the locales in @archiyou/core's TRANSLATION_LOCALES.
+   *
+   * Runs as a background job after publishing (translation/), never in the request path:
+   * the author neither triggers nor waits for it, and every failure is silent — an
+   * untranslated configurator still works, in the language it was authored in.
+   *
+   * With no API key the whole feature is simply off: jobs return immediately. Boot never
+   * fails over this (same posture as `mailgun` above).
+   */
+  gemini: {
+    apiKey: process.env.SERVER_GEMINI_API_KEY ?? '',
+    /** Stronger than DbBuilder's flash-lite: ten-way UI copy with register and length
+     *  constraints is a harder task than structured scraping. */
+    model: process.env.SERVER_GEMINI_MODEL ?? 'gemini-2.5-flash',
+    timeoutMs: Number(process.env.SERVER_GEMINI_TIMEOUT_MS ?? 60_000),
+    /** Refuse to translate a script with more strings than this, so one pathological
+     *  configurator cannot burn the budget. */
+    maxKeys: Number(process.env.SERVER_GEMINI_MAX_KEYS ?? 400),
+    /** Per-author translation jobs allowed per hour. This costs real money per account,
+     *  so the bucket is the account — not the IP. */
+    maxJobsPerHour: Number(process.env.SERVER_GEMINI_MAX_JOBS_PER_HOUR ?? 20),
+  },
+
   /** Redis/BullMQ for the server-side execution pipeline (ExecutionBroker/Worker). */
   redis: {
     host: process.env.SERVER_REDIS_HOST ?? 'localhost',

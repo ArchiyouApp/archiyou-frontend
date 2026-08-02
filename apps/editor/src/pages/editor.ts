@@ -35,7 +35,7 @@ import '@archiyou/ui/editor/publish-script-menu.js';
 import '@archiyou/ui/editor/manage-configurators-menu.js';
 import type { ToolDef } from '@archiyou/ui/editor/toolbar.js';
 
-import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, openSharedScript, deleteScriptById, importScriptFromData, isReadOnly, isScriptNameTaken, selectedPath, scriptUnitSystem, ensureScriptUnitSystem, perStatement, autoRun, wasActiveScriptRestored } from '../state/workspace';
+import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, openSharedScript, deleteScriptById, importScriptFromData, isReadOnly, isScriptNameTaken, selectedPath, scriptUnitSystem, ensureScriptUnitSystem, perStatement, kernel, autoRun, wasActiveScriptRestored } from '../state/workspace';
 import { editorPathFor, resolveScriptLink } from '../services/script-links';
 import { registerScheduleExecution, triggerResetCamera } from '../state/viewer';
 import { RunnerScriptExecutionRequest } from '@archiyou/core/src/runner/types';
@@ -67,6 +67,8 @@ export class PageEditor extends SignalWatcher(LitElement)
     const pm = pluginMode.get();
     // Track the script's unit system so a flip re-runs to regenerate doc/SVG text.
     this._pendingUnitSystem = scriptUnitSystem.get();
+    // Same for the geometry kernel — read here so SignalWatcher tracks it.
+    this._pendingKernel = kernel.get();
     return html`
       <editor-main-menu
         .active=${this._activeSection}
@@ -234,10 +236,24 @@ export class PageEditor extends SignalWatcher(LitElement)
     {
       this._lastUnitSystem = this._pendingUnitSystem;
     }
+
+    // Kernel flip → re-run, so the viewer immediately shows the same script built by the
+    // other kernel. Same first-paint guard as above.
+    if (this._lastKernel !== null && this._pendingKernel !== this._lastKernel)
+    {
+      this._lastKernel = this._pendingKernel;
+      this.checkAutoRun(true);
+    }
+    else
+    {
+      this._lastKernel = this._pendingKernel;
+    }
   }
 
   private _pendingUnitSystem: string | null = null;
   private _lastUnitSystem: string | null = null;
+  private _pendingKernel: string | null = null;
+  private _lastKernel: string | null = null;
 
   // ── Script deep links (/editor/{name}[:{version}], /editor/{author}/{name}[:{version}]) ──
 
@@ -434,6 +450,8 @@ export class PageEditor extends SignalWatcher(LitElement)
       unitSystem: scriptUnitSystem.get(),
       // per-statement mode: partial model on error + profiling (toggled next to Run)
       perStatement: perStatement.get(),
+      // geometry kernel for this run: mesh (default) or brep (toggled next to Run)
+      kernel: kernel.get(),
     } as RunnerScriptExecutionRequest;
   }
 

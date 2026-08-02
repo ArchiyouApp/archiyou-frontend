@@ -184,7 +184,9 @@ export class RunnerWorker
     if (isRequest(script))
     {
       // Already a request — fill only the defaults it is missing.
-      return { outputs: DEFAULT_OUTPUTS, ...script };
+      // `kernel` has to be defaulted here too: the editor sends a full request and does not
+      // always set it, and Runner uses it to decide which kernel to load.
+      return { kernel: this._kernel, outputs: DEFAULT_OUTPUTS, ...script };
     }
     // A bare string is source code — wrap it as ScriptData ({ code }); a
     // ScriptData / Script is passed through as the request's script.

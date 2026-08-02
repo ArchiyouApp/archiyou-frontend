@@ -1,7 +1,7 @@
 /** 
  * 
  *  Shape.ts - Defines a Shape in Archiyou (and Opencascade )
- *  Inherites very basic properties from Obj ( like name, id, position, rotation)
+ *  Carries its own scene membership (_node) and Style, like a meshup Shape
  *  Wraps all other shapes like: Vertex, Edge, Wire, Face, Shell, Solid, Compound Solid and Compound 
  *  We follow the inheritance from OC; Shape is main class, subclasses are Vertex, Edge etc that inherit the properties
  *  Subclasses overload the Shape interface methods (move,bbox,overlaps etc) and add some specific methods for accessing the geometry directly if needed
@@ -25,7 +25,6 @@ import type {
     SelectionString, CoordArray, ShapeClone,
     Link, SelectorPointRange, SelectorAxisCoord, SelectorBbox, SelectorIndex,
     ShapeAttributes,
-    ObjStyle,
     MeshShape, FaceMesh, EdgeMesh, VertexMesh, MeshCache,
     Annotation, DimensionOptions,toSVGOptions,
     BeamLikeDims,
@@ -33,9 +32,17 @@ import type {
     ExportGLTFOptions, MeshingQualitySettings
 } from '.'
 
-import { Obj, Vector, Point, Bbox, OBbox, Vertex, Edge, Wire, Face, 
+import { Vector, Point, Bbox, OBbox, Vertex, Edge, Wire, Face,
     Shell, Solid, ShapeCollection, Brep,
     Selector, Exporter } from './index'
+
+// Scene + style come from the MESH kernel: both kernels share one SceneNode graph and one
+// Style model, which is what lets the scene navigator and the GLTF exporter stay kernel-agnostic.
+import { SceneNode } from '@archiyou/meshup/src/SceneNode'
+import { Style } from '@archiyou/meshup/src/Style'
+import type { StyleData } from '@archiyou/meshup/src/Style'
+import { Color } from '@archiyou/meshup/src/Color'
+import { replaceInScene, activeLayerOf, sceneAdd, sceneCarry, sceneUpdate } from '@archiyou/meshup/src/sceneDecorators'
 
 import { BaseAnnotation } from '../../annotator/AnnotatorBaseAnnotation'
 import { DimensionLine } from '../../annotator/AnnotatorDimensionLine'
@@ -46,8 +53,13 @@ import { isPointLike, isSelectionString, isAnyShape,
     
 import { targetOcForGarbageCollection, removeOcTargetForGarbageCollection } from '.'
 
-import { toRad, isNumeric, roundToTolerance } from '.' // utils
+import { toRad, isNumeric, roundToTolerance, uuidv4 } from '.' // utils
 import { getOc } from './index'
+
+// Import decorators directly (not via the barrel) — the barrel is a cycle and decorators run
+// at class-definition time, before it has finished initialising.
+import { checkInput, protectOC } from './decorators'
+import { hostModeler } from './host'
 
 
 // this can disable TS errors when subclasses are not initialized yet
@@ -61,10 +73,37 @@ type IDimensionLine = DimensionLine
 export class Shape
 {
     _oc:any; // avoids TS errors in filling CLASSNAME_TO_SHAPE_ENUM
-    _brep:Brep;
-    _obj:Obj; // Obj container this Shape belongs to
-    _parent:AnyShapeOrCollection; // With selecting subshapes we keep the reference to parent    
-    _ocShape:any = null; // instance of OC Shape subclass: Vertex, Edge, Wire etc. - NOTE: we have to set a value here: otherwise it will not be set 
+    /** Opaque back-reference to the host Modeler, set when the Shape is adopted into a scene.
+     *  Null for a standalone Shape. The kernel only reads it through ./host.ts — it never
+     *  calls back into the app directly. Mirrors meshup Shape._modeler. */
+    _modeler:any = null;
+
+    /*  SCENE MEMBERSHIP — the same contract meshup Shapes implement, so brep Shapes can live
+        in the very same meshup SceneNode graph. See packages/meshup/src/Shape.ts and
+        sceneDecorators.ts. This replaces the old brep-only `Obj` container, which was both
+        scene node and style owner. */
+
+    /** The SceneNode holding this Shape, or null when it is not in a scene. */
+    _node:SceneNode|null = null;
+    /** The scene root this Shape belongs to, kept even while detached (`_node` null), so a
+     *  sub-shape handed back by an accessor can still resolve the active layer. Cleared by
+     *  removeFromScene(). */
+    _scene:SceneNode|null = null;
+    /** Sticky flag set by tmp(): scene ops become no-ops and derived Shapes inherit it. */
+    _suppressScene?:boolean;
+    /** True when the name came from a copy() source, so the host auto-namer may rename it. */
+    _nameInherited?:boolean;
+    /** Assigned material name — see the host's materials module. */
+    _material?:string;
+    /** Visual style. A MESHUP Style instance: one style model for both kernels, which is what
+     *  lets the shared SceneNode cascade and the shared GLTF exporter work unchanged. */
+    style:Style = new Style();
+
+    _id:string = uuidv4();
+    _name:string|undefined;
+
+    _parent:AnyShapeOrCollection; // With selecting subshapes we keep the reference to parent
+    _ocShape:any = null; // instance of OC Shape subclass: Vertex, Edge, Wire etc. - NOTE: we have to set a value here: otherwise it will not be set
     _ocId:string = null;
     _isTmp:boolean = false; // Flag to signify if a Shape is temporary (for example for construction)
     _cloned:ShapeClone|null = null;
@@ -268,6 +307,7 @@ export class Shape
     }
 
     /** Copy attributes from other Shape */
+    @checkInput('AnyShape', 'auto')
     _copyAttributes(from:Shape)
     {
         this.attributes = { ...from.attrs() }
@@ -337,49 +377,63 @@ export class Shape
     }
 
 
-    /** Attach obj to Shape for adding it to the scene and styling */
-    object(forceNew:boolean=false):Obj
+    /** The SceneNode holding this Shape, or null when it is not in a scene. */
+    node():SceneNode|null
     {
-        // don't make Obj if already exists
-        if (!forceNew && this._obj)
-        {
-            return this._obj;
-        }
-        let obj = new Obj(this);
-        this._obj = obj; // set Obj on Shape
-        return this._obj;
+        return this._node;
     }
 
-    /** Set color on the Object of this Shape */
+    /** Set color on this Shape */
+    @checkInput('ColorInput', 'auto')
     color(value:string|number):this
     {
-        this.object().color(value);
+        this.style.color = value as any;
         return this;
     }
 
-    /** Set dashed lines on the Object of this Shape */
-    dashed():this
+    /** Draw the lines of this Shape dashed */
+    dashed(dash:Array<number> = [5,5]):this
     {
-        this.object().dashed();
+        this.style.stroke = { dash };
         return this;
     }
 
     /** Set stroke width of lines of Shape */
+    @checkInput(Number, 'auto')
     lineWidth(n:number):this
     {
-        this.object().lineWidth(n);
+        this.style.stroke = { width: n };
         return this;
     }
 
-    /** Get the color of this Shape as defined in its Obj container */
-    getColor():number
+    /** This Shape's style resolved against the scene graph: the node's cascaded style is the
+     *  base, the Shape's own explicit properties win. Same rule the GLTF exporter applies, so
+     *  what you query here is what actually gets exported. */
+    _effectiveStyle():Style
     {
-        return this?._obj?.getColor();
+        if(!this._node){ return this.style }
+        const cascaded = new Style(this._node.effectiveStyle().toData());
+        cascaded.merge(this.style.explicitData() as StyleData);
+        return cascaded;
     }
 
+    /** Effective color of this Shape as an integer. Cascades down the scene graph when the
+     *  Shape carries none itself, so a color set on a layer applies to everything under it. */
+    getColor():number
+    {
+        const found = this._effectiveStyle()?.color ?? null;
+
+        if(found === null || found === undefined){ return null }
+        return isNumeric(found) ? Number(found) : new Color(found as any).toInt();
+    }
+
+    /** Effective color as normalized RGBA, for the GLTF/PBR exporters. */
     _getColorRGBA():[number,number,number,number]
     {
-        return this?._obj?._getColorRGBA()
+        const c = this.getColor();
+        if(c === null){ return null }
+        const [r,g,b] = new Color(c as any).toRgb();
+        return [ r/255, g/255, b/255, this.style?.opacity ?? 1 ];
     }
 
     /** check if Shape is co-planar and return the normal of the workingplane if so! */
@@ -422,32 +476,45 @@ export class Shape
         return normal;
     }
 
-    /** 
-     *   Some operations on Shape actually create new Shape types: For example Shape.intersections(other)
-     *   To Updating those in place we use the Obj container of the Shape 
+    /**
+     *   Some operations on a Shape actually produce a different Shape type (for example
+     *   Shape.intersections(other)). This swaps this Shape out of the scene and puts the
+     *   result in its place, on the same layer.
      *   IMPORTANT: This is still confusing because existing references in script scope are not updated!!
      */
+    @checkInput('AnyShapeOrCollection', 'auto')
     replaceShape(newShapes:AnyShapeOrCollection):AnyShapeOrCollection
     {
-        // if it's not in the Scene add it
-        if(!this._obj)
-        {
-            this.addToScene();
-        }
-
-        this._obj._updateShapes(newShapes);
-
+        replaceInScene(this, newShapes);
         return newShapes;
     }
 
-    /** We can delete a Shape from the Scene by removing it's Obj container */
-    removeFromScene()
+    /** Take this Shape out of the scene (detaches its SceneNode). No-op when it is not in
+     *  one. Mirrors meshup Shape.removeFromScene(): clearing _scene too means a Shape taken
+     *  out stays out — a later scene op will not resolve an active layer for it. */
+    removeFromScene():this
     {
-        if(this._obj)
-        {
-            throw new Error(`Shape::removeFromScene: Not implemented yet! After refactor`);
-            //this._brep.removeObj(this._obj);
-        }
+        this._node?.detach();
+        this._node = null;
+        this._scene = null;
+        return this;
+    }
+
+    /** Marks this class as scene/collection-worthy. meshup's ShapeCollection and scene
+     *  decorators accept any object answering true here, which is what lets brep Shapes live
+     *  in the meshup SceneNode graph. */
+    isShapeClass():boolean
+    {
+        return true;
+    }
+
+    /** Mark this Shape as temporary: take it out of the scene and keep it out. The flag is
+     *  sticky and propagates to derived Shapes, so helper geometry stays invisible. */
+    tmp():this
+    {
+        this._suppressScene = true;
+        this._isTmp = true;
+        return this.removeFromScene();
     }
 
     isEmpty():boolean
@@ -494,6 +561,7 @@ export class Shape
     }
     
     /** Try to convert the current Shape to a Wire */
+    @sceneAdd
     toWire():IWire // Cannot use Wire because it's not initialized
     {
         return this._toWire() as Wire
@@ -713,6 +781,7 @@ export class Shape
     }
 
     /** Get all Vertices of this Shape */
+    @sceneCarry
     vertices(): AnyShapeCollection
     {
         let vertices = new ShapeCollection();
@@ -750,12 +819,14 @@ export class Shape
     }
 
     /** Get all Edges of this Shape */
+    @sceneCarry
     edges(): AnyShapeCollection
     {
         return this._getEntities("Edge");
     }
 
     /** Get all Wires of this Shape */
+    @sceneCarry
     wires():AnyShapeCollection
     {
         // TODO
@@ -763,6 +834,7 @@ export class Shape
     }
 
     /** Get all Faces of this Shape */
+    @sceneCarry
     faces():AnyShapeCollection
     {
         let faces = this._getEntities("Face");
@@ -771,12 +843,14 @@ export class Shape
     }
 
     /** Get all Shells of this Shape */
+    @sceneCarry
     shells():AnyShapeCollection
     {
         return this._getEntities("Shell");
     }
 
     /** Get all Solids of this Shape */
+    @sceneCarry
     solids():AnyShapeCollection
     {
         return this._getEntities("Solid");
@@ -873,10 +947,27 @@ export class Shape
         ocBuilderCopy.Perform(this._ocShape, true, false); // TopoDS_Shape &S, copyGeom=Standard_True, copyMesh=Standard_False
         const newShape = new Shape()._fromOcShape(ocBuilderCopy.Shape()) as this;
         
-        newShape._copyAttributes(this); 
-        
+        newShape._copyAttributes(this);
+
+        // Carry the scene context, exactly like meshup Shape.copy(): the copy belongs to the
+        // same modeler/scene and inherits material and (inherited) name, so the host auto-namer
+        // may still rename it after the variable it lands in.
         // NOTE: Don't take over the parent
-        if(addToScene){ newShape.addToScene(); }
+        newShape._modeler = this._modeler;
+        newShape._scene = this._node?.root() ?? this._scene;
+        newShape._material = this._material;
+        newShape._name = this._name;
+        newShape._nameInherited = true;
+
+        if(this._suppressScene)
+        {
+            newShape._suppressScene = true; // temp-ness is transitive
+        }
+        else if(addToScene)
+        {
+            const layer = activeLayerOf(this);
+            if(layer){ (layer as any).addShape(newShape) }
+        }
 
         ocBuilderCopy.delete(); // clean up
 
@@ -910,6 +1001,7 @@ export class Shape
 
     /** Move Shape to a position by offsetting all Geometry with a Vector */
     // This is a good candidate for variable class return
+    @checkInput('PointLike','Vector') // this automatically transforms Types
     move(vector:PointLike, ...args):this // also allows flattened input move(10,20,30)
     {
         this._ocShape.Move( (vector as Vector)._toOcLocation(), true );
@@ -934,6 +1026,7 @@ export class Shape
     }
 
     /** Aliass for move along x-direction */
+    @checkInput(Number, 'auto')
     moveX(distance:number):this
     {
         this.move(distance)
@@ -941,6 +1034,7 @@ export class Shape
     }
 
     /** Aliass for move along x-direction */
+    @checkInput(Number, 'auto')
     moveY(distance:number):this
     {
         this.move(0,distance,0)
@@ -948,6 +1042,7 @@ export class Shape
     }
 
     /** Aliass for move along x-direction */
+    @checkInput(Number, 'auto')
     moveZ(distance:number):this
     {
         this.move(0,0,distance)
@@ -956,7 +1051,8 @@ export class Shape
 
     /** Move a copy of the Shape */
     ////@addResultShapesToScene
-    ////@checkInput('PointLike','Vector')
+    @checkInput('PointLike','Vector')
+    @sceneAdd
     moved(v:PointLike, ...args):this
     {
         // move a copy 
@@ -964,7 +1060,7 @@ export class Shape
     }
 
     /** Move Shape to a specific location using the pivot as center */
-    ////@checkInput('PointLike','Vector')
+    @checkInput('PointLike','Vector')
     moveTo(to:PointLike, ...args):this
     {
         let moveVec = (to as Vector).subtracted(this.center());
@@ -973,7 +1069,7 @@ export class Shape
     }
 
     /** Move Shape to specific x coordinate while keeping the other coords the same */
-    ////@checkInput([['Number', 0], ['Alignment', 'center']],['auto', 'auto'])
+    @checkInput([['Number', 0], ['Alignment', 'center']],['auto', 'auto'])
     moveToX(x:number, pivot?:Alignment):this
     {
         const pivotPoint = (isPointLike(pivot)) ? new Point(pivot) : this.pointAtAlignment(pivot);
@@ -982,7 +1078,7 @@ export class Shape
     }
 
     /** Move Shape to specific y coordinate while keeping the other coords the same */
-    ////@checkInput([['Number', 0], ['Alignment', 'center']],['auto', 'auto'])
+    @checkInput([['Number', 0], ['Alignment', 'center']],['auto', 'auto'])
     moveToY(y:number, pivot?:Alignment):this
     {
         const pivotPoint = (isPointLike(pivot)) ? new Point(pivot) : this.pointAtAlignment(pivot);
@@ -991,7 +1087,7 @@ export class Shape
     }
 
     /** Move Shape to specific z coordinate while keeping the other coords the same */
-    ////@checkInput([['Number', 0], ['Alignment', 'center']],['auto', 'auto'])
+    @checkInput([['Number', 0], ['Alignment', 'center']],['auto', 'auto'])
     moveToZ(z:number, pivot?:Alignment):this
     {
         const pivotPoint = (isPointLike(pivot)) ? new Point(pivot) : this.pointAtAlignment(pivot);
@@ -1000,14 +1096,14 @@ export class Shape
     }
 
     /** Alias for moveToX/Y/Z() */
-    ////@checkInput(['MainAxis', Number], ['auto','auto'])
+    @checkInput(['MainAxis', Number], ['auto','auto'])
     moveToAxisCoord(axis:MainAxis, coord:number)
     {
         return this[`moveTo${axis.toUpperCase()}`](coord);
     }
 
     /** Move copy of the Shape to a Point in space */
-    ////@checkInput('PointLike','Vector')
+    @checkInput('PointLike','Vector')
     movedTo(to:PointLike, ...args):this
     {
         let moveVec = (to as Vector).subtracted(this.center()); // auto convert to Vector
@@ -1024,7 +1120,7 @@ export class Shape
     /** Resize Shape with a given factor 
         TODO: different scaling factors per axis? scale(0.5,1,2)
     */
-    ////@checkInput([[Number,SHAPE_SCALE_DEFAULT_FACTOR], ['PointLike', null]],[Number, 'Point'])
+    @checkInput([[Number,SHAPE_SCALE_DEFAULT_FACTOR], ['PointLike', null]],[Number, 'Point'])
     scale(factor?:number, pivot?:PointLike):this
     {
         /* OC docs: 
@@ -1040,14 +1136,15 @@ export class Shape
     }
 
     /** Same as scale but returning a copy of Shape */
-    ////@checkInput([[Number,SHAPE_SCALE_DEFAULT_FACTOR], ['PointLike', null]],[Number, 'Point'])
+    @checkInput([[Number,SHAPE_SCALE_DEFAULT_FACTOR], ['PointLike', null]],[Number, 'Point'])
     _scaled(factor?:number, pivot?:PointLike):this
     {
         return this._copy().scale(factor,pivot);
     }
 
     ////@addResultShapesToScene
-    ////@checkInput([[Number,SHAPE_SCALE_DEFAULT_FACTOR], ['PointLike', null]],[Number, 'Point'])
+    @checkInput([[Number,SHAPE_SCALE_DEFAULT_FACTOR], ['PointLike', null]],[Number, 'Point'])
+    @sceneAdd
     scaled(factor?:number, pivot?:PointLike):this
     {
         return this._scaled(factor, pivot);
@@ -1058,7 +1155,7 @@ export class Shape
      *   NOTE: because the order of these rotations if very important we don't call it just rotate. 
      *   Use rotateX, rotateY and rotateZ to rotate around the main axis
      */
-    ////@checkInput([ [Number,0],[Number,0], [Number,0], ['Pivot', 'center']], [Number,Number,Number,'auto']) // IMPORTANT: not able to directly convert Pivot to Vector because pivot needs current Shape (can that be accessed in decorator?)
+    @checkInput([ [Number,0],[Number,0], [Number,0], ['Pivot', 'center']], [Number,Number,Number,'auto']) // IMPORTANT: not able to directly convert Pivot to Vector because pivot needs current Shape (can that be accessed in decorator?)
     rotateEuler(degX:number, degY?:number, degZ?:number, pivot?:Pivot):this
     {
         // Due to our algoritm in Vector.rotationTo we work with YZX Euler angles, so we apply the rotations in this order.
@@ -1066,7 +1163,7 @@ export class Shape
     }
 
     /** Same as rotateEuler but makes a copy */
-    ////@checkInput([ [Number,0],[Number,0], [Number,0], ['Pivot', 'center']], [Number,Number,Number,'auto']) 
+    @checkInput([ [Number,0],[Number,0], [Number,0], ['Pivot', 'center']], [Number,Number,Number,'auto']) 
     rotatedEuler(degX:number, degY:number = 0, degZ:number = 0, pivot:Pivot):this
     {
         return this.copy().rotateEuler(degX, degY, degZ, pivot);
@@ -1076,7 +1173,7 @@ export class Shape
      *   Rotate sequencely around the x,y and z axis.
      *   !!!! IMPORTANT: this is not the same as supplying the independant angles around the axis!
      */
-    ////@checkInput('PointLike', 'Vector')
+    @checkInput('PointLike', 'Vector')
     rotate(r:PointLike, ...args) // allows flattened notation rotate(180,0,-90)
     {
         r = r as Vector; // automatically converted to Vector
@@ -1084,28 +1181,28 @@ export class Shape
     }
 
     /** Rotate this Shape around the x-axis with a given angle and pivot (default: center) */
-    ////@checkInput([Number,['Pivot','center']], [Number, 'auto'])
+    @checkInput([Number,['Pivot','center']], [Number, 'auto'])
     rotateX(deg:number, pivot?:Pivot):this
     {
         return this.rotateAround(deg, [1,0,0], pivot);
     }
 
     /** Rotate this Shape around the y-axis with a given angle and pivot (default: center) */
-    ////@checkInput([Number,['Pivot','center']], [Number, 'auto'])
+    @checkInput([Number,['Pivot','center']], [Number, 'auto'])
     rotateY(deg:number, pivot?:Pivot):this
     {
         return this.rotateAround(deg, [0,1,0], pivot);
     }
 
     /** Rotate this Shape around the y-axis with a given angle and pivot (default: center) */
-    ////@checkInput([Number,['Pivot','center']], [Number, 'auto'])
+    @checkInput([Number,['Pivot','center']], [Number, 'auto'])
     rotateZ(deg:number, pivot?:Pivot):this
     {
         return this.rotateAround(deg, [0,0,1], pivot);
     }
 
       /** Rotates a Shape a given angle in degrees along a axis (default: Z) */
-    ////@checkInput([Number,['PointLike',[0,0,1]],['Pivot','center'] ], [Number, Vector, 'auto'])
+    @checkInput([Number,['PointLike',[0,0,1]],['Pivot','center'] ], [Number, Vector, 'auto'])
     rotateAround(angle:number, axis?:PointLike, pivot?:Pivot):this
     {
         /* !!!! IMPORTANT: OC uses righthand rotation from given Vector 
@@ -1240,7 +1337,7 @@ export class Shape
     }
 
     /** Try to align Shape with x (horizontal) or y axis (vertical) as much as possible */
-    //@checkInput([['OrientationXY', 'vertical']], ['auto'])
+    @checkInput([['OrientationXY', 'vertical']], ['auto'])
     rotateToOrthoXY(o?:OrientationXY)
     {
         /* We determine the primary axis of a Shape by different methods:
@@ -1290,7 +1387,7 @@ export class Shape
     }
 
     /** Rotate Shape to place flat on XY plane. Keeps x,y position */
-    //@checkInput([['OrientationXY', 'vertical']], ['auto'])
+    @checkInput([['OrientationXY', 'vertical']], ['auto'])
     rotateToLayFlat(o?:OrientationXY):this
     {
         this.rotateToAxesOBbox();
@@ -1389,7 +1486,7 @@ export class Shape
      *  If given an axis we only select Faces that face that axis
      *  Otherwise we consider the Shapes as extrusions and use extrudedFace 
     */
-    //@checkInput([['MainAxis',null]], ['auto'])
+    @checkInput([['MainAxis',null]], ['auto'])
     _flattened(axis?:MainAxis):AnyShape
     {
         const FACE_NORMAL_AXIS_ANGLE_MAX = 1;
@@ -1424,7 +1521,8 @@ export class Shape
     }
 
     //@addResultShapesToScene
-    //@checkInput([['MainAxis',null]], ['auto'])
+    @checkInput([['MainAxis',null]], ['auto'])
+    @sceneAdd
     flattened(axis?:MainAxis):AnyShape
     {
         return this._flattened(axis);
@@ -1505,7 +1603,7 @@ export class Shape
     }
 
     /** Rotate this Shape by a Quaternion made by two Vectors */
-    //@checkInput(['PointLike', 'PointLike', ['PointLike',[0,0,0]]], ['Vector', 'Vector', 'Vector']) // auto convert
+    @checkInput(['PointLike', 'PointLike', ['PointLike',[0,0,0]]], ['Vector', 'Vector', 'Vector']) // auto convert
     rotateVecToVec(from:PointLike, to:PointLike, pivot?:PointLike):this
     {
         const fromVec= from as Vector; // auto converted
@@ -1536,7 +1634,7 @@ export class Shape
      *   !!!! different from Vector.mirror()
      *   origin: Origin of mirror plane
      */
-    //@checkInput([ ['PointLike', [0,0,0]], ['PointLike', 'x']], ['Vector', 'Vector']) // the default mirror plane is the YZ plane with normal +X-axis at [0,0,0]
+    @checkInput([ ['PointLike', [0,0,0]], ['PointLike', 'x']], ['Vector', 'Vector']) // the default mirror plane is the YZ plane with normal +X-axis at [0,0,0]
     _mirrored(origin?:PointLike, normal?:PointLike):this
     {
         /* OC docs:
@@ -1561,7 +1659,8 @@ export class Shape
     }
 
     //@addResultShapesToScene
-    //@checkInput([ ['PointLike', [0,0,0]], ['PointLike', 'x']], ['Vector', 'Vector']) // the default mirror plane is the YZ plane with normal +X-axis at [0,0,0]
+    @checkInput([ ['PointLike', [0,0,0]], ['PointLike', 'x']], ['Vector', 'Vector']) // the default mirror plane is the YZ plane with normal +X-axis at [0,0,0]
+    @sceneAdd
     mirrored(origin?:PointLike, normal?:PointLike):this
     {
         return this._mirrored(origin,normal);
@@ -1570,7 +1669,7 @@ export class Shape
     /** Mirror Shape at x coordinate (YZ plane) 
      *  NOTE: this changed: check scripts!
     */
-    //@checkInput([[Number,null]], 'auto')
+    @checkInput([[Number,null]], 'auto')
     mirrorX(x?:number):this
     {
         const mirroredShape = this._mirroredX(x); 
@@ -1581,21 +1680,22 @@ export class Shape
     }
 
     /** Create mirrored copy at x coordinate (YZ plane) */
-    //@checkInput([[Number,null]], 'auto')
+    @checkInput([[Number,null]], 'auto')
     _mirroredX(x?:number):this
     {
         return this._mirrored( (x !== null) ? [x,0,0] : this.center(), [1,0,0]);
     }
 
     //@addResultShapesToScene
-    //@checkInput([[Number,null]], 'auto')
+    @checkInput([[Number,null]], 'auto')
+    @sceneAdd
     mirroredX(x?:number):this
     {
         return this._mirroredX(x);
     }
     
     /** Mirror Shape at y coordinate (XZ plane) */
-    //@checkInput([[Number,null]], 'auto')
+    @checkInput([[Number,null]], 'auto')
     mirrorY(y?:number):this
     {
         const mirroredShape = this._mirroredY(y); 
@@ -1607,21 +1707,22 @@ export class Shape
     }
 
     /** Mirror Copy of Shape at y coordinate (XZ plane) */
-    //@checkInput([[Number,null]], 'auto')
+    @checkInput([[Number,null]], 'auto')
     _mirroredY(y?:number):this
     {
         return this._mirrored( (y !== null) ? [0,y,0] : this.center(), [0,1,0]);
     }
 
     //@addResultShapesToScene
-    //@checkInput([[Number,null]], 'auto')
+    @checkInput([[Number,null]], 'auto')
+    @sceneAdd
     mirroredY(y?:number):this
     {
         return this._mirroredY(y);
     }
 
     /** Mirror Shape in Z axis with its center at shape pivot or given z-coordinate */
-    //@checkInput([[Number,null]], 'auto')
+    @checkInput([[Number,null]], 'auto')
     mirrorZ(z?:number):this
     {
         const mirroredShape = this._mirroredZ(z); 
@@ -1632,7 +1733,7 @@ export class Shape
     }
 
     /** Create mirror copy of Shape in Z axis with its center at shape pivot or given z-coordinate */
-    //@checkInput([[Number,null]], 'auto')
+    @checkInput([[Number,null]], 'auto')
     _mirroredZ(z?:number):this
     {
         return this._mirrored((z !== null) ? [0,0,z] : this.center(), [0,0,1]);
@@ -1640,7 +1741,8 @@ export class Shape
 
     /** Create mirrored copy relative to XY plane with its center as pivot and add to Scene */
     //@addResultShapesToScene
-    //@checkInput([[Number,null]], 'auto')
+    @checkInput([[Number,null]], 'auto')
+    @sceneAdd
     mirroredZ(z?:number):this
     {
         return this._mirroredZ(z);
@@ -1648,7 +1750,7 @@ export class Shape
 
     //// MODELLING OPERATIONS ////
 
-    //@checkInput([ [Number, SHAPE_EXTRUDE_DEFAULT_AMOUNT], ['PointLike', null ]], [Number, 'Vector'])
+    @checkInput([ [Number, SHAPE_EXTRUDE_DEFAULT_AMOUNT], ['PointLike', null ]], [Number, 'Vector'])
     extrude(amount?:number, direction?:PointLike):IEdge|Face|Shell|ISolid
     {
        const newShape = this.extruded(amount, direction); // auto converted to Vector
@@ -1662,7 +1764,7 @@ export class Shape
      *   TODO: solid flag
      */
     
-    //@checkInput([ [Number, SHAPE_EXTRUDE_DEFAULT_AMOUNT], ['PointLike', null ]], [Number, 'Vector'])
+    @checkInput([ [Number, SHAPE_EXTRUDE_DEFAULT_AMOUNT], ['PointLike', null ]], [Number, 'Vector'])
     _extruded(amount?:number, direction?:PointLike):IEdge|Face|Shell|Solid
     {
         /* OC docs:
@@ -1697,7 +1799,8 @@ export class Shape
     }
 
     //@addResultShapesToScene
-    //@checkInput([ [Number, SHAPE_EXTRUDE_DEFAULT_AMOUNT], ['PointLike', null ]], [Number, 'Vector'])
+    @checkInput([ [Number, SHAPE_EXTRUDE_DEFAULT_AMOUNT], ['PointLike', null ]], [Number, 'Vector'])
+    @sceneAdd
     extruded(amount?:number, direction?:PointLike):IEdge|Face|Shell|Solid
     {
         return this._extruded(amount, direction);
@@ -1705,7 +1808,7 @@ export class Shape
 
     /** Extrude this Shape towards a given Point or other Shape - we do keep the normal of the Shape if available */
     // TODO: Add ShapeCollection as input
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
     extrudedTo(other:PointLikeOrAnyShapeOrCollection, ...args):null|AnyShape
     {
         let distance:number;
@@ -1746,8 +1849,8 @@ export class Shape
 
     /** Offset Shape to create a new version parallel to original with a given distance and by corners of given type (arc, intersection)  */
     // This is overriden in simpler topologies (Edge, Wire)
-    //@protectOC(['Offsetting to inside (-amount) is more robust'])
-    //@checkInput([[Number,null],[String,null],['PointLike', null]], ['auto', 'auto', 'Vector'])
+    @protectOC(['Offsetting to inside (-amount) is more robust'])
+    @checkInput([[Number,null],[String,null],['PointLike', null]], ['auto', 'auto', 'Vector'])
     _offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):AnyShapeOrCollection // NOTE: type is used here are join type (not offset type)
     {
         const DIRECTION_TYPES = {
@@ -1795,7 +1898,7 @@ export class Shape
 
     /** Offset Shape to create a new version parallel to original with a given distance and by corners of given type (arc, intersection)  */
     // This is overriden in simpler topologies (Edge, Wire)
-    //@checkInput([[Number,null],[String,null],['PointLike', null]], ['auto', 'auto', 'Vector'])
+    @checkInput([[Number,null],[String,null],['PointLike', null]], ['auto', 'auto', 'Vector'])
     offset(amount?:number, type?:string, onPlaneNormal?:PointLike):AnyShapeOrCollection
     {
         if(!['Face','Shell','Solid'].includes(this.type))
@@ -1809,7 +1912,8 @@ export class Shape
     }
 
     //@addResultShapesToScene
-    //@checkInput([[Number,null],[String,null],['PointLike', null]], ['auto', 'auto', 'Vector'])
+    @checkInput([[Number,null],[String,null],['PointLike', null]], ['auto', 'auto', 'Vector'])
+    @sceneAdd
     offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):AnyShapeOrCollection
     {
         if(!['Face','Shell','Solid'].includes(this.type))
@@ -1820,11 +1924,15 @@ export class Shape
     }
 
     /** Thicken Shell or Solid to create a hollow Solid (private) */
-    //@protectOC(['Check thickness of Shell does not create self-intersection', 
-    //            'Shelling Solids to the inside (-amount) is more robust',
-    //           'Shelling Spheres is tricky. A simple move() might break it. Try to avoid Spheres',
-    //            'Shelling Shells is sometimes unstable. Try offsetted()'])
-    //@checkInput([ [Number,SHAPE_SHELL_AMOUNT],['AnyShapeOrCollectionOrSelectionString', null],[String,'arc']],['auto','auto', 'auto'])
+    @protectOC(['Check thickness of Shell does not create self-intersection',
+                'Shelling Solids to the inside (-amount) is more robust',
+                'Shelling Spheres is tricky. A simple move() might break it. Try to avoid Spheres',
+                'Shelling Shells is sometimes unstable. Try offsetted()'])
+    @checkInput([ [Number,SHAPE_SHELL_AMOUNT],['AnyShapeOrCollectionOrSelectionString', null],[String,'arc']],['auto','auto', 'auto'])
+    @protectOC(['Check thickness of Shell does not create self-intersection', 
+        'Shelling Solids to the inside (-amount) is more robust',
+        'Shelling Spheres is tricky. A simple move() might break it. Try to avoid Spheres',
+        'Shelling Shells is sometimes unstable. Try offsetted()'])
     _shelled(amount:number, excludeFaces?:AnyShapeOrCollectionOrSelectionString, type?:string):ISolid
     {
         /* NOTE: OC changing: we might need to update here. Looks like this will be direct functions without constructor
@@ -1942,14 +2050,15 @@ export class Shape
 
     /** Thicken Face, Shell or Solid to create a hollow Solid (private) */
     //@addResultShapesToScene
-    //@checkInput([ [Number,SHAPE_SHELL_AMOUNT],['AnyShapeOrCollectionOrSelectionString', null],[String,'arc']],['auto','auto', 'auto'])
+    @checkInput([ [Number,SHAPE_SHELL_AMOUNT],['AnyShapeOrCollectionOrSelectionString', null],[String,'arc']],['auto','auto', 'auto'])
+    @sceneAdd
     shelled(amount:number, excludeFaces?:AnyShapeOrCollectionOrSelectionString, type?:string):ISolid
     {
         return this._shelled(amount,excludeFaces,type);
     }
     
     /** Same as shelled but with replacing the original */
-    //@checkInput([ [Number,SHAPE_SHELL_AMOUNT],['AnyShapeOrCollectionOrSelectionString', null],[String,'arc']],['auto','auto', 'auto'])
+    @checkInput([ [Number,SHAPE_SHELL_AMOUNT],['AnyShapeOrCollectionOrSelectionString', null],[String,'arc']],['auto','auto', 'auto'])
     shell(amount:number, excludeFaces?:AnyShapeOrCollectionOrSelectionString, type?:string):ISolid
     {   
         let newShape = this._shelled(amount, excludeFaces, type);
@@ -1960,7 +2069,7 @@ export class Shape
      /** Thicken a Shape depending on its type
     *  @param direction - all (grow from center), bottom, left, right, top
     */
-    //@checkInput([Number, String], [Number, String]) // TODO: more
+    @checkInput([Number, String], [Number, String]) // TODO: more
     _thickened(amount:number, direction:string='all'):AnyShape
     {
         // method to be overrided in subclasses
@@ -1972,7 +2081,7 @@ export class Shape
     /** Thicken a Shape depending on its type
     *  @param direction - all (grow from center), bottom, left, right, top
     */
-    //@checkInput([Number, String], [Number, String]) // TODO: more
+    @checkInput([Number, String], [Number, String]) // TODO: more
     thickened(amount:number, direction:string='all'):AnyShape
     {
         // method to be overrided in subclasses
@@ -1981,7 +2090,7 @@ export class Shape
         return null;
     }
     
-    //@checkInput([Number, String], [Number, String]) // TODO: more
+    @checkInput([Number, String], [Number, String]) // TODO: more
     thicken(amount:number, direction:string='all'):AnyShape
     {
         // overriden by subclass
@@ -1990,8 +2099,8 @@ export class Shape
     }
 
     /** Make a new Shape by revolving a non-solid Shape around an axis given by two Points (Private) */
-    //@protectOC([]) // TODO: hints
-    //@checkInput([['Number', 360],['PointLike',[0,0,0]],['PointLike',[0,0,1]]],['auto','Vector','Vector'])
+    @protectOC([]) // TODO: hints
+    @checkInput([['Number', 360],['PointLike',[0,0,0]],['PointLike',[0,0,1]]],['auto','Vector','Vector'])
     _revolved(angle?:number,axisStart?:PointLike,axisEnd?:PointLike)
     {
         /* OC docs:
@@ -2028,7 +2137,8 @@ export class Shape
 
     /** Make a new Shape by revolving a non-solid Shape around an axis given by two Points */
     //@addResultShapesToScene
-    //@checkInput([['Number', 360],['PointLike',[0,0,0]],['PointLike',[0,0,1]]],['auto','Vector','Vector'])
+    @checkInput([['Number', 360],['PointLike',[0,0,0]],['PointLike',[0,0,1]]],['auto','Vector','Vector'])
+    @sceneAdd
     revolved(angle?:number,axisStart?:PointLike,axisEnd?:PointLike):AnyShapeOrCollection
     {
         return this._revolved(angle,axisStart,axisEnd);
@@ -2061,7 +2171,7 @@ export class Shape
     }
 
     /** Create a new Shape by sweeping a the Shape's Wire representation through a Wire Path */
-    //@checkInput([ 'LinearShape', [Boolean,SHAPE_SWEEP_DEFAULT_SOLID ], [Boolean, SHAPE_SWEEP_DEFAULT_AUTOROTATE],[String, null]], ['Wire', Boolean, Boolean, String ] )
+    @checkInput([ 'LinearShape', [Boolean,SHAPE_SWEEP_DEFAULT_SOLID ], [Boolean, SHAPE_SWEEP_DEFAULT_AUTOROTATE],[String, null]], ['Wire', Boolean, Boolean, String ] )
     _sweeped(path:LinearShape, solid?:boolean, autoRotate?:boolean, alignToPath?:string):Face|Shell|Solid 
     {
         // TODO: add holes
@@ -2072,14 +2182,15 @@ export class Shape
 
     /** Sweep and add result to Scene */
     //@addResultShapesToScene
-    //@checkInput([ 'LinearShape', [Boolean,SHAPE_SWEEP_DEFAULT_SOLID ], [Boolean, SHAPE_SWEEP_DEFAULT_AUTOROTATE],[String, null]], ['Wire', Boolean, Boolean, String ] )
+    @checkInput([ 'LinearShape', [Boolean,SHAPE_SWEEP_DEFAULT_SOLID ], [Boolean, SHAPE_SWEEP_DEFAULT_AUTOROTATE],[String, null]], ['Wire', Boolean, Boolean, String ] )
+    @sceneAdd
     sweeped(path:LinearShape, solid?:boolean, autoRotate?:boolean, alignToPath?:string):Face|Shell|Solid 
     {
         return this._sweeped(path, solid, autoRotate, alignToPath);
     }
 
     /** Is the same Shape in OC */
-    //@checkInput('AnyShape','auto')
+    @checkInput('AnyShape','auto')
     same(other:AnyShape):boolean
     {
         return (this._hashcode() === other._hashcode())
@@ -2089,7 +2200,7 @@ export class Shape
      *  TODO: Especially for complex Shapes this needs another look!
      *  NOTE: Shape.equals() is the main method, no children override it!
     */
-    //@checkInput(['PointLikeOrAnyShape', ['Number', null]], ['auto', 'auto'])
+    @checkInput(['PointLikeOrAnyShape', ['Number', null]], ['auto', 'auto'])
     equals(other:PointLikeOrAnyShape, tolerance?:number):boolean
     {
         tolerance = tolerance || this._oc.SHAPE_TOLERANCE;
@@ -2122,7 +2233,7 @@ export class Shape
     }
 
     /** Calculate the distance between this Shape and other */
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
     distance(other:PointLikeOrAnyShapeOrCollection, ...args):number
     {
         /* OC docs:
@@ -2150,7 +2261,7 @@ export class Shape
     }
 
     /** Internal method that really calculates distance between two single Shapes */
-    //@checkInput('AnyShape', 'auto')
+    @checkInput('AnyShape', 'auto')
     _distanceToShape(other:AnyShape):number
     {
         const ocShapeDistanceCalculator = new this._oc.BRepExtrema_DistShapeShape_2(this._ocShape, other._ocShape,
@@ -2178,7 +2289,7 @@ export class Shape
      /** Calculate the closest distance between two Shapes: returns one or more straight Link Object, where start is from the first Shape 
      *      NOTE: If two Shapes are the same and parallel ( for example two Edges ) two links for each Vertex are returned
     */
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
     _closestLinks(other:PointLikeOrAnyShapeOrCollection):Array<Link>
     {
         // see OC docs: https://dev.opencascade.org/doc/occt-7.4.0/refman/html/_b_rep_extrema___support_type_8hxx.html#a8988c48b5bdfea2011304a322a4e78b7
@@ -2267,7 +2378,7 @@ export class Shape
 
     /** Returns a Link that is the shortest path from current Shape to the other  */
     // TODO: Add also ShapeCollection
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
     distanceLink(other:PointLikeOrAnyShapeOrCollection):Link
     {
         if (isPointLike(other))
@@ -2295,7 +2406,7 @@ export class Shape
     }
 
     /** Returns the Vector of closest path from current Shape to the other */
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
     distanceVec(other:PointLikeOrAnyShapeOrCollection):Vector
     {
         let link = this.distanceLink(other);
@@ -2309,25 +2420,25 @@ export class Shape
         return link.to.toVector().subtracted(link.from);
     }
 
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
     distanceX(other:PointLikeOrAnyShapeOrCollection):number
     {
         return this._distanceAxis(other, 'x');
     }
 
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
     distanceY(other:PointLikeOrAnyShapeOrCollection):number
     {
         return this._distanceAxis(other, 'y');
     }
 
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
     distanceZ(other:PointLikeOrAnyShapeOrCollection):number
     {
         return this._distanceAxis(other, 'z');
     }
 
-    //@checkInput(['PointLikeOrAnyShapeOrCollection', isMainAxis], ['auto','auto'])
+    @checkInput(['PointLikeOrAnyShapeOrCollection', isMainAxis], ['auto','auto'])
     _distanceAxis(other:PointLikeOrAnyShapeOrCollection, axis:MainAxis):number
     {
         let dv = this.distanceVec(other);
@@ -2335,14 +2446,14 @@ export class Shape
     }
 
     /** Get the shortest lines from Shape to the other */
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
     links(other:PointLikeOrAnyShapeOrCollection):Array<Link>
     {
         return this._closestLinks(other);
     }
 
     /** Get closest Point on the other Shape */
-    //@checkInput('AnyShapeOrCollection', 'auto')
+    @checkInput('AnyShapeOrCollection', 'auto')
     closest(other:PointLikeOrAnyShapeOrCollection):Point
     {
         // if intersecting
@@ -2366,7 +2477,7 @@ export class Shape
     }
     
     /* Closest Vertex of this Shape to another PointLike */
-    //@checkInput('PointLike', 'Vertex')
+    @checkInput('PointLike', 'Vertex')
     closestVertex(to:PointLike):IVertex
     {
         let v = to as Vertex; // auto converted
@@ -2387,8 +2498,8 @@ export class Shape
     }
 
     /* Private Subtract Shapes from this Shape and return a new Shape */
-    //@protectOC('')
-    //@checkInput('AnyShapeOrCollection', 'ShapeCollection')
+    @protectOC('')
+    @checkInput('AnyShapeOrCollection', 'ShapeCollection')
     _subtracted(others:AnyShapeOrCollection):AnyShapeOrCollection
     {
         // IMPORTANT: subtract can yield multiple Shapes in a ShapeCollection
@@ -2428,14 +2539,15 @@ export class Shape
 
     /* Subtract Shapes from this Shape and return a new Shape */
     //@addResultShapesToScene
-    //@checkInput('AnyShapeOrCollection', 'ShapeCollection')
+    @checkInput('AnyShapeOrCollection', 'ShapeCollection')
+    @sceneAdd
     subtracted(others:AnyShapeOrCollection):AnyShapeOrCollection
     {
         return this._subtracted(others);
     }
 
     /* Subtract Shapes from this Shape and update current Shape */
-    //@checkInput('AnyShapeOrCollection', 'ShapeCollection')
+    @checkInput('AnyShapeOrCollection', 'ShapeCollection')
     subtract(others:AnyShapeOrCollection, removeOthers=false):AnyShapeOrCollection
     {
         const newShape = this._subtracted(others);
@@ -2462,7 +2574,7 @@ export class Shape
     /** Cutting in OC with two Faces does not work
      *  We hack a little by giving a slight height to the operants 
      */
-    //@checkInput('AnyShapeCollection', 'ShapeCollection')
+    @checkInput('AnyShapeCollection', 'ShapeCollection')
     _solidifyOperantFaces(others:AnyShapeCollection):AnyShapeCollection
     {
         const EXTRUDE_HEIGHT = 0.1;
@@ -2485,7 +2597,7 @@ export class Shape
     }
 
     /** Unions one with another Shape(s) (Private method without adding to Scene) */
-    //@checkInput('AnyShapeOrCollection', 'auto')
+    @checkInput('AnyShapeOrCollection', 'auto')
     _unioned(other:AnyShapeOrCollection):AnyShapeOrCollection|null
     {
         if (!other)
@@ -2578,7 +2690,8 @@ export class Shape
 
     /** Unions one with another Shape */
     //@addResultShapesToScene
-    //@checkInput('AnyShapeOrCollection', 'auto')
+    @checkInput('AnyShapeOrCollection', 'auto')
+    @sceneAdd
     unioned(other:AnyShapeOrCollection):AnyShapeOrCollection
     {
         return this._unioned(other);
@@ -2586,7 +2699,8 @@ export class Shape
 
     /** Alias for unioned */
     //@addResultShapesToScene
-    //@checkInput('AnyShapeOrCollection', 'auto')
+    @checkInput('AnyShapeOrCollection', 'auto')
+    @sceneAdd
     combined(other:AnyShapeOrCollection):AnyShapeOrCollection
     {
         return this._unioned(other);
@@ -2594,7 +2708,8 @@ export class Shape
 
     /** Alias for unioned */
     //@addResultShapesToScene
-    //@checkInput('AnyShapeOrCollection', 'auto')
+    @checkInput('AnyShapeOrCollection', 'auto')
+    @sceneAdd
     added(other:AnyShapeOrCollection):AnyShapeOrCollection
     {
         return this._unioned(other);
@@ -2602,7 +2717,8 @@ export class Shape
 
     /** Alias for unioned */
     //@addResultShapesToScene
-    //@checkInput('AnyShapeOrCollection', 'auto')
+    @checkInput('AnyShapeOrCollection', 'auto')
+    @sceneAdd
     fused(other:AnyShapeOrCollection):AnyShapeOrCollection
     {
         return this._unioned(other);
@@ -2610,14 +2726,15 @@ export class Shape
 
     /** Alias for unioned */
     //@addResultShapesToScene
-    //@checkInput('AnyShapeOrCollection', 'auto')
+    @checkInput('AnyShapeOrCollection', 'auto')
+    @sceneAdd
     merged(other:AnyShapeOrCollection):AnyShapeOrCollection
     {
         return this._unioned(other);
     }
 
-    /** Same as unioned but replacing current Shape in Obj */
-    //@checkInput('AnyShapeOrCollection', 'auto')
+    /** Same as unioned but replacing the current Shape in the scene */
+    @checkInput('AnyShapeOrCollection', 'auto')
     union(other:AnyShapeOrCollection):AnyShapeOrCollection
     {
         let unionedShape = this._unioned(other);
@@ -2626,28 +2743,28 @@ export class Shape
     }
 
     /** Alias for union */
-    //@checkInput('AnyShapeOrCollection', 'auto')
+    @checkInput('AnyShapeOrCollection', 'auto')
     combine(other:AnyShapeOrCollection):AnyShapeOrCollection
     {
         return this.union(other);
     }
 
     /** Alias for union */
-    //@checkInput('AnyShapeOrCollection', 'auto')
+    @checkInput('AnyShapeOrCollection', 'auto')
     add(other:AnyShapeOrCollection):AnyShapeOrCollection
     {
         return this.union(other);
     }
 
     /** Alias for union */
-    //@checkInput('AnyShapeOrCollection', 'auto')
+    @checkInput('AnyShapeOrCollection', 'auto')
     merge(other:AnyShapeOrCollection):AnyShapeOrCollection
     {
         return this.union(other);
     }
 
     /** Alias for union */
-    //@checkInput('AnyShapeOrCollection', 'auto')
+    @checkInput('AnyShapeOrCollection', 'auto')
     fuse(other:AnyShapeOrCollection):AnyShapeOrCollection
     {
         return this.union(other);
@@ -2656,7 +2773,7 @@ export class Shape
     /** Split current Shape into multiple ones using the given other Shapes (Private method: without adding to Scene)
      *     The other Shapes are removed after the operation
      */
-    //@checkInput([['AnyShapeOrCollection', null],['Boolean', false]], ['ShapeCollection', 'auto'])
+    @checkInput([['AnyShapeOrCollection', null],['Boolean', false]], ['ShapeCollection', 'auto'])
     _splitted(others:AnyShapeOrCollection, excludeOverlapping?:boolean):AnyShapeOrCollection
     {
         /* OC docs:
@@ -2694,13 +2811,14 @@ export class Shape
 
     /** Split current Shape into multiple ones using the given other Shapes */
     //@addResultShapesToScene
-    //@checkInput([['AnyShapeOrCollection', null],['Boolean', false]], ['ShapeCollection', 'auto'])
+    @checkInput([['AnyShapeOrCollection', null],['Boolean', false]], ['ShapeCollection', 'auto'])
+    @sceneAdd
     splitted(others:AnyShapeOrCollection,  excludeOverlapping?:boolean):AnyShapeOrCollection
     {
         return this._splitted(others, excludeOverlapping);
     }
 
-    //@checkInput([['AnyShapeOrCollection', null],['Boolean', false]], ['ShapeCollection', 'auto'])
+    @checkInput([['AnyShapeOrCollection', null],['Boolean', false]], ['ShapeCollection', 'auto'])
     split(others:AnyShapeOrCollection, excludeOverlapping:boolean):AnyShapeOrCollection
     {
         let splittedShape = this._splitted(others, excludeOverlapping);
@@ -2749,7 +2867,7 @@ export class Shape
 
     /** Cut off Shapes orthogonally by a plane with normal parallel to axis and at level and keep the largest piece 
     */
-    //@checkInput([['MainAxis', 'x'],['Number', 0], ['Boolean', false]], ['auto', 'auto','auto'])
+    @checkInput([['MainAxis', 'x'],['Number', 0], ['Boolean', false]], ['auto', 'auto','auto'])
     cutoff(axisNormal?:MainAxis, level?:number, smallest?:boolean):this
     {
         const bb = this.bbox();
@@ -2790,7 +2908,7 @@ export class Shape
     }
 
     /** Cut current Shape by other Shape and keep the biggest part */
-    //@checkInput(['AnyShape',['Boolean', false]], ['auto', 'auto'])
+    @checkInput(['AnyShape',['Boolean', false]], ['auto', 'auto'])
     cutoffBy(other:AnyShape, keepSmallest?:boolean):this
     {
         const splitResult = this._splitted(other);
@@ -2816,7 +2934,7 @@ export class Shape
     }
 
     /** Alias of cutoffBy */
-    //@checkInput(['AnyShape',['Boolean', false]], ['auto', 'auto'])
+    @checkInput(['AnyShape',['Boolean', false]], ['auto', 'auto'])
     trim(other:AnyShape, keepSmallest?:boolean)
     {
         return this.cutoffBy(other)
@@ -2838,7 +2956,7 @@ export class Shape
      *  or a array of percentage offsets to [left,front,bottom] corner or Shape
      *  and for linear Shapes (Edge,Wire) also start and end !!!! TODO !!!!
      */
-    //@checkInput(['AnyShape',['Pivot','center'],['Alignment', 'center']],['auto','auto','auto'])
+    @checkInput(['AnyShape',['Pivot','center'],['Alignment', 'center']],['auto','auto','auto'])
     align(other:AnyShape, pivot?:Pivot, alignment?:Alignment):this
     {
         const pivotAlignPerc:Array<number> = this._alignPerc(pivot);
@@ -2853,20 +2971,20 @@ export class Shape
     }
 
     /** Alias for align */
-    //@checkInput(['AnyShape',['Pivot','center'],['Alignment', 'center']],['auto','auto','auto'])
+    @checkInput(['AnyShape',['Pivot','center'],['Alignment', 'center']],['auto','auto','auto'])
     alignTo(other:AnyShape, pivot?:Pivot, alignment?:Alignment):this
     {
         return this.align(other, pivot, alignment);
     }
 
     /** Copy and then align */
-    //@checkInput(['AnyShape',['Pivot','center'],['Alignment', 'center']],['auto','auto','auto'])
+    @checkInput(['AnyShape',['Pivot','center'],['Alignment', 'center']],['auto','auto','auto'])
     aligned(other:AnyShape, pivot?:Pivot, alignment?:Alignment):this
     {
         return this.copy().align(other, pivot, alignment);
     }
 
-    //@checkInput('Alignment', 'auto')
+    @checkInput('Alignment', 'auto')
     _alignStringToAlignPerc(alignment:Alignment): Array<number>
     {
         const ALIGNMENT_TO_AXIS_OFFSET = {
@@ -2900,7 +3018,7 @@ export class Shape
     }
 
     /** Returns Point at percentage of Shape Bbox */
-     //@checkInput('PointLike', Vector) 
+     @checkInput('PointLike', Vector) 
     _pointAtPerc(uvw:PointLike):Point
     {
         const uvwv = uvw as Vector; // auto converted
@@ -2918,7 +3036,7 @@ export class Shape
     }
 
     /** Get a Point at a specific alignment (topbottom, left etc) */
-    //@checkInput([['Alignment',SHAPE_ALIGNMENT_DEFAULT]], ['auto'])
+    @checkInput([['Alignment',SHAPE_ALIGNMENT_DEFAULT]], ['auto'])
     pointAtAlignment(alignment:Alignment='center'):Point
     {
         // start and end on linear Shapes
@@ -2934,7 +3052,7 @@ export class Shape
 
     //// CONTEXT PREDICATES ////
 
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
     intersects(other:PointLikeOrAnyShapeOrCollection):boolean
     {
         let intersections = this._intersections(other);
@@ -2943,7 +3061,7 @@ export class Shape
     }
     
     /** Returns the shared Shape between two Shapes (private) */
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
     _intersections(others:PointLikeOrAnyShapeOrCollection):AnyShapeCollection // NOTE: we call it intersections() because user needs to expect multiple results
     {
         /**  
@@ -2980,21 +3098,22 @@ export class Shape
 
     /** Returns the shared Shape between two Shapes */
     //@addResultShapesToScene
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @sceneAdd
     intersections(others:PointLikeOrAnyShapeOrCollection):AnyShapeCollection // NOTE: we call it intersections() because user needs to expect multiple results
     {
         return this._intersections(others);
     }
 
     //@addResultShapesToScene
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
     intersection(others:PointLikeOrAnyShapeOrCollection):AnyShape
     {
         let i = this._intersections(others)?.first();
         return (!i) ? null : i;
     }
 
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
     _intersection(others:PointLikeOrAnyShapeOrCollection):AnyShape
     {
         let i = this._intersections(others)?.first();
@@ -3003,7 +3122,8 @@ export class Shape
 
     /** Return first Shape of intersections as copy */
     //@addResultShapesToScene
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @sceneAdd
     intersected(others:PointLikeOrAnyShapeOrCollection):AnyShape
     {
         let intersections = this._intersections(others);
@@ -3012,7 +3132,7 @@ export class Shape
 
     /** Return first Shape of intersections and replace current Shape */
     //@addResultShapesToScene
-    //@checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
+    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
     intersect(others:PointLikeOrAnyShapeOrCollection):AnyShape
     {
         let intersections = this._intersections(others);
@@ -3026,7 +3146,7 @@ export class Shape
     }
 
     /** Calculate intersection with Section algorithm: This works for all Shape types but only returns Vertices or Edges */
-    //@checkInput('AnyShapeOrCollection', 'auto')
+    @checkInput('AnyShapeOrCollection', 'auto')
     _intersectionsSection(other:AnyShapeOrCollection):AnyShapeCollection
     {
         if(other instanceof ShapeCollection)
@@ -3060,7 +3180,7 @@ export class Shape
     }
 
     /** Calculate intersection between Shapes ( from Face onward ) based on Common algoritm */
-    //@checkInput('AnyShapeOrCollection', 'auto')
+    @checkInput('AnyShapeOrCollection', 'auto')
     _intersectionsCommon(other:AnyShapeOrCollection):AnyShapeCollection
     {
         if(other instanceof ShapeCollection)
@@ -3081,14 +3201,14 @@ export class Shape
     }
 
     /** Tests if two Shape overlap: meaning the two Shapes have at least on Vertex in common  */
-    //@checkInput('AnyShape', 'auto')
+    @checkInput('AnyShape', 'auto')
     overlaps(other:AnyShape):boolean 
     {
         return (this._intersections(other) != null ) ? true : false;
     }
 
     /** Get amount of overlap [0-1] between this shape and given other */
-    //@checkInput('AnyShape', 'auto')
+    @checkInput('AnyShape', 'auto')
     overlapPerc(other:AnyShape):number
     {
         let overlappingVolume = 0.0;
@@ -3114,7 +3234,7 @@ export class Shape
 
         TODO: optimize this for performance. It's slow!
     */
-    //@checkInput('AnyShapeOrCollection', 'auto')
+    @checkInput('AnyShapeOrCollection', 'auto')
     contains(other:AnyShapeOrCollection):boolean
     {
         let others = new ShapeCollection(other);
@@ -3124,7 +3244,7 @@ export class Shape
     }
 
     /** Check if this Shape is parallel with the other - the specific meaning of this is different for each Shape Type */
-    //@checkInput('AnyShape', 'auto')
+    @checkInput('AnyShape', 'auto')
     parallel(other:any):boolean
     {
         console.warn(`Shape::parallel: Parallel is not implemented for this Shape of type ${this.type}. It probably does not make sense`);
@@ -3132,7 +3252,7 @@ export class Shape
     }
 
     /** Cast a 'Ray' (infinite Line) towards the Shape and Link information ( the hit point and support topography: Vertex, Edge, Face) */
-    //@checkInput('Edge', 'auto')
+    @checkInput('Edge', 'auto')
     raycast(ray:IEdge):Link
     {
         const SCAN_LENGTH = 1000;
@@ -3211,7 +3331,7 @@ export class Shape
      *  Populate Shape (linear: Edge/Wire, planar: Face, Shell and solid) with Vertices
      *  Resulting Vertices include start and end Vertices
      */
-    //@checkInput( [ [Number,10] ], [ Number] )
+    @checkInput( [ [Number,10] ], [ Number] )
     populated(num?:number):AnyShapeCollection 
     {
         // This method get overriden by subclasses - otherwise show error message!
@@ -3221,7 +3341,7 @@ export class Shape
     }
 
     /** Copy current Shape a number of times along X,Y,Z axis with a given spacing */
-    //@checkInput([ ['PointLike', [2,1,1] ], ['PointLike', [0,0,0]] ], ['Point', 'Point'])
+    @checkInput([ ['PointLike', [2,1,1] ], ['PointLike', [0,0,0]] ], ['Point', 'Point'])
     array(sizes?:PointLike, offsets?:PointLike):AnyShapeCollection
     {
         /* 
@@ -3253,7 +3373,7 @@ export class Shape
     }
 
     /** Copy Shape a number of times by spacing by a certain offset Vector  */
-    //@checkInput([ Number, 'PointLike' ], [Number, 'Vector'])
+    @checkInput([ Number, 'PointLike' ], [Number, 'Vector'])
     _array1D(size:number, offset:PointLike):AnyShapeCollection
     {
         const shapes = new ShapeCollection();
@@ -3268,28 +3388,28 @@ export class Shape
     }
 
     /** Alias for array along x-axis */
-    //@checkInput([[Number, 5],[Number, 100]], [Number, Number])
+    @checkInput([[Number, 5],[Number, 100]], [Number, Number])
     arrayX(size?:number, offset?:number)
     {
         return this._array1D(size, new Vector(1,0,0).scale(offset))
     }
 
     /** Alias for array along y-axis */
-    //@checkInput([[Number, 5],[Number, 100]], [Number, Number])
+    @checkInput([[Number, 5],[Number, 100]], [Number, Number])
     arrayY(size?:number, offset?:number)
     {
         return this._array1D(size, new Vector(0,1,0).scale(offset))
     }
 
     /** Alias for array along z-axis */
-    //@checkInput([[Number, 5],[Number, 100]], [Number, Number])
+    @checkInput([[Number, 5],[Number, 100]], [Number, Number])
     arrayZ(size?:number, offset?:number)
     {
         return this._array1D(size, new Vector(0,0,1).scale(offset))
     }
 
     /** Copies a Shape along a linear path */
-    //@checkInput(['LinearShape', Number, Boolean], ['auto','auto','auto'])
+    @checkInput(['LinearShape', Number, Boolean], ['auto','auto','auto'])
     arrayAlong(path:IEdge|Wire, num:number, align:boolean=false)
     {
         if( !['Edge','Wire'].includes(path.type))
@@ -3332,7 +3452,7 @@ export class Shape
     //// UTILS ////
 
     /** Get all geometries in this shape, you can specify the types (Vertex, Edge, Wire etc) */
-    //@checkInput('ShapeType', 'auto')
+    @checkInput('ShapeType', 'auto')
     _getEntities(type:ShapeType):AnyShapeCollection
     {
         if (this.isEmpty())
@@ -3510,7 +3630,7 @@ export class Shape
      *  For example: Wire => [ Edge, Edge, Edge ]
      *                Shell => [ Face, Face ]
     */
-    //@checkInput('ShapeType', 'auto')
+    @checkInput('ShapeType', 'auto')
     getSubShapes(type:ShapeType):Array<Shape>
     {
         const TYPE_TO_FUNC:{[key:string]:string} = {
@@ -3677,7 +3797,7 @@ export class Shape
      *       cube.select('F>|front and F>|back) - multiple
      *   
      */
-    //@checkInput(String,'auto')
+    @checkInput(String,'auto')
     select(selectString:string=null):AnyShape|AnyShapeCollection // NOTE: always return ShapeCollection for clarity
     {
         let selectedShapes:AnyShapeCollection = new Selector(this).select(selectString);
@@ -3780,34 +3900,34 @@ export class Shape
         return selectedShapes;
     }
     
-    //@checkInput(['ShapeCollection', 'MainAxis'],['auto', 'auto'])
+    @checkInput(['ShapeCollection', 'MainAxis'],['auto', 'auto'])
     _selectorOuterAlongAxis(shapes:AnyShapeCollection, alongAxis:MainAxis):AnyShapeCollection
     {
         return this._selectorDistanceAlongAxis(shapes, alongAxis);
     }   
 
-    //@checkInput(['ShapeCollection', 'MainAxis'],['auto', 'auto'])
+    @checkInput(['ShapeCollection', 'MainAxis'],['auto', 'auto'])
     _selectorSmallestAlongAxis(shapes:AnyShapeCollection, alongAxis:MainAxis):AnyShapeCollection
     {
         return this._selectorDistanceAlongAxis(shapes, '-' + alongAxis);
     }
 
     /** Selects all Shapes that have positive coordinates along given axis */
-    //@checkInput(['ShapeCollection', 'MainAxis'],['auto', 'auto'])
+    @checkInput(['ShapeCollection', 'MainAxis'],['auto', 'auto'])
     _selectorPositiveOnAxis(shapes:AnyShapeCollection, axis:MainAxis):AnyShapeCollection
     {
         return new ShapeCollection(shapes.filter( shape => shape.min(axis) >= 0 )); // force returning ShapeCollection
     }
 
     /** Selects all Shapes that have negative coordinates along given axis */
-    //@checkInput(['ShapeCollection', 'MainAxis'],['auto', 'auto'])
+    @checkInput(['ShapeCollection', 'MainAxis'],['auto', 'auto'])
     _selectorNegativeOnAxis(shapes:AnyShapeCollection, axis:MainAxis):AnyShapeCollection
     {
         return new ShapeCollection(shapes.filter( shape => shape.max(axis) < 0 )); // force returning ShapeCollection
     }
 
     /** Selects shapes of a certain subtype  */
-    //@checkInput(['ShapeCollection',String], ['auto','auto'])
+    @checkInput(['ShapeCollection',String], ['auto','auto'])
     _selectorOfsubtype(shapes:AnyShapeCollection, subType:string):AnyShapeCollection
     {
         const SHAPE_SUBTYPES = {
@@ -3857,7 +3977,7 @@ export class Shape
     }
 
     /** Sort and select Shapes based on distance to a Point - this method combines closest or furthest */
-    //@checkInput(['ShapeCollection','PointLike'], ['ShapeCollection','Vector'])
+    @checkInput(['ShapeCollection','PointLike'], ['ShapeCollection','Vector'])
     _selectorClosestOrFurtherstTo(shapes:AnyShapeCollection, to:PointLike, type:string='closest'):AnyShapeCollection
     {   
         let toVec = to as Vector // auto converted by //@checkInput
@@ -3897,19 +4017,19 @@ export class Shape
         return selectedShapes;
     }
 
-    //@checkInput(['ShapeCollection', 'PointLike'], ['auto', 'Point'])
+    @checkInput(['ShapeCollection', 'PointLike'], ['auto', 'Point'])
     _selectorClosestTo(shapes:AnyShapeCollection, to:PointLike):AnyShapeCollection
     {
         return this._selectorClosestOrFurtherstTo(shapes,(to as Point),'closest'); // to is auto converted to Point
     }
 
-    //@checkInput(['ShapeCollection', 'PointLike'], ['auto', 'Point'])
+    @checkInput(['ShapeCollection', 'PointLike'], ['auto', 'Point'])
     _selectorFurthestTo(shapes:AnyShapeCollection, to:PointLike):AnyShapeCollection
     {
         return this._selectorClosestOrFurtherstTo(shapes,to as Point,'furthest'); // to is auto converted to Point
     }
 
-    //@checkInput(['ShapeCollection', 'SelectorPointRange'], ['auto', 'auto'])
+    @checkInput(['ShapeCollection', 'SelectorPointRange'], ['auto', 'auto'])
     _selectorWithinRange(shapes:AnyShapeCollection, pointRange:SelectorPointRange):AnyShapeCollection
     {  
         const RANGE_OPERATORS = ['<', '>', '<=', '>=', '='];
@@ -3944,7 +4064,7 @@ export class Shape
      *  example: "V||fronttop"
      *  TODO: Really make this more robust
      */
-    //@checkInput(['ShapeCollection', String], ['auto', 'auto'])
+    @checkInput(['ShapeCollection', String], ['auto', 'auto'])
     _selectorSide(shapes:AnyShapeCollection, sidesString:string):AnyShapeCollection
     {
         const sideShapes = this._getSide(sidesString);
@@ -4044,7 +4164,7 @@ export class Shape
     }
 
     /** Get side subshapes - public version of _getSide */
-    //@checkInput('String', 'auto')
+    @checkInput('String', 'auto')
     side(sidesString?:string):AnyShapeCollection|null
     {
         return this._getSide(sidesString);
@@ -4055,7 +4175,7 @@ export class Shape
         
         TODO: Visually it's evident that when a Face is touching a side, its subshapes (Edges,Vertices) need to be evaluated too! 
     */
-    //@checkInput('String', 'auto')
+    @checkInput('String', 'auto')
     _getSide(sidesString?:string):AnyShapeCollection|null
     {
         const DISTANCE_FUZZYNESS_PERC = 0.01; // percentage of min size of Bbox
@@ -4200,7 +4320,7 @@ export class Shape
      *  @param sideString combination of Sides. Example: 'lefttop'
      *  Deprecated due to bad results
     */
-    //@checkInput('String', 'auto')
+    @checkInput('String', 'auto')
     _getSideDeprecated(sidesString?:string):AnyShape|null
     {
         const SIDE_FUZZYNESS = 0.5;
@@ -4316,7 +4436,7 @@ export class Shape
 
     //// SHAPE ANNOTATIONS API ////
 
-    //@checkInput([['DimensionOptions',null]], ['auto'])
+    @checkInput([['DimensionOptions',null]], ['auto'])
     dimension(dim?:DimensionOptions):IDimensionLine|Array<IDimensionLine> // TODO: unit typing
     {
         throw new Error(`Shape::dimension(): No implementation of dimension method in Shape of type ${this.type}!`);
@@ -4336,7 +4456,7 @@ export class Shape
         this.annotations.forEach(a => a.update());
     }
 
-    //@checkInput([['DimensionOptions', null]], ['auto'] )
+    @checkInput([['DimensionOptions', null]], ['auto'] )
     autoDim(options?:DimensionOptions)
     {
         throw new Error(`Shape::autoDim(): TODO!`);
@@ -4345,87 +4465,99 @@ export class Shape
 
     //// API to forward to _Obj ////
 
-    /** Adds current Shape by wrapping it into an object and adding it either to root Obj (=scene) or adding  */
+    /** Add this Shape to the host Modeler's scene, at the active layer.
+     *
+     *  A standalone Shape (one not created through a Modeler) has no scene to join, so this
+     *  is a no-op there — brep is usable on its own. Mirrors meshup Shape.addToScene(). */
     addToScene(force:boolean=false):Shape
     {
-        // TODO: avoid double adding to scene?
-        throw new Error(`Shape::addToScene(): TODO!`);
-        //this._brep.addToActiveLayer(this.object());
+        // `tmp()` opts a Shape out of the scene; force overrides that.
+        if(force){ this._isTmp = false; this._suppressScene = false; }
+        if(this._isTmp || this._suppressScene){ return this; }
 
-        return this;
-    }
-
-    checkObj():Obj
-    {
-        if(!this._obj)
+        const modeler = hostModeler(this);
+        if(modeler?.addToScene)
         {
-            this.object();
+            modeler.addToScene(this); // host decides the layer and tags the Shape
+            return this;
         }
-        return this._obj;
-    }
 
-    _getObjStyle():ObjStyle
-    {
-        // TODO: we can avoid copying the style by refering to another Obj that is its parent layer
-        let objStyle = this.object()._style;
-        let parentObjStyle = this.object()?._parent?._style;
-        // TODO: recurse to above layers?
-        return (objStyle || parentObjStyle) as ObjStyle;
-    }
-
-    style(newStyle:ObjStyle):Shape 
-    {
-        this.checkObj().style(newStyle);
+        // No host modeler: fall back to the scene we already belong to, if any. A truly
+        // standalone Shape has no scene and this is a no-op.
+        const layer = activeLayerOf(this);
+        if(layer){ (layer as any).addShape(this) }
 
         return this;
     }
 
-    /** NOTE: We don't use set/get here, because it doesnt play well with chaining */
-    name(n?:string):this|string
+    /** The effective style of this Shape: its own explicit properties on top of whatever
+     *  cascades down the scene graph (a color set on a layer reaches everything under it).
+     *  Returns meshup StyleData — one style model shared by both kernels. */
+    _getObjStyle():StyleData
+    {
+        return this._effectiveStyle().toData();
+    }
+
+    /** Merge style data into this Shape's own style. Named setStyle (not style) because
+     *  `style` is now the Style instance itself, as on meshup Shapes. */
+    setStyle(newStyle:Partial<StyleData>):this
+    {
+        this.style.merge(newStyle as StyleData);
+        return this;
+    }
+
+    /** NOTE: We don't use set/get here, because it doesnt play well with chaining.
+     *  Overloaded like meshup Shape.name(): setting returns `this` so calls chain, reading
+     *  returns the string. Without the overloads every chained `.name('x').copy()` sees a
+     *  `this | string` union and stops type-checking. */
+    name(n:string):this;
+    name():string|undefined;
+    name(n?:string):this|string|undefined
     {
         return (n) ? this.setName(n) : this.getName();
     }
 
-    /** Get name of container Obj */
+    /** Name this Shape. The name is mirrored onto its SceneNode so the scene graph, the
+     *  navigator and the GLTF node names all agree. */
     setName(newName?:string):this
-    {   
+    {
         if (!newName || (typeof newName !== 'string'))
-        { 
+        {
             console.warn(`Shape::setName(): Please supply a name. Ignored empty name.`)
+            return this;
         }
-        this.checkObj().name(newName);  
+        this._name = newName;
+        this._nameInherited = false;
+        if(this._node){ this._node.name = newName }
         return this;
     }
 
-    /** Get name of container Obj */
     getName():string|undefined
     {
-        const r = this?._obj?.name();
-        return (typeof r === 'string') ? r : undefined;
+        return (typeof this._name === 'string') ? this._name : undefined;
     }
 
-    /** Get name of container Obj */
     getId():string
     {
-        return this?._obj?._id;
+        return this._id;
     }
 
     hide():this
     {
-        this.checkObj().hide();
+        this.style.visible = false;
         return this;
     }
 
     show():this
     {
-        this.checkObj().show();
+        this.style.visible = true;
         return this;
     }
 
-    /** Return if the Shape Obj is set visible or not */
+    /** Whether this Shape is visible, taking any cascading layer visibility into account */
     visible():boolean
     {
-        return this.checkObj()._visible;
+        return this._effectiveStyle().visible !== false;
     }
 
     //// PROJECTIONS ////
@@ -4439,7 +4571,7 @@ export class Shape
      *  TODO: find a way to identify edges/vertices from before and after projection
      *          for example to preserve dimensions
      *  */
-     //@checkInput([['PointLike',[0,1,0]], ['Boolean', false]],['Vector', 'auto'])
+     @checkInput([['PointLike',[0,1,0]], ['Boolean', false]],['Vector', 'auto'])
     _project(planeNormal?:PointLike, all?:boolean):AnyShapeCollection
     {
         /* OC docs:
@@ -4519,14 +4651,14 @@ export class Shape
     /** Project this 3D Shape onto the XY Plane given by a normal Vector (up is the z-axis)
      *  It groups the different Edge types in the returning Collection for easy extractions */
     //@addResultShapesToScene
-    //@checkInput([['PointLike',[0,1,0]], ['Boolean', false]],['Vector', 'auto'])
+    @checkInput([['PointLike',[0,1,0]], ['Boolean', false]],['Vector', 'auto'])
     project(planeNormal?:PointLike, all?:boolean):AnyShapeCollection
     {
         return this._project(planeNormal, all);
     }
 
     /** Generate elevation from a given side without adding to Scene */
-    //@checkInput([['Side', 'top'], ['Boolean', false]], ['auto', 'auto'])
+    @checkInput([['Side', 'top'], ['Boolean', false]], ['auto', 'auto'])
     _elevation(side?:Side, all?:boolean):AnyShapeCollection
     {
         // to make sure we always have the projection on XY plane, with +Y is top
@@ -4552,7 +4684,8 @@ export class Shape
 
     /** Generate elevation from a given side and add to Scene */
     //@addResultShapesToScene
-    //@checkInput([['Side', 'top'], ['Boolean', false]], ['auto', 'auto'])
+    @checkInput([['Side', 'top'], ['Boolean', false]], ['auto', 'auto'])
+    @sceneAdd
     elevation(side?:Side, all?:boolean):AnyShapeCollection
     {
         return this._elevation(side, all);
@@ -4574,7 +4707,7 @@ export class Shape
         {
             const b = new Solid().makeBox(100,100,100);
             let viewpointShape = b._getSide(viewpoint as string);
-            if(viewpointShape && viewpointShape.type() == 'Vertex')
+            if(viewpointShape && viewpointShape.type == 'Vertex')
             {
                 let viewVec = viewpointShape.center().toVector().normalize();
                 let r = this._project(viewVec,showHidden);
@@ -4624,6 +4757,7 @@ export class Shape
      *      Use includeHidden=true to output with hidden lines
      */
     //@addResultShapesToScene
+    @sceneAdd
     isometry(viewpoint?:string|PointLike, includeHidden:boolean=false):AnyShapeCollection
     {
         return this._isometry(viewpoint, includeHidden)
@@ -4688,7 +4822,7 @@ export class Shape
             (curVertex, curVertexIndex) => 
             {
                 return { 
-                    objId: this._obj.id, 
+                    objId: this._id, 
                     ocId: curVertex._hashcode(), 
                     vertices : (curVertex as Vertex).toArray(), 
                     indexInShape: curVertexIndex 
@@ -4750,7 +4884,7 @@ export class Shape
                 // Output all Edges data as sequential vertices
                 meshEdges.push({ 
                     vertices : vertexCoords, 
-                    objId: this._obj.id, 
+                    objId: this._id, 
                     ocId: curEdge._hashcode(), 
                     indexInShape: curEdgeIndex });
 
@@ -4837,7 +4971,7 @@ export class Shape
             {
                 const faceMesh = {
                     ocId: curFace._ocId,
-                    objId : this._obj.id,
+                    objId : this._id,
                     vertices: [],
                     uvCoords: [],
                     normals: [],
@@ -4990,7 +5124,7 @@ export class Shape
      *  To avoid clear seperation between AY Geom library and Three we output here raw data
      *  There are interfaces defined in ExportModels.ts for clarity
      */
-    ////@protectOC()
+    @protectOC()
     toMeshShape(quality:MeshingQualitySettings): MeshShape
     {
         // As taken from https://github.com/zalo/CascadeStudio/blob/e90565990bc4131a6bbc2aa5334341bb350c8467/js/CADWorker/CascadeStudioShapeToMesh.js
@@ -5002,7 +5136,7 @@ export class Shape
         }
     
         const shapeMesh:MeshShape = { 
-            objId: this._obj.id,
+            objId: this._id,
             vertices: this.toMeshVertices(),
             edges: this.toMeshEdges(quality),
             faces: this.toMeshFaces(quality),
@@ -5031,12 +5165,12 @@ export class Shape
         return null;
     }
 
-    /** Output all properties of this Obj including that of its Shapes into a { key value } row. This is where Calc gets its main data from */
+    /** Output all properties of this Shape into a { key value } row. This is where Calc gets its main data from */
     toTableData():Object
     {
         return {
             ocId : this._ocId,
-            objId : (this._obj) ? this._obj._id : null,
+            objId : this._id,
             // typing
             isCollection: false,
             type : this.type,
@@ -5070,11 +5204,28 @@ export class Shape
         return new ShapeCollection(this).toSVG(options);
     }
 
-    /** Export 3D Shape to GLTF */
-    async toGLTF(options?:ExportGLTFOptions): Promise<ArrayBuffer>
+    /** Export this Shape as a GLB binary.
+     *
+     *  Goes through the shared exporter: the Shape is tessellated into its meshup stand-in
+     *  (see brep/toMeshup.ts) and written by the mesh kernel's GLTF builder, so a per-Shape
+     *  export is identical in format to what a whole scene produces.
+     *
+     *  NOTE: this replaces the old OpenCascade RWGltf_CafWriter route, which depended on
+     *  GLTFBuilder methods that no longer exist and could not run. */
+    async toGLTF(_options?:ExportGLTFOptions): Promise<ArrayBuffer>
     {
-        // We use centralized export functions from Exporter
-        return await new Exporter({ brep: this._brep }).exportToGLTF(this, options);
+        const { brepShapeToMeshup } = await import('./toMeshup');
+        const { SceneNode } = await import('@archiyou/meshup/src/SceneNode');
+
+        const exported = brepShapeToMeshup(this as any);
+        if(!exported)
+        {
+            throw new Error(`Shape::toGLTF(): this ${this.type} has no exportable geometry.`);
+        }
+
+        const root = SceneNode.root('scene');
+        root.add(exported as any);
+        return await root.toGLB() as unknown as ArrayBuffer;
     }
 
     /** Convenience method to save the shape to a file

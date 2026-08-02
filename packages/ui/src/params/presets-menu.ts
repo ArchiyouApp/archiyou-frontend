@@ -3,7 +3,6 @@ import { customElement, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
-import '../menu-badge.js';
 
 import {
   scriptPresets,
@@ -23,10 +22,6 @@ export class PresetsMenu extends SignalWatcher(LitElement)
   @state() private _renamingPreset: string | null = null;
   @state() private _renameDraft = '';
   @state() private _deletingPreset: string | null = null;
-  @state() private _badgeFlashing = false;
-
-  private _prevCount = 0;
-  private _flashTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ── Render ──
 
@@ -36,15 +31,11 @@ export class PresetsMenu extends SignalWatcher(LitElement)
     this.toggleAttribute('collapsed', collapsed);
 
     const presets = scriptPresets.get();
-    const count = presets.length;
 
     return html`
       <div class="header" @click=${this._toggleCollapse}>
         <wa-icon library="lucide" name="bookmark"></wa-icon>
         <span class="title">presets</span>
-        ${count > 0 ? html`
-          <menu-badge .value=${count} .attention=${this._badgeFlashing}></menu-badge>
-        ` : nothing}
         <span class="spacer"></span>
         <wa-icon library="lucide" name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
       </div>
@@ -58,35 +49,6 @@ export class PresetsMenu extends SignalWatcher(LitElement)
         </div>
       ` : nothing}
     `;
-  }
-
-  // ── Lifecycle ──
-
-  override updated()
-  {
-    const count = scriptPresets.get().length;
-    if (count > this._prevCount)
-    {
-      this._triggerBadgeFlash();
-    }
-    this._prevCount = count;
-  }
-
-  override disconnectedCallback()
-  {
-    super.disconnectedCallback();
-    if (this._flashTimer !== null) clearTimeout(this._flashTimer);
-  }
-
-  private _triggerBadgeFlash()
-  {
-    if (this._flashTimer !== null) clearTimeout(this._flashTimer);
-    this._badgeFlashing = true;
-    this._flashTimer = setTimeout(() =>
-    {
-      this._badgeFlashing = false;
-      this._flashTimer = null;
-    }, 1200);
   }
 
   // ── Row rendering ──

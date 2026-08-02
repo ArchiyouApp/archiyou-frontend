@@ -1,12 +1,11 @@
-export default {
-  id: "archiyou/tomy/0.6.0",
-  name: "tomy",
-  author: "archiyou",
-  description: "A experimental stool made of 4 variable rectangular beams inspired by stereotomy",
-  tags: [],
-  created: "2025-03-28T13:15:03.541Z",
-  updated: "2025-03-28T13:15:03.541Z",
-  code: `// Archiyou 0.6.3
+// tomy
+// A experimental stool made of 4 variable rectangular beams inspired by stereotomy
+
+$PARAMS.define('HEIGHT', 'number', { label: "Height", units: "mm", order: 0, default: 600, minimum: 300, maximum: 1200, multipleOf: 1 });
+$PARAMS.define('BEAM_WIDTH', 'number', { label: "Beam size", units: "mm", order: 0, default: 100, minimum: 40, maximum: 150, multipleOf: 1 });
+$PARAMS.define('LEG_OFFSET', 'number', { label: "Leg offset", units: "mm", order: 0, default: 60, minimum: 20, maximum: 180, multipleOf: 1 });
+
+// Archiyou 0.6.3
 /* !!!! CURRENTLY ONLY FOR BEAM_WIDTH = BEAM_THICKNESS
     otherwise legs are not the same!
     TODO: touch cuts in iso
@@ -28,7 +27,7 @@ legTopPlane = rect(BEAM_WIDTH,BEAM_THICKNESS)
 layer('legs').color('green');
 
 legBottomPlane = legTopPlane
-                    .moved(-LEGS_DIAGONAL_OFFSET, -LEGS_DIAGONAL_OFFSET)
+                    .copy().move(-LEGS_DIAGONAL_OFFSET, -LEGS_DIAGONAL_OFFSET)
                     .moveToZ(0)
 
 leg = legBottomPlane.loft(legTopPlane.hide())
@@ -59,10 +58,10 @@ model = all();
 // Final flat leg
 legCutFrontFace = leg.faces()
 .filter( f => f.normal().angle([0,-1,0]) < 40 ) // get front leg  face
-.sort((f1,f2) => f1.angle([0,-1,0]) - f2.angle([0,-1,0])) // a bit more robust
-.first().copy().move(1000)
+.sort((f1,f2) => f1.normal().angle([0,-1,0]) - f2.normal().angle([0,-1,0])) // a bit more robust
+.first().toMesh().move(1000)
 
-legCutFrontFace.rotateVecToVec(legCutFrontFace.normal(), [0,0,1]).moveToZ(0); // TODO: good layflat method
+legCutFrontFace.layflat().moveToZ(0); // was rotateVecToVec(normal,[0,0,1])
 legCutFrontFace.move(-legCutFrontFace.bbox().width()-100).moveToY(0)
 //legCutFrontFace.autoDim();
 //legCutFrontFace.hide();
@@ -84,29 +83,26 @@ largestArea = flatLegFacesByArea.first().area();
 flatLegFacesByAreaLargest = flatLegFacesByArea.filter( f => Math.round(f.area()) === Math.round(largestArea) )
                                 .sort((a,b) => Math.abs(b.normal().y) - Math.abs(a.normal().y) )
 flatFace = flatLegFacesByAreaLargest.first();
-flatLeg.rotateVecToVec(flatFace.normal(), [0,1,0], flatLeg.center()).rotateX(-90);
+flatLeg.rotateQuaternion(flatFace.normal().rotationBetween([0,1,0])).rotateX(-90); // was rotateVecToVec()
 
 
 // TODO: fix obbox().box() etc
 // Rotate so length of obbox aligns to y axis
 obbox = flatLeg.obbox();
-obboxSizes = [ { axis: 'x', size: obbox.sizeAlongAxis('x') }, 
-                { axis: 'y', size: obbox.sizeAlongAxis('y') },
-                { axis: 'z', size: obbox.sizeAlongAxis('z') } ]
-legLength = obboxSizes.sort((a,b) => b.size - a.size )[0].size;
-lengthAxis = obboxSizes.sort((a,b) => b.size - a.size )[0].axis;
-lengthVec = obbox[lengthAxis+'Dir']()
+// meshup OBbox axes are principal axes sorted by variance: axes()[0] is the longest
+legLength = obbox.length();
+lengthVec = obbox.axes()[0];
 
-flatLeg.rotateVecToVec(lengthVec, [0,1,0], flatLeg.center());
+flatLeg.rotateQuaternion(vector(lengthVec).rotationBetween([0,1,0])); // was rotateVecToVec()
 flatLeg.moveZ(-flatLeg.bbox().height()/2); // TMP: not on XY, but underneath for layFlatTop to be shown
 
 //     When beam is flat - local axis is x, y is feed direction of saw
 //     primary cut angle is [-45,45] where x-axis gives +- ~ this corresponds to axis of saw base 
-layFlatFaceTop = flatLeg.select('F>>Z').copy().color('blue');
+layFlatFaceTop = flatLeg.select('F||top').copy().color('blue');
 layFlatFaceTop.hide();
 
-cutBackPlane = flatLeg.select('F>>Y').copy().color('purple');
-cutBackPrimaryLine = layFlatFaceTop.select('E>>Y').copy().color('red').hide();
+cutBackPlane = flatLeg.select('F||back').copy().color('purple');
+cutBackPrimaryLine = layFlatFaceTop.select('E||back').copy().color('red').hide();
 cutBackPrimaryLineDirection = cutBackPrimaryLine.direction().normalize(); // physical cut direction (- local x)
 if(cutBackPrimaryLineDirection.x < 0) cutBackPrimaryLineDirection.reverse();
 
@@ -134,9 +130,9 @@ if(cutBackPlane.normal().z < 0)
 //layFlatFaceTop.autoDim(); // Needs to move to Z=0 otherwise is not shown. Do in Doc pipeline
 
 // for presentation make first beam only cut at back side
-frontCutFace = flatLeg.select('F<<Y').copy();
+frontCutFace = flatLeg.select('F||front').copy();
 frontCutRect = rect(frontCutFace.bbox().width(), frontCutFace.bbox().height())
-frontCutFaceLoft = frontCutFace.lofted(
+frontCutFaceLoft = frontCutFace.copy().loft(
     frontCutRect
     .rotateX(90)
     .align(frontCutFace, 'toprightfront', 'toprightfront'))
@@ -144,7 +140,7 @@ frontCutFaceLoft = frontCutFace.lofted(
 
 // Don't show any fab model parts
 legFabBaseCuts = layer('cuts').shapes().hide();
-legFabFaces = group(layFlatFaceTop, legCutFrontFace).hide();
+legFabFaces = collection(layFlatFaceTop, legCutFrontFace).hide();
 
 
 //// METRICS
@@ -211,16 +207,16 @@ doc.page('spec')
     // NOTE: Line breaks not working in browser (they do in PDF)
     // NOTE for rectangular offsets cutBackPrimaryAngle = cutBackPrimaryAngle
     // - to avoid confusion with rounding errors have them the same
-    .textarea(\`You can cut all legs from one beam without changing saw angles.
+    .textarea(`You can cut all legs from one beam without changing saw angles.
     Lay beam like in isometry on your miter saw.
     Set saw angles: 
-        - Primary angle=\${cutBackPrimaryAngle}
-        - Secondary angle=\${Math.abs(cutBackPrimaryAngle)} (cut in feeddirection)
+        - Primary angle=${cutBackPrimaryAngle}
+        - Secondary angle=${Math.abs(cutBackPrimaryAngle)} (cut in feeddirection)
     Start first cut at end of the beam
     Then make legs by marking lengths 
     and feed the beam through the saw 
     without changing the orientation of beam
-    afterwards you can cut the orthogonal cuts where the beams touch\`,
+    afterwards you can cut the orthogonal cuts where the beams touch`,
             { size: '3.5mm'})
     .width(0.3)
     .position(0.7, 0.57)
@@ -232,8 +228,8 @@ doc.page('spec')
     .text('Parts', { size: '5mm'})
     .pivot(0,0)
     .position(0,0.07)
-    .textarea(\`You need 4 beams of around \${Math.round(legLength*1.05)}mm.
-    That's total length of \${Math.round(legLength*1.05*4)}mm\`, { size: '3mm'})
+    .textarea(`You need 4 beams of around ${Math.round(legLength*1.05)}mm.
+    That's total length of ${Math.round(legLength*1.05*4)}mm`, { size: '3mm'})
     .width(0.25)
     .height(0.07)
     .pivot(0,0)
@@ -244,146 +240,4 @@ doc.page('spec')
 
 
     
-`,
-  params: {
-    HEIGHT: {
-      name: "HEIGHT",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Height",
-      default: 600,
-      _value: undefined,
-      min: 300,
-      max: 1200,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BEAM_WIDTH: {
-      name: "BEAM_WIDTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Beam size",
-      default: 100,
-      _value: undefined,
-      min: 40,
-      max: 150,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    LEG_OFFSET: {
-      name: "LEG_OFFSET",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Leg offset",
-      default: 60,
-      _value: undefined,
-      min: 20,
-      max: 180,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    }
-  },
-  presets: {},
-  published: {
-    url: "/archiyou/tomy:0.6.0",
-    version: "0.6.0",
-    title: "Tomy",
-    public: true,
-    published: "2025-03-28T14:15:03.541566",
-    description: "A experimental stool made of 4 variable rectangular beams inspired by stereotomy",
-    params: {
-      HEIGHT: {
-        MAX_TEXT_LENGTH: 255,
-        name: "HEIGHT",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Height",
-        default: 600,
-        min: 300,
-        max: 1200,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BEAM_WIDTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BEAM_WIDTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Beam size",
-        default: 100,
-        min: 40,
-        max: 150,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      LEG_OFFSET: {
-        MAX_TEXT_LENGTH: 255,
-        name: "LEG_OFFSET",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Leg offset",
-        default: 60,
-        min: 20,
-        max: 180,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      }
-    },
-    presets: {},
-    libraryUrl: "http://localhost:4000"
-  }
-};
+

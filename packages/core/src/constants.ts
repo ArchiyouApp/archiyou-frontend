@@ -29,6 +29,12 @@ export const METRIC_DEFAULT_ICON = 'gauge' // default icon for metrics without a
 export const SCRIPT_OUTPUT_TABLE_FORMATS = ['json','xlsx', 'gsheets'] // see types: ScriptOutputTableFormat
 export const SCRIPT_OUTPUT_DOC_FORMATS = ['json','pdf','svg','svg-pages'] // see types: ScriptOutputDocFormat
 
+/** The one output path used to generate a script's thumbnail (see modeler/SVGExporter.ts).
+ *  Exported as a constant because publish and share both request it AND both look the
+ *  result back up by `requestedPath` — a drifting string silently yields no thumbnail. */
+export const THUMBNAIL_OUTPUT_PATH =
+    'default/model/svg?thumbnail=1&view=iso&hidden=0&square=1&maxBytes=65536'
+
 export const SCRIPT_OUTPUT_GLTF_OPTIONS_DEFAULT = 
 {
     edges: true, // show edges by default in glTF output

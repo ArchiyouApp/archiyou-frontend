@@ -13,6 +13,11 @@ import { toDeg, toRad, roundToTolerance } from '.' // utils
 // import { targetOcForGarbageCollection } from '.' // TODO AFTER REFACTOR
 
 
+
+// Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
+// run at class-definition time, before it has finished initialising.
+import { checkInput } from './decorators'
+
 export class Vector extends Point
 {  
     /* inherited from Point:
@@ -225,6 +230,7 @@ export class Vector extends Point
     //// SETTING PROPERTIES ////
 
     /** Sets x,y,z components of Vector  */
+    @checkInput( 'PointLike', 'Vector')
     set(vector:PointLike, y?:number, z?:number):Vector
     {
         this._copyOcFromVec(Point.fromPointLike(vector, y, z).toVector());
@@ -233,6 +239,7 @@ export class Vector extends Point
 
     /** Sets x component of Vector  */
     // overload method on Point
+    @checkInput(Number, Number)
     setX(x:number):Vector
     {
         this._x = x;
@@ -242,6 +249,7 @@ export class Vector extends Point
 
     /** Sets y component of Vector  */
     // overload method on Point
+    @checkInput(Number, Number)
     setY(y:number):Vector
     {
         this._y = y;
@@ -251,6 +259,7 @@ export class Vector extends Point
 
     /** Sets z component of Vector  */
     // overload method on Point
+    @checkInput(Number, Number)
     setZ(z:number):Vector
     {
         this._z = z;
@@ -284,6 +293,7 @@ export class Vector extends Point
     }
 
     /** Check if this Vector is normal to the another: abs(<me>.Angle(Other) - PI/2.) <= AngularToleranc */
+    @checkInput('PointLike', Vector)
     isNormalTo(other:PointLike, y?:number, z?:number):boolean
     {
         return this._ocVector.IsNormal( Point.fromPointLike(other, y, z).toVector()._ocVector, this._oc.SHAPE_TOLERANCE);
@@ -385,6 +395,7 @@ export class Vector extends Point
     //// MODIFYING THE VECTOR ////
 
     /** Move the Vector - mainly for consistency for example Vertex */
+    @checkInput('PointLike', 'Vector')
     move(p:PointLike, y?:number, z?:number):Vector
     {
         const moveVec = Point.fromPointLike(p, y, z).toVector();
@@ -402,6 +413,7 @@ export class Vector extends Point
     }
 
     /** Add a PointLike to this Vector */
+    @checkInput('PointLike', 'Vector')
     add(vector:PointLike, y?:number, z?:number):Vector
     {
         const v = Point.fromPointLike(vector, y, z).toVector();
@@ -411,12 +423,14 @@ export class Vector extends Point
     }
 
     /** Add PointLike to this one and return a new Vector  */
+    @checkInput('PointLike', 'Vector')
     added(vector:PointLike, y?:number, z?:number):Vector
     {
         return this.copy().add(vector, y, z);
     }
 
     /** Subtract a PointLike from current Vector */
+    @checkInput('PointLike', 'Vector')
     subtract(vector:PointLike, y?:number, z?:number):Vector
     {
         const v = Point.fromPointLike(vector, y, z).toVector();
@@ -426,6 +440,7 @@ export class Vector extends Point
     }
 
     /** Subtract a PointLike from this one and return a new Vector  */
+    @checkInput('PointLike', 'Vector')
     subtracted(vector:PointLike, y?:number, z?:number):Vector
     {
         return this.copy().subtract(vector, y, z);
@@ -434,6 +449,7 @@ export class Vector extends Point
     /** Multiple Vector with scalar (1D,2D,3D) and return current Vector 
      *  We can multiple with one number or by axis with Array [x,y,z]
     */
+    @checkInput('PointLike', 'auto') // let through and figure out, because we need to detect single number or Vector input
     multiply(scalar:number|PointLike, ...args):Vector // NOTE: args to signify that checkInput will gather them and avoid TS warnings
     {
         /* OC does not offer scaling in multiple axis: do this manually
@@ -460,24 +476,28 @@ export class Vector extends Point
     }
 
     /** Multiply Vector with scalar and return a copy of Vector */
+    @checkInput('PointLike', 'auto')
     multiplied(scalar:number|PointLike):Vector
     {
         return this.copy().multiply(scalar);
     }
 
     /** Scale is an alias for multiply */
+    @checkInput('PointLike', 'auto')
     scale(scalar:number|PointLike):Vector
     {
         return this.multiply(scalar);
     }
 
     /** Scaled is an alias for multiplied */
+    @checkInput('PointLike', 'auto')
     scaled(scalar:number|PointLike):Vector
     {
         return this.multiplied(scalar);
     }
 
     /** Divide Vector by scalar and return current Vector */
+    @checkInput('PointLike', 'auto')
     divide(scalar:number|PointLike):Vector
     {
         const scalarVec = Point.fromPointLike(scalar as PointLike).toVector();
@@ -490,12 +510,14 @@ export class Vector extends Point
     }
 
     /** Divide Vector by this one and return a new Vector  */
+    @checkInput('PointLike', 'auto')
     divided(scalar:PointLike):Vector
     {
         return this.copy().divide(scalar);
     }
 
     /** Calculate Cross Vector with this and other vector and return a new Vector */
+    @checkInput('PointLike', 'Vector')
     crossed(other:PointLike, y?:number, z?:number):Vector
     {
         const otherVec = Point.fromPointLike(other, y, z).toVector();
@@ -511,6 +533,7 @@ export class Vector extends Point
     }
 
     /** Calculate Dot / Inner product with this and other Vector */
+    @checkInput('PointLike', 'Vector')
     dot(other:PointLike, y?:number, z?:number):number
     {
         const otherVec = Point.fromPointLike(other, y, z).toVector();
@@ -557,6 +580,7 @@ export class Vector extends Point
         @param position position of mirror axis - default [0,0,0]
         @param direction direction of mirror axis - default Y axis [0,1,0]
     */
+    @checkInput( [ ['PointLike',[0,0,0]] , ['PointLike',[0,1,0]] ], [Vector, Vector]) // default values in checkInput
     mirror(position?:PointLike, direction?:PointLike):Vector
     {
         const positionPoint = Point.fromPointLike(position ?? [0,0,0]).toVector().toPoint();
@@ -579,6 +603,7 @@ export class Vector extends Point
      *   Rotates current Vector along a axis defined by position and direction
      *   @param angle in degrees
      */   
+    @checkInput( [Number, ['PointLike',[0,0,0]] , ['PointLike',[0,0,1]] ], [Number, 'Point', 'Vector'])
     rotate(angle:number, position?:PointLike, direction?:PointLike):this
     {
         // IMPORTANT: probably right-hand rotation - for Y - axis this could cause problems
@@ -596,22 +621,26 @@ export class Vector extends Point
      *   Same as rotate() but returns a copy
      *   @param angle in degrees
      */ 
+    @checkInput( [Number, ['PointLike',[0,0,0]] , ['PointLike',[0,0,1]] ], [Number, 'Point', 'Vector'])    
     rotated(angle:number, position?:PointLike, direction?:PointLike):Vector
     {
         return this.copy().rotate(angle, position, direction);
     }
 
     // TODO: add rotation pivot
+    @checkInput(Number,'auto')
     rotateX(angle:number):this
     {
         return this.rotate(angle, [0,0,0], [1,0,0])
     }
 
+    @checkInput(Number,'auto')
     rotateY(angle:number):this
     {
         return this.rotate(angle, [0,0,0], [0,1,0])
     }
 
+    @checkInput(Number,'auto')
     rotateZ(angle:number):this
     {
         return this.rotate(angle, [0,0,0], [0,0,1])
@@ -643,12 +672,14 @@ export class Vector extends Point
     //// RELATIONS WITH OTHER VECTORS ////
 
     /** Check if this Vector is the opposite of another Vector */
+    @checkInput('PointLike', 'Vector')
     isOpposite(other:PointLike, y?:number, z?:number):boolean
     {
         return this._ocVector.IsOpposite(Point.fromPointLike(other, y, z).toVector()._ocVector, this._oc.SHAPE_TOLERANCE);
     }
 
     /** Check if this Vector is parallel to another Vector */
+    @checkInput('PointLike', 'Vector')
     isParallel(other:PointLike, y?:number, z?:number):boolean
     {
         const otherVec = Point.fromPointLike(other, y, z).toVector();
@@ -677,6 +708,7 @@ export class Vector extends Point
     }
 
     /** Return the smallest angle between this and another Vector in degrees */
+    @checkInput('PointLike', 'Vector')
     angle(other:PointLike, y?:number, z?:number):number
     {
         const otherVec = Point.fromPointLike(other, y, z).toVector();
@@ -729,6 +761,7 @@ export class Vector extends Point
     }
 
     /** Return the angle between one Vector and another where ref defines the positive sense of rotation */
+    @checkInput(['PointLike','PointLike'], ['Vector','Vector'])
     angleRef(other:PointLike, ref:PointLike):number
     {
         const otherVec = Point.fromPointLike(other).toVector();
@@ -744,6 +777,7 @@ export class Vector extends Point
         return roundToTolerance(toDeg(this._ocVector.AngleWithRef(otherVec._ocVector, refVec._ocVector)));
     }
 
+    @checkInput('PointLike', 'Vector')
     projectedToPlane(normal:PointLike):Vector
     {
         const n = Point.fromPointLike(normal).toVector();
@@ -754,12 +788,14 @@ export class Vector extends Point
     }
 
     /** Get smallest angle with another Vector around a axis direction */
+    @checkInput(['PointLike', 'PointLike'], ['Vector', 'Vector'])
     angleAround(other:PointLike, axis:PointLike):number
     {
         return this.projectedToPlane(axis).angle(other)
     }
 
     /** Check if this Vector is the same as another */
+    @checkInput('PointLike', 'Vector')
     equals(other:PointLike, y?:number, z?:number):boolean
     {
         const otherVec = Point.fromPointLike(other, y, z).toVector();
@@ -767,12 +803,14 @@ export class Vector extends Point
     }
 
     /** Returns distance between current Vector with another */
+    @checkInput('PointLike', 'Vector') // convert input to Vector
     distance(other:PointLike, y?:number, z?:number):number
     {
         return this.subtracted(other, y, z).length();
     }
 
     /** Returns the X/Y/Z Plane that Vectors share */
+    @checkInput('PointLike', 'Vector') // convert input to Vector
     sharedPlanes(other:PointLike, y?:number, z?:number):Array<string>
     {
         const TOLERANCE = this._oc.SHAPE_TOLERANCE;

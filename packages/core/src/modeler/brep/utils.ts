@@ -7,9 +7,18 @@
 export { isNumeric, hash, toRad, toDeg, uuid4 as uuidv4 } from '../../utils'
 export { convertValueFromToUnit } from '../../docs/utils'
 
-/** Round a number to the nearest tolerance value */
-export function roundToTolerance(n: number, tolerance: number = 0.01): number {
-    return Math.round(n / tolerance) * tolerance;
+// NOTE: typeguards.ts imports from this module too. The cycle is harmless because both sides
+// only call across it at runtime, never during module evaluation.
+import { isCoordArray, isAnyShape, isPointLike } from './typeguards'
+
+/** Round a coordinate to the kernel's working precision.
+ *
+ *  3 decimals — matching OpenCascade's SHAPE_TOLERANCE of 0.001 (see OcLoader). Rounding
+ *  coarser than the kernel's own tolerance quietly degrades every coordinate that passes
+ *  through _fromOcPoint and friends. */
+export function roundToTolerance(n: number, decimals: number = 3): number {
+    const f = Math.pow(10, decimals);
+    return Math.round(n * f) / f;
 }
 
 /** Check if code is running in a browser environment */
@@ -17,24 +26,59 @@ export function isBrowser(): boolean {
     return typeof window !== 'undefined' && typeof window.document !== 'undefined';
 }
 
-/** Generate an array of integers from start to end (inclusive) */
-export function intRange(start: number, end: number, step: number = 1): number[] {
+/** Generate an array of integers from start to end (inclusive).
+ *
+ *  Accepts numeric strings: the only caller is the Selector's index-range syntax
+ *  (`'E[0-3]'`), which hands over raw regex-match groups. Parsing here — rather than
+ *  iterating whatever came in — is what stops `i += 1` from concatenating strings forever.
+ *  Returns [] for an inverted range. */
+export function intRange(start: string | number, end: string | number): number[] {
+    const from = typeof start === 'string' ? parseInt(start) : start;
+    const to = typeof end === 'string' ? parseInt(end) : end;
+
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return [];
+    if (to < from) return [];
+
     const result: number[] = [];
-    for (let i = start; i <= end; i += step) {
+    for (let i = from; i <= to; i++) {
         result.push(i);
     }
     return result;
 }
 
-/** Flatten a nested array of entities into a single flat array */
+/** Flatten a nested array of entities into a single flat array.
+ *
+ *  Coordinate arrays are left intact: `[[0,0,0],[100,0,0]]` flattens to two points, NOT to
+ *  six numbers. Without that guard `new VertexCollection([0,0,0],[100,100,100])` produced one
+ *  Vertex per coordinate instead of one per point. */
 export function flattenEntities(arr: any[]): any[] {
-    return arr.reduce((acc: any[], val: any) =>
-        Array.isArray(val) ? acc.concat(flattenEntities(val)) : acc.concat(val), []);
+    return arr.reduce((out: any[], next: any) => {
+        if (Array.isArray(next) && !isCoordArray(next)) {
+            out.push(...flattenEntities(next));
+        }
+        else {
+            out.push(next);
+        }
+        return out;
+    }, []);
 }
 
-/** Flatten entities to a flat array (alias for flattenEntities) */
-export function flattenEntitiesToArray(arr: any[]): any[] {
-    return flattenEntities(arr);
+/** Flatten ONE level of entities: an inner array is spread only when it is not a coordinate
+ *  array and holds nothing but Shapes/PointLikes. Unlike flattenEntities this does not
+ *  recurse — it is used where a nested grouping is meaningful. */
+export function flattenEntitiesToArray(entities: any): any[] {
+    if (!Array.isArray(entities)) return [entities]; // single entity
+
+    const out: any[] = [];
+    entities.forEach(e => {
+        if (Array.isArray(e) && !isCoordArray(e) && e.every(s => isAnyShape(s) || isPointLike(s))) {
+            out.push(...e);
+        }
+        else {
+            out.push(e);
+        }
+    })
+    return out;
 }
 
 /** Convert a hex color string (e.g. '#ff0000') to an integer */

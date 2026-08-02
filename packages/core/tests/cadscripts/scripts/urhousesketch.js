@@ -1,12 +1,25 @@
-export default {
-  id: "archiyou/urhousesketch/0.5.2",
-  name: "urhousesketch",
-  author: "archiyou",
-  description: "Sketch design for URHOUSE",
-  tags: [],
-  created: "2025-10-10T12:51:31.645Z",
-  updated: "2025-10-10T12:51:31.645Z",
-  code: `// Archiyou 0.6.5
+// urhousesketch
+// Sketch design for URHOUSE
+
+$PARAMS.define('WIDTH', 'number', { label: "Width", units: "cm", order: 0, default: 400, minimum: 200, maximum: 1000, multipleOf: 1 });
+$PARAMS.define('HEIGHT', 'number', { label: "Height", units: "cm", order: 0, default: 500, minimum: 200, maximum: 1000, multipleOf: 1 });
+$PARAMS.define('DEPTH', 'number', { label: "Depth", units: "cm", order: 0, default: 500, minimum: 200, maximum: 3000, multipleOf: 1 });
+$PARAMS.define('ROOF_TYPE', 'options', { label: "Roof Type", order: 0, default: "gable", options: ["gable","shed"] });
+$PARAMS.define('ROOF_ANGLE', 'number', { label: "Roof Angle", order: 0, default: 35, minimum: 10, maximum: 60, multipleOf: 1 });
+$PARAMS.define('ROOF_RIDGE_AT_PERC', 'number', { label: "Ridge at perc", order: 0, default: 50, minimum: 20, maximum: 80, multipleOf: 1 });
+$PARAMS.define('ROOF_RIDGE_SLOPES_SAME', 'options', { label: "Ride slopes same", order: 0, default: "angle", options: ["angle","height"] });
+$PARAMS.define('OVERHANGS_SAME', 'boolean', { label: "Overhangs same", order: 0, default: true });
+$PARAMS.define('OVERHANG_SIZE', 'number', { label: "Overhangs Size", units: "cm", order: 0, default: 50, minimum: 0, maximum: 200, multipleOf: 1 });
+$PARAMS.define('OVERHANG_FRONT', 'number', { label: "Overhang Front", units: "cm", order: 0, default: 50, minimum: 0, maximum: 200, multipleOf: 1 });
+$PARAMS.define('OVERHANG_LEFT', 'number', { label: "Overhang Left", order: 0, default: 50, minimum: 0, maximum: 200, multipleOf: 1 });
+$PARAMS.define('OVERHANG_RIGHT', 'number', { label: "Overhang Right", order: 0, default: 50, minimum: 0, maximum: 200, multipleOf: 1 });
+$PARAMS.define('OVERHANG_BACK', 'number', { label: "Overhang Back", order: 0, default: 50, minimum: 0, maximum: 200, multipleOf: 1 });
+$PARAMS.define('MAIN_FACADE', 'options', { label: "Main Facade side", order: 0, default: "Front", options: ["Front","Left","Right","Back"] });
+$PARAMS.define('GENERATE_OPENINGS', 'boolean', { label: "Openings", order: 0, default: true });
+$PARAMS.define('ENERGY_CALC', 'boolean', { label: "Energy calculation", default: false });
+$PARAMS.define('ENERGY_AZIMUTH', 'number', { label: "azimuth", units: "deg", default: 0, minimum: 0, maximum: 360, multipleOf: 1 });
+
+// Archiyou 0.6.5
 
 units('cm')
 
@@ -88,8 +101,8 @@ roofLineOutside.moveZ(-roofLineOutside.bbox().minZ());
 // Test if roof already exceeds maximum height
 if(roofLineOutside.bbox().maxZ() > (HEIGHT - MIN_WALL_HEIGHT))
 {
-    print(\`Your roof already exceeds given total height of \${HEIGHT} cm (and minimal wall height of \${MIN_WALL_HEIGHT}).
-    Please lower roof angle if you want to stay under that height!\`);
+    print(`Your roof already exceeds given total height of ${HEIGHT} cm (and minimal wall height of ${MIN_WALL_HEIGHT}).
+    Please lower roof angle if you want to stay under that height!`);
     // Higher roof line to realize min wall height
     roofLineOutside.moveZ(MIN_WALL_HEIGHT)
 }
@@ -100,25 +113,25 @@ else {
 
 // Make roofLineInside
 roofLineOutsideOffsetted = roofLineOutside
-                        .offsetted(-ROOF_THICKNESS, null, [0,-1,0]) // Make sure we set plane normal for offset for shed
+                        .copy().offset(-ROOF_THICKNESS, null, [0,-1,0]) // Make sure we set plane normal for offset for shed
                         .hide();
 
 roofLineInsideLeft = roofLineOutsideOffsetted
                         .edges().first()
-                        .extendedTo(line([0,0,-10000],[0,0,15000]).hide())
+                        .copy().extendTo(line([0,0,-10000],[0,0,15000]).hide())
 
 roofLineInsideRightEdgeTmp = roofLineOutsideOffsetted.edges().last().copy().hide();
 
 if(ROOF_TYPE === 'gable')
 {
     roofLineInsideRight = roofLineInsideRightEdgeTmp
-                                /*.extendedTo(
+                                /*.copy().extendTo(
                                         line([WIDTH,0,-10000],[WIDTH,0,15000])
                                             .extrude(100, [0,1,0]).moveY(-50)
                                         ) // BUG in intersection for large roof angles
                                 */
                                 // math solution
-                                .extended(
+                                .copy().extend(
                                     roofLineInsideRightEdgeTmp.direction().scaled(1/roofLineInsideRightEdgeTmp.bbox().width())
                                         .scaled(WIDTH-roofLineInsideRightEdgeTmp.end().x)
                                         .length()
@@ -197,23 +210,23 @@ roofLineInsideOverhangsSingle = (ROOF_TYPE === 'gable')
                         roofLineInsideLeftOverhang.end(),
                         roofLineInsideRightOverhang.end()
                         )
-                : roofLineInsideLeftOverhang._copy();
+                : roofLineInsideLeftOverhang.copy().tmp();
 
 if(ROOF_TYPE === 'gable')
 {
     roofLineOutsideOverhangs = roofLineInsideOverhangsSingle
-        .offsetted( ROOF_THICKNESS, null, [0,1,0])
+        .copy().offset( ROOF_THICKNESS, null, [0,1,0])
     //.hide()
 }
 else {
     // offsetted for (Line) Edge is instable - TODO: Fix in Core
     roofLineOutsideOverhangs = roofLineInsideOverhangsSingle
-        .moved(roofLineInsideOverhangsSingle.direction(true).rotateY(-90).scaled(ROOF_THICKNESS))
+        .copy().move(roofLineInsideOverhangsSingle.direction(true).rotateY(-90).scaled(ROOF_THICKNESS))
 }
 
 if(ROOF_TYPE == 'gable')
 {
-    roofLineOutsideOverhangsVerts = new ShapeCollection();
+    roofLineOutsideOverhangsVerts = collection();
     // BUG: disordered wire after offset
     // Get Vertices and sort
     // TODO: FIX IN CORE
@@ -224,7 +237,7 @@ if(ROOF_TYPE == 'gable')
     roofLineOutsideOverhangsVerts =
     roofLineOutsideOverhangsVerts.unique().sort((v1,v2) => v1.x - v2.x)
 
-    roofLineOutsideOverhangs = polyline(roofLineOutsideOverhangsVerts)
+    roofLineOutsideOverhangs = polyline(roofLineOutsideOverhangsVerts.toArray())
                             .hide();
 
 }
@@ -252,7 +265,7 @@ if(OVERHANG_LEFT === 0 || OVERHANG_RIGHT)
 
 roofSolids = collection(
                 roofLineInsideOverhangsSingle // NOTE: 2 Solids if gable, 1 if shed - make into collection always
-                .lofted(roofLineOutsideOverhangsChecked, true)
+                .copy().loft(roofLineOutsideOverhangsChecked, true)
                 .extrude(DEPTH+OVERHANG_FRONT+OVERHANG_BACK, [0,1,0])
                 .moveY(-OVERHANG_FRONT)
                 .color('#544412'));
@@ -263,7 +276,7 @@ roofSolids
         {
             if(s.bbox().minZ() < ROOF_MINIMUM_HEIGHT)
             {
-                print(\`A roof overhang is lower than the minimum "\${ROOF_MINIMUM_HEIGHT}". Cut off!\`)
+                print(`A roof overhang is lower than the minimum "${ROOF_MINIMUM_HEIGHT}". Cut off!`)
                 s.cutoff('z', ROOF_MINIMUM_HEIGHT)
             }
         });
@@ -295,13 +308,13 @@ wallFront = wallFrontFace
 
 wallBack = wallFront.copy().moveY(DEPTH-WALL_THICKNESS)
 wallLeft = wallLeftLine
-            .extruded(DEPTH-WALL_THICKNESS*2, [0,1,0])
+            .extrude(DEPTH-WALL_THICKNESS*2, [0,1,0])
             .moveY(WALL_THICKNESS)
             .extrude(WALL_THICKNESS, [1,0,0])
             .subtract(roofSolids)
 
 wallRight = ((ROOF_TYPE === 'gable') ? wallRightLine : line([WIDTH,0,0],roofLineInsideLeft.end()))
-            .extruded(DEPTH-WALL_THICKNESS*2, [0,1,0])
+            .extrude(DEPTH-WALL_THICKNESS*2, [0,1,0])
             .moveY(WALL_THICKNESS)
             .extrude(WALL_THICKNESS, [-1,0,0])
             .subtract(roofSolids)
@@ -371,8 +384,8 @@ if($GENERATE_OPENINGS && !$ENERGY_CALC) // don't generate openings for energy ca
       const wallX = (x >= 0 && x <= 1)
                   ? x*wallLength // perc
                   : (x > 1) ? x : wallLength + x;
-      return wallDirection.scaled(wallX)
-              .move(wallStartWorld);
+      // Vector.scaled() mutates, and Vectors have no move(): build the world Point instead
+      return point(wallDirection.scale(wallX).add(wallStartWorld));
   }
 
 
@@ -385,7 +398,7 @@ if($GENERATE_OPENINGS && !$ENERGY_CALC) // don't generate openings for energy ca
 
   if(mainFacadeWallBbox.height() < 250)
   {
-      print(\`Can't place a main facade on side "{$MAIN_FACADE}" : It's wall is too low!\`)
+      print(`Can't place a main facade on side "{$MAIN_FACADE}" : It's wall is too low!`)
   }
   else
   {
@@ -427,7 +440,7 @@ if($GENERATE_OPENINGS && !$ENERGY_CALC) // don't generate openings for energy ca
           kitchenWindow = makeOpeningFrame(150,100,wallXPositionToWorld(mainFacadeWall,-100-20-100-60), 100, mainFacadeWallRotZ);
 
           if(roofLineOutsideOverhangsChecked.distance(kitchenWindow.frame) <= 40
-              || !mainFacadeWallBbox._containsBbox(kitchenWindow.frame.bbox()))
+              || !mainFacadeWallBbox.containsBbox(kitchenWindow.frame.bbox()))
           {
               kitchenWindow.frame.hide();
           }
@@ -568,9 +581,15 @@ if(lowestWallHeight < GROUNDFLOOR_HEIGHT+FLOOR_THICKNESS+STOREY_HEIGHT
 layer('diagram').shapes().hide();
 
 layer('walls');
-wallsCombined = wallLeft.hide().unioned(wallFront.hide())
-            .union(wallRight.hide())
-            .union(wallBack.hide())
+// The four walls abut without overlapping, so merge their polygons instead of running a
+// boolean union: unioning solids that share whole faces blows the kernel's BSP stack.
+wallsCombined = collection(
+                wallLeft.hide().copy(),
+                wallFront.hide().copy(),
+                wallRight.hide().copy(),
+                wallBack.hide().copy())
+            .merge()
+            .show()
             .color('#f1c232')
 
 
@@ -581,8 +600,10 @@ gutterHeightMax = Math.round([roofLineOutsideOverhangsChecked.start().z,roofLine
 gutterHeightMin = Math.round(roofLineOutsideOverhangsChecked.bbox().minZ());
 floorAreaGross = Math.round((WIDTH*DEPTH)*1e-4) * NUM_FLOORS;
 floorAreaNet = Math.round(((WIDTH-2*WALL_THICKNESS)*(DEPTH-2*WALL_THICKNESS))*1e-4) * NUM_FLOORS;
-volumeNet = Math.round(wallFrontFace.extruded(DEPTH,[0,1,0]).color('blue').hide()
-                .subtract(wallsCombined).volume() * 1e-6); // cm3 => m3
+// envelope minus walls. Done arithmetically: the walls abut without overlapping, and the
+// boolean on the merged wall solid has coincident faces that make the kernel blow its stack.
+volumeNet = Math.round((wallFrontFace.copy().tmp().extrude(DEPTH,[0,1,0]).volume()
+                - wallsCombined.volume()) * 1e-6); // cm3 => m3
 
 
 calc.table(
@@ -642,7 +663,7 @@ if($ENERGY_CALC)
     // TODO: make layer('walls').hide() work too!
     layer('walls').shapes().hide();
     layer('roof').shapes().hide();
-    energyMass = wallFrontFace.extruded(DEPTH,[0,1,0]).color('blue');
+    energyMass = wallFrontFace.copy().tmp().extrude(DEPTH,[0,1,0]).addToScene().color('blue');
 
     function generateId(azimuth, tilt)
     {
@@ -709,9 +730,9 @@ if($ENERGY_CALC)
             console.log(col);
             f.face.copy().color(col);
             // make smaller version of face wire to show window to wall ratio
-            if(ENERGY_RESULTS.planes[i].wwr_max) f.face.toWire().scale(ENERGY_RESULTS.planes[i].wwr_max).color('red');
-            if(ENERGY_RESULTS.planes[i].wwr_avg) f.face.toWire().scale(ENERGY_RESULTS.planes[i].wwr_avg).color('black');
-            // if(ENERGY_RESULTS.planes[i].wwr_min) f.face.toWire().scale(ENERGY_RESULTS.planes[i].wwr_min).color('blue');
+            if(ENERGY_RESULTS.planes[i].wwr_max) f.face.edges().scale(ENERGY_RESULTS.planes[i].wwr_max).color('red');
+            if(ENERGY_RESULTS.planes[i].wwr_avg) f.face.edges().scale(ENERGY_RESULTS.planes[i].wwr_avg).color('black');
+            // if(ENERGY_RESULTS.planes[i].wwr_min) f.face.edges().scale(ENERGY_RESULTS.planes[i].wwr_min).color('blue');
         });
 
     // print overview
@@ -765,9 +786,9 @@ else {
 
 //// AREAS TABLE ////
 
-areaWalls = Math.round((wallFrontFace.area()*2 + wallLeftLine._extruded(DEPTH).area()+wallRightLine._extruded(DEPTH).area())*1e-4);
+areaWalls = Math.round((wallFrontFace.area()*2 + wallLeftLine.copy().tmp().extrude(DEPTH).area()+wallRightLine.copy().tmp().extrude(DEPTH).area())*1e-4);
 areaFacade = areaWalls * 1.1; // a little bigger
-areaRoof = Math.round((roofLineOutsideOverhangsChecked._extruded(DEPTH).area()*1e-4));
+areaRoof = Math.round((roofLineOutsideOverhangsChecked.copy().tmp().extrude(DEPTH).area()*1e-4));
 
 calc.table(
     'areas',
@@ -841,8 +862,9 @@ function docPipeline()
     // base floorplan
     FLOOR_PLAN_PIVOT_POINT = [0,-DEPTH*2]
 
-    wallsCombinedSection = wallsCombined
-        .subtracted(box(WIDTH*2,DEPTH*2,HEIGHT).moveZ(HEIGHT/2+150).hide())
+    // subtracted() was non-mutating: copy first, then subtract in place
+    wallsCombinedSection = wallsCombined.copy()
+        .subtract(box(WIDTH*2,DEPTH*2,HEIGHT).moveZ(HEIGHT/2+150).hide())
 
     floorplan = collection(wallsCombinedSection,openingsGroundFloor)
         .project([0,0,1], true)
@@ -950,365 +972,4 @@ doc
 
 
 
-`,
-  params: {
-    WIDTH: {
-      name: "WIDTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Width",
-      default: 400,
-      _value: undefined,
-      min: 200,
-      max: 1000,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "cm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    HEIGHT: {
-      name: "HEIGHT",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Height",
-      default: 500,
-      _value: undefined,
-      min: 200,
-      max: 1000,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "cm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    DEPTH: {
-      name: "DEPTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Depth",
-      default: 500,
-      _value: undefined,
-      min: 200,
-      max: 3000,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "cm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    ROOF_TYPE: {
-      name: "ROOF_TYPE",
-      id: undefined,
-      type: "options",
-      enabled: true,
-      visible: undefined,
-      label: "Roof Type",
-      default: "gable",
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: [
-        "gable",
-        "shed"
-      ],
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    ROOF_ANGLE: {
-      name: "ROOF_ANGLE",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Roof Angle",
-      default: 35,
-      _value: undefined,
-      min: 10,
-      max: 60,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    ROOF_RIDGE_AT_PERC: {
-      name: "ROOF_RIDGE_AT_PERC",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Ridge at perc",
-      default: 50,
-      _value: undefined,
-      min: 20,
-      max: 80,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    ROOF_RIDGE_SLOPES_SAME: {
-      name: "ROOF_RIDGE_SLOPES_SAME",
-      id: undefined,
-      type: "options",
-      enabled: true,
-      visible: undefined,
-      label: "Ride slopes same",
-      default: "angle",
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: [
-        "angle",
-        "height"
-      ],
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    OVERHANGS_SAME: {
-      name: "OVERHANGS_SAME",
-      id: undefined,
-      type: "boolean",
-      enabled: true,
-      visible: undefined,
-      label: "Overhangs same",
-      default: true,
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    OVERHANG_SIZE: {
-      name: "OVERHANG_SIZE",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Overhangs Size",
-      default: 50,
-      _value: undefined,
-      min: 0,
-      max: 200,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "cm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    OVERHANG_FRONT: {
-      name: "OVERHANG_FRONT",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Overhang Front",
-      default: 50,
-      _value: undefined,
-      min: 0,
-      max: 200,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "cm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    OVERHANG_LEFT: {
-      name: "OVERHANG_LEFT",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Overhang Left",
-      default: 50,
-      _value: undefined,
-      min: 0,
-      max: 200,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    OVERHANG_RIGHT: {
-      name: "OVERHANG_RIGHT",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Overhang Right",
-      default: 50,
-      _value: undefined,
-      min: 0,
-      max: 200,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    OVERHANG_BACK: {
-      name: "OVERHANG_BACK",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Overhang Back",
-      default: 50,
-      _value: undefined,
-      min: 0,
-      max: 200,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    MAIN_FACADE: {
-      name: "MAIN_FACADE",
-      id: undefined,
-      type: "options",
-      enabled: true,
-      visible: undefined,
-      label: "Main Facade side",
-      default: "Front",
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: [
-        "Front",
-        "Left",
-        "Right",
-        "Back"
-      ],
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    GENERATE_OPENINGS: {
-        name: "GENERATE_OPENINGS",
-        type: "boolean",
-        label: "Openings",
-        default: true,
-        enabled: true,
-        visible: undefined,
-        _value: undefined,
-        min: undefined,
-        max: undefined,
-        step: undefined,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: null,
-        order: 0,
-        iterable: true,
-        description: null
-      },
-    // Energy calculation
-    ENERGY_CALC : {
-        name: "ENERGY_CALC",
-        type: "boolean",
-        label: "Energy calculation",
-        default: false,
-        enabled: true,
-    },
-    ENERGY_AZIMUTH : {
-        name: "ENERGY_AZIMUTH",
-        type: "number",
-        label: "azimuth",
-        default: 0, // 0 = north, 90 = east, 180 = south, 270 = west
-        min: 0,
-        max: 360,
-        step: 1,
-        units: 'deg',
-        visible: true,
-    }
-  },
-  presets: {},
-  published: {
-    url: "/archiyou/urhousesketch:0.5.2",
-    version: "0.5.2",
-    title: "UrHouseSketch",
-    public: true,
-    published: "2025-10-10T14:51:31.645991",
-    description: "Sketch design for URHOUSE",
-    params: {
-      
-    },
-    presets: {},
-    libraryUrl: "http://localhost:4000"
-  }
-};
+

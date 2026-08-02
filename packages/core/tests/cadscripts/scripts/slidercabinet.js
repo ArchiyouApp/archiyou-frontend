@@ -1,12 +1,7 @@
-export default {
-  id: "archiyou/slidercabinet/1.0.0",
-  name: "slidercabinet",
-  author: "archiyou",
-  description: "Sliding door cabinet – regression test for spade CDT T-intersection panic during layflat",
-  tags: ["regression"],
-  created: "2026-06-15T00:00:00.000Z",
-  updated: "2026-06-15T00:00:00.000Z",
-  code: `
+// slidercabinet
+// Sliding door cabinet – regression test for spade CDT T-intersection panic during layflat
+
+
 // Sliding door cabinet with layflat – faithfully reproduces the user's script structure.
 // The combination of kerf-notch panels and door slider-rail subtractions creates
 // polygon faces whose 2D projections contain T-intersections (a vertex lying on a
@@ -171,5 +166,4 @@ plates = all().filter(s => s.type === 'Mesh')
     .forEach((s) => s.copy().layflat()
     .moveY(-3000)
     );
-`
-};
+

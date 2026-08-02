@@ -60,13 +60,12 @@ describe('Modeler', async () =>
         expect(await box.toGLB()).toBeInstanceOf(Uint8Array);
     });
 
-    it('brep mode is not yet wired after the SmartShape removal', async () =>
+    it('brep mode needs the brep kernel loaded before it can build anything', async () =>
     {
-        // Brep kernel files are kept under modeler/brep/ but the branch is not wired: the
-        // mesh kernel is the only supported branch. Brep-mode primitives throw a clear error.
-        modeler.mode('brep');
-        expect(() => modeler.box(10, 20, 30)).toThrow(/brep mode is not yet wired/);
-        modeler.mode('mesh');
+        // The brep branch is wired, but the OpenCascade WASM is loaded lazily — asking for a
+        // brep primitive before load() says so plainly rather than failing deep in the kernel.
+        const fresh = new Modeler('brep');
+        expect(() => fresh.box(10, 20, 30)).toThrow(/BREP kernel is not loaded/);
     });
 
     it('should set up a scene and output to GLB', async () =>

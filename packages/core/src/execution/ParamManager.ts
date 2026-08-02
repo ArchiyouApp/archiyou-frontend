@@ -137,6 +137,7 @@ export class ParamManager
             const newParamOperator = new ParamManagerOperator(this, p);
             this.paramOperators.push(newParamOperator);
             newParamOperator.setOperation('new');
+            this[newParamOperator.name] = newParamOperator; // set param access ($PARAMS.NAME)
             return 'new'
         }
 
@@ -145,7 +146,8 @@ export class ParamManager
     deleteParam(name:string):this
     {
         this.paramOperators = this.paramOperators.filter( pc => pc.name !== name);
-        
+        delete this[name.toUpperCase()];
+
         return this;
     }
 
@@ -161,6 +163,7 @@ export class ParamManager
                 p.name = p.name.toUpperCase(); // names are always uppercase
                 const index = this.paramOperators.indexOf(existingParamController);
                 this.paramOperators[index] =  new ParamManagerOperator(this, p);
+                this[p.name] = this.paramOperators[index]; // keep param access ($PARAMS.NAME) pointing at the new operator
                 return true;
             }
             else {

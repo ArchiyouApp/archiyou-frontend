@@ -64,6 +64,11 @@ const BEAM_PLACE_DEFAULT_ALIGNMENT = 'center'
 
 //// BEAM MODULE ////
 
+
+// Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
+// run at class-definition time, before it has finished initialising.
+import { checkInput } from './decorators'
+
 export class Beams
 {
     _ay:ArchiyouApp; // access to all Archiyou app and modules
@@ -216,6 +221,7 @@ export class Beam
 
     //// BASE PROPERTIES ////
 
+    @checkInput('Number','auto')
     length(l:number, updateShape:boolean=true):this
     {
         if(l){ 
@@ -237,6 +243,7 @@ export class Beam
             : null
     }
 
+    @checkInput(['PointLike','PointLike'],['Point','Point'])
     _setLengthFrom(start:PointLike, end:PointLike):this
     {
         const l = (start as Point).distance(end); // Point autoconverted
@@ -253,6 +260,7 @@ export class Beam
     }
 
     /** Set position of the beam */
+    @checkInput(['PointLike'], ['Vector'])
     at(p:PointLike):this
     {
         const pv = (p as Vector); // auto converted
@@ -267,6 +275,7 @@ export class Beam
     }
 
     /** Place this Beam along a Line given by start and end position */
+    @checkInput(['PointLike','PointLike'], ['Vector','Vector'])
     along(start:PointLike, end:PointLike, autoLength:boolean=false):this
     {
         const [s,e]  = this._checkStartEnd(start,end);
@@ -339,6 +348,7 @@ export class Beam
     }
 
     /** Make sure of the given two Points start is the most bottom and left */
+    @checkInput(['PointLike','PointLike'],['Vector','Vector'])
     _checkStartEnd(start:PointLike, end:PointLike):[Point,Point]
     {
         const line = new Edge().makeLine(start,end);
@@ -357,21 +367,25 @@ export class Beam
 
     //// SET SPECIFIC TYPES ////
 
+    @checkInput([[Number,2000]], ['auto'])
     beam(length?:number)
     {
         return this.type('beam', length);
     }
 
+    @checkInput([[Number,2000]], ['auto'])
     post(length?:number):this
     {
         return this.type('post', length);
     }
 
+    @checkInput([[Number,2000]], ['auto'])
     stud(length?:number):this
     {
         return this.post(length); 
     }
 
+    @checkInput([[Number,1000]], ['auto'])
     brace(length?:number):this
     {
         return this.type('brace', length);
@@ -894,6 +908,7 @@ export class Beam
     /** Create Diagonal between current and other beam
      *  @param endBeam 
      */
+    @checkInput(['Beam', ['BeamBaseLineAlignment','start']], ['auto', 'auto'])
     diagonal(endBeam:Beam, startAt:BeamBaseLineAlignment='start'):this
     {
         const start = this._pointAtBaseLine(startAt);

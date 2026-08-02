@@ -4,6 +4,8 @@ import { customElement, property, state } from 'lit/decorators.js';
 import type { ParamUIMode } from './param-item.js';
 import type { ScriptParam } from '@archiyou/editor/src/state/workspace';
 import { paramValue, paramOptions } from '@archiyou/editor/src/state/workspace';
+import { paramOptionKey } from '@archiyou/core/src/i18n/keys';
+import type { TranslatorFn } from '@archiyou/core/src/i18n/resolve';
 
 @customElement('param-item-options')
 export class ParamItemOptions extends LitElement
@@ -25,7 +27,12 @@ export class ParamItemOptions extends LitElement
                 ${options.length === 0
                     ? html`<option value="" disabled>No options defined</option>`
                     : options.map(o => html`
-                        <option value=${o} ?selected=${String(o) === this._value}>${o}</option>
+                        <!-- The VALUE stays raw: it is what the script compares against
+                             (if ($STYLE === 'modern')). Only the visible text is
+                             translated, so this can never change behaviour. -->
+                        <option value=${o} ?selected=${String(o) === this._value}>${
+                            this.t(paramOptionKey(this.param?.name ?? '', o), String(o))
+                        }</option>
                     `)
                 }
             </select>
@@ -35,6 +42,9 @@ export class ParamItemOptions extends LitElement
     // ── 2. State & Properties ──
 
     @property({ attribute: false }) param!: ScriptParam;
+    /** Content translator, supplied by the configurator. Identity by default so the
+     *  editor's authoring rows are unaffected — see the note in param-item.ts. */
+    @property({ attribute: false }) t: TranslatorFn = (_key, fallback) => fallback;
     /** UI density — see ParamUIMode. */
     @property({ type: String, reflect: true }) mode: ParamUIMode = 'compact';
     /** Externally-owned value (the configurator's runtime value); `undefined`

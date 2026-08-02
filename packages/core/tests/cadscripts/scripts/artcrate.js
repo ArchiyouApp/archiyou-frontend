@@ -121,17 +121,17 @@ docPipeline = () =>
     sb = sideBack.copy().move(XOFFSET, 750)
     sl = sideLeft.copy().move(XOFFSET-250, 500)
     sr = sideRight.copy().move(XOFFSET+600, 500)
-    crateExpl = group(sf,b,sb,sl,sr); // cannot hide before iso!
+    crateExpl = collection(sf,b,sb,sl,sr); // cannot hide before iso!
     crateExplIso = crateExpl.iso([1,-1,1]).rotateZ(-90-30).move(3000,500);
 
     // turn on plates
     // plates.show() // doesnt work
 
     // layout plates and fit inside stock
-    plates = group(sideFrontPlate, 
-                sideFrontPlate._copy(),
+    plates = collection(sideFrontPlate, 
+                sideFrontPlate.copy().tmp(),
                 sideLeftPlate,
-                sideLeftPlate._copy(),
+                sideLeftPlate.copy().tmp(),
                 bottomPlate,
                 lit
             ).pack(

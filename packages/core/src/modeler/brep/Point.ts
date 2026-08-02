@@ -28,6 +28,11 @@ import { isRelativeCartesianCoordString, parseRelativePolarCoordString, relative
 import { gp_Pnt, gp_Vec } from './wasm/archiyou-opencascade'
 import { getOc } from './index' // OC global getter
 
+
+// Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
+// run at class-definition time, before it has finished initialising.
+import { checkInput } from './decorators'
+
 export class Point
 {  
     _x = 0;
@@ -93,6 +98,16 @@ export class Point
             else if(isAxis(p))
             {
                 [this._x,this._y,this._z] = AXIS_TO_VECS[p];
+                return this;
+            }
+            // Anything else carrying x/y/z: a meshup Point/Vector/Vertex, or a plain {x,y,z}.
+            // This is what lets mesh-kernel points be handed straight to brep methods.
+            else if(typeof anyPoint === 'object' && anyPoint !== null
+                    && typeof anyPoint.x === 'number' && typeof anyPoint.y === 'number')
+            {
+                this._x = anyPoint.x;
+                this._y = anyPoint.y;
+                this._z = anyPoint.z ?? 0; // z is optional, matching the meshup contract
                 return this;
             }
             else {
@@ -163,6 +178,7 @@ export class Point
     }
 
     /** Sets x,y,z components of Point  */
+    @checkInput( 'PointLike', 'Point')
     set(point:PointLike, ...args):Point // NOTE: args to signify that checkInput will gather them and avoid TS warnings
     {
         point = point as Point; 
@@ -174,6 +190,7 @@ export class Point
     }   
 
     /** Sets x component of Point  */
+    @checkInput(Number, Number)
     setX(x:number):Point
     {
         this._x = x;
@@ -181,6 +198,7 @@ export class Point
     }
 
     /** Sets y component of Point  */
+    @checkInput(Number, Number)
     setY(y:number):Point
     {
         this._y = y;
@@ -188,12 +206,14 @@ export class Point
     }
 
     /** Sets z component of Point  */
+    @checkInput(Number, Number)
     setZ(z:number):Point
     {
         this._z = z;
         return this;
     }
 
+    @checkInput(['MainAxis',Number],['auto', 'auto'])
     setComponent(a:MainAxis, v:number):Point
     {
         this[`set${a.toUpperCase()}`](v)
@@ -287,6 +307,7 @@ export class Point
     }
 
     /** Add a PointLike to this Vector */
+    @checkInput('PointLike', 'Point')
     add(v:PointLike, ...args):Point // NOTE: args to signify that checkInput will gather them and avoid TS warnings
     {
         let dp = v as Point; // autoconverted
@@ -298,12 +319,14 @@ export class Point
     }
 
     /** Add PointLike to this one and return a new Vector  */
+    @checkInput('PointLike', 'Point')
     added(v:PointLike, ...args):Point
     {
         return this.copy().add(v);
     }
 
     /** Move Point */
+    @checkInput('PointLike', 'Vector')
     move(vec:PointLike, ...args):Point
     {
         let moveVec = vec as Vector; // auto converted
@@ -315,6 +338,7 @@ export class Point
     }
 
     /** Move Point along x axis */
+    @checkInput('Number', 'auto')
     moveX(dx:number):Point
     {
         this.x += dx
@@ -322,6 +346,7 @@ export class Point
     }
 
     /** Move Point along y axis */
+    @checkInput('Number', 'auto')
     moveY(dy:number):Point
     {
         this.y += dy;
@@ -329,12 +354,14 @@ export class Point
     }
 
     /** Move Point along y axis */
+    @checkInput('Number', 'auto')
     moveZ(dz:number):Point
     {
         this.z += dz;
         return this;
     }
 
+    @checkInput('PointLike', 'Vector')
     moved(vec:PointLike, ...args):Point
     {
         let moveVec = vec as Vector; // auto converted
@@ -349,6 +376,7 @@ export class Point
     //// RELATIONS WITH OTHER POINTS ////
 
     /** Test if given entity has equivalent geometry as current Point */
+    @checkInput('PointLike', 'Point')
     equals(other:PointLike, ...args):boolean
     {
         other = other as Point;
@@ -359,6 +387,7 @@ export class Point
     }
 
     /** Test if given PointLike entity has equivalent geometry with a tolerance */
+    @checkInput(['PointLike', ['Number', 1]], ['Point', 'auto'])
     equalsTolerance(other:PointLike, tolerance:number)
     {
         const p = other as Point; // auto converted
@@ -367,6 +396,7 @@ export class Point
                Math.abs(this._z - p._z) <= tolerance;
     }
 
+    @checkInput('PointLike', 'auto')
     distance(other:PointLike):number
     {
         let otherPoint = new Point(other);
@@ -446,6 +476,7 @@ export class Point
         A projected Point from an original Point to a Curve is the point on a other Shape
         where the line between the two points is perpendicular to the Curve at the projected Point
     */
+    @checkInput('AnyShapeOrCollection', 'ShapeCollection')
     project(to:AnyShapeOrCollection):Array<Point>
     {
         // OC docs: https://dev.opencascade.org/doc/occt-7.4.0/refman/html/class_geom_a_p_i___project_point_on_curve.html
@@ -499,6 +530,7 @@ export class Point
     }
 
     /** Does current Point share plane with the other */
+    @checkInput('PointLike', 'Point')
     sharedPlane(other:PointLike):Plane
     {
         const TOLERANCE = this._oc.SHAPE_TOLERANCE;

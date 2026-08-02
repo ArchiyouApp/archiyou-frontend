@@ -1,12 +1,13 @@
-export default {
-  id: "archiyou/simplestep/0.9.1",
-  name: "simplestep",
-  author: "archiyou",
-  description: "A simple step for in the kitchen or outside",
-  tags: [],
-  created: "2025-02-14T15:52:40.587Z",
-  updated: "2025-02-14T15:52:40.587Z",
-  code: `// Archiyou 0.5
+// simplestep
+// A simple step for in the kitchen or outside
+
+$PARAMS.define('HEIGHT', 'number', { label: "Height", units: "cm", order: 0, default: 60, minimum: 40, maximum: 90, multipleOf: 1 });
+$PARAMS.define('WIDTH', 'number', { label: "Width", units: "cm", order: 0, default: 50, minimum: 40, maximum: 100, multipleOf: 1 });
+$PARAMS.define('BEAM_WIDTH', 'number', { label: "Beam Width", units: "mm", order: 0, default: 50, minimum: 36, maximum: 100, multipleOf: 1 });
+$PARAMS.define('BEAM_THICKNESS', 'number', { label: "Beam Thickness", units: "mm", order: 0, default: 25, minimum: 18, maximum: 50, multipleOf: 1 });
+$PARAMS.define('WITH_TREADS', 'boolean', { label: "With threads", order: 0, default: true });
+
+// Archiyou 0.5
 
 BEAM_WIDTH = $BEAM_WIDTH;
 BEAM_THICKNESS = $BEAM_THICKNESS;
@@ -37,8 +38,8 @@ new Array(numSteps)
     .fill(null)
     .forEach((s,i) => {
         stepProfileSketch
-            .lineTo(\`+0\`, \`+\${rise}\`)
-            .lineTo(\`+\${thread}\`, '+0')
+            .lineTo(`+0`, `+${rise}`)
+            .lineTo(`+${thread}`, '+0')
     })
 stepProfile = stepProfileSketch.end();
 diagonal = line([0,0,0],[depth,0,HEIGHT])
@@ -47,18 +48,18 @@ verticalBack = line([depth,0,0],[depth,0,HEIGHT])
 // BEAM_WIDTH off the ground
 groundOffset = BEAM_WIDTH;
 layer().shapes().moveZ(groundOffset);
-verticalBackExt = verticalBack.extended(groundOffset, 'start')
-//diagonalExt = verticalBack.extendedTo(plane(1000))
-diagonalExt = diagonal.extendedTo(plane(1000).hide())
+verticalBackExt = verticalBack.copy().extend(groundOffset, 'start')
+//diagonalExt = verticalBack.copy().extendTo(plane(1000))
+diagonalExt = diagonal.copy().extendTo(line([-1000,0,0],[1000,0,0]).hide()) // extendTo() takes Curves, not planes
 
 layer('side').color('red');
 
 beamVertical = verticalBackExt
-                    .extruded(BEAM_WIDTH)
-                    .extruded(BEAM_THICKNESS)
+                    .extrude(BEAM_WIDTH)
+                    .extrude(BEAM_THICKNESS)
 
 beamDiagonal = diagonalExt
-                    .extruded(-BEAM_THICKNESS)
+                    .extrude(-BEAM_THICKNESS)
                     .extrude(-BEAM_WIDTH)
                     .cutoffBy(beamVertical)
                     .cutoff('z', 0)
@@ -76,7 +77,7 @@ stepProfile
         if(i % 2 === 0)
         {
             beamRisers.add(
-                e.extruded(BEAM_WIDTH)
+                e.extrude(BEAM_WIDTH)
                     .extrude(BEAM_THICKNESS)
                     .cutoffBy(beamDiagonal)
                 )
@@ -85,7 +86,7 @@ stepProfile
             {
                 beamThreadLaterals.add(
                     line(
-                        e.end(), e.end()._copy().moveY(WIDTH+2*BEAM_THICKNESS))
+                        e.end(), e.end().copy().tmp().moveY(WIDTH+2*BEAM_THICKNESS))
                     .moveY(-BEAM_THICKNESS)
                     .extrude(BEAM_THICKNESS)
                     .extrude(BEAM_WIDTH)    
@@ -97,7 +98,7 @@ stepProfile
             beamThreads.add(
                 line(e.start(), [beamVertical.bbox().maxX(),0,e.start().z])
                 .hide()
-                .extruded(BEAM_WIDTH, [0,0,-1])
+                .extrude(BEAM_WIDTH, [0,0,-1])
                 .extrude(-BEAM_THICKNESS)
                 .copy() // GB DEBUG
             )
@@ -105,7 +106,7 @@ stepProfile
     });
 
 beamVerticalCrossed = beamVertical.select('V||frontrightbottom')
-                        .extruded(BEAM_WIDTH, [0,1,0])
+                        .extrude(BEAM_WIDTH, [0,1,0])
                         .extrude(-BEAM_THICKNESS)
                         .extrude(beamVertical.bbox().height() - BEAM_WIDTH)
                         .copy(); // DEBUG GC
@@ -125,16 +126,16 @@ beamDiagonalRight = make.fitRectStrut(BEAM_WIDTH, [diagonalSpaceHeight, WIDTH/2]
     .extrude(-BEAM_THICKNESS) 
     .copy();
 
-rightSide = group(beamDiagonal, beamVertical, beamRisers, beamThreads, beamVerticalCrossed); 
-leftSide = rightSide.mirroredX(WIDTH/2).color('red')
+rightSide = collection(beamDiagonal, beamVertical, beamRisers, beamThreads, beamVerticalCrossed); 
+leftSide = rightSide.copy().mirrorY(WIDTH/2).color('red')
 
 // laterals
 
-beamDiagonalLeft = beamDiagonalRight.mirroredX(WIDTH/2).color('red')
+beamDiagonalLeft = beamDiagonalRight.copy().mirrorY(WIDTH/2).color('red')
 
 beamLateralBottomFront = beamThreads.first()
                     .select('V||rightfronttop')
-                    .moved(-BEAM_THICKNESS)
+                    .copy().move(-BEAM_THICKNESS)
                     .extrude(WIDTH, [0,1,0])
                     .extrude(BEAM_THICKNESS, [-1,0,0])
                     .extrude(-BEAM_WIDTH)
@@ -142,7 +143,7 @@ beamLateralBottomFront = beamThreads.first()
 
 beamLateralBottomBack = beamThreads.first()
                     .select('V||rightbacktop')
-                    .moved(BEAM_THICKNESS, +(BEAM_WIDTH-2*BEAM_THICKNESS))
+                    .copy().move(BEAM_THICKNESS, +(BEAM_WIDTH-2*BEAM_THICKNESS))
                     .extrude(WIDTH-(BEAM_WIDTH-BEAM_THICKNESS)*2, [0,1,0])
                     .extrude(BEAM_THICKNESS, [-1,0,0])
                     .extrude(-BEAM_WIDTH)
@@ -156,7 +157,7 @@ if(WITH_THREADS)
     numThreadPlanks = Math.floor((thread + BEAM_THICKNESS) / (BEAM_WIDTH+THREAD_PLANK_SPACING));
     threadPlank = beamThreadLaterals.first().select('V||frontlefttop')
                         .moveX(-THREAD_OVERHANG)
-                        .extruded(BEAM_WIDTH, [1,0,0])
+                        .extrude(BEAM_WIDTH, [1,0,0])
                         .extrude(BEAM_THICKNESS, [0,0,1])
                         .extrude(WIDTH+2*BEAM_THICKNESS)
     firstStepThreadPlanks = threadPlank.array([numThreadPlanks,0],[BEAM_WIDTH+THREAD_PLANK_SPACING])              
@@ -165,19 +166,19 @@ if(WITH_THREADS)
     new Array(numSteps-2).fill()
         .forEach((s,i) => {
             stepNum = i + 1;
-            firstStepThreadPlanks.clone().move(thread*stepNum, 0, rise*stepNum)
+            firstStepThreadPlanks.copy().move(thread*stepNum, 0, rise*stepNum)
         })                
 
     // Top thread planks
     numTopThreadPlanks = Math.ceil((thread + BEAM_THICKNESS + BEAM_WIDTH + BEAM_THICKNESS) / (BEAM_WIDTH+THREAD_PLANK_SPACING));
-    topThreadPlank = threadPlank.clone().move(thread*(numSteps-1), 0, rise*(numSteps-1))
+    topThreadPlank = threadPlank.copy().move(thread*(numSteps-1), 0, rise*(numSteps-1))
     topThreadPlank.array(numTopThreadPlanks, BEAM_WIDTH+THREAD_PLANK_SPACING)
 }
 
 model = all();
 //// CALC::TABLES ////
 
-BEAM_SECTION = \`\${BEAM_WIDTH}x\${BEAM_THICKNESS}\`
+BEAM_SECTION = `${BEAM_WIDTH}x${BEAM_THICKNESS}`
 partsColumns = ['part', 'subpart', 'section', 'length', 'quantity', 'total length'];
 
 partsRows = [ 
@@ -187,7 +188,7 @@ partsRows = [
 partsRows = partsRows.concat(
                 beamThreads.toArray()
                     .map((b,i) => {
-                        return ['sides', \`thread beam \${i+1}\`,BEAM_SECTION, Math.round(b.bbox().maxSize()), 2]
+                        return ['sides', `thread beam ${i+1}`,BEAM_SECTION, Math.round(b.bbox().maxSize()), 2]
                     })
 )
 
@@ -241,7 +242,7 @@ function docPipeline()
     section = collection(beamVertical, beamDiagonal)
         .addGroup('risers',  beamRisers) // not working
         .addGroup('threads', beamThreads) // not working
-        .flattened()
+        .copy().flatten()
         .move(3000,-3000)
         .rotateX(-90)
         .moveToZ(0)
@@ -268,10 +269,10 @@ function docPipeline()
         section.sort((a,b) => b.obbox().maxSize() - a.obbox().maxSize()) // order by maxSize (length)
             .slice(0,7) // dont add multiple risers
         ) 
-    parts.add(beamThreadLaterals.first().flattened().rotateX(-90).hide())
-    // parts.add(beamLateralTop.flattened().rotateX(-90).hide())  // same as above
-    parts.add(beamVerticalCrossed.flattened().rotateX(-90).hide())
-    parts.add(beamDiagonalRight.flattened().rotateX(-90).hide())
+    parts.add(beamThreadLaterals.first().copy().flatten().rotateX(-90).hide())
+    // parts.add(beamLateralTop.copy().flatten().rotateX(-90).hide())  // same as above
+    parts.add(beamVerticalCrossed.copy().flatten().rotateX(-90).hide())
+    parts.add(beamDiagonalRight.copy().flatten().rotateX(-90).hide())
     
     layoutMargin = BEAM_WIDTH*3;
     lastX = 0;
@@ -323,230 +324,4 @@ doc
     .position(0.5,1)
     .pivot(0,1)
     .width(0.5)
-    .height(0.5)`,
-  params: {
-    HEIGHT: {
-      name: "HEIGHT",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Height",
-      default: 60,
-      _value: undefined,
-      min: 40,
-      max: 90,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "cm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    WIDTH: {
-      name: "WIDTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Width",
-      default: 50,
-      _value: undefined,
-      min: 40,
-      max: 100,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "cm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BEAM_WIDTH: {
-      name: "BEAM_WIDTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Beam Width",
-      default: 50,
-      _value: undefined,
-      min: 36,
-      max: 100,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BEAM_THICKNESS: {
-      name: "BEAM_THICKNESS",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Beam Thickness",
-      default: 25,
-      _value: undefined,
-      min: 18,
-      max: 50,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    WITH_TREADS: {
-      name: "WITH_TREADS",
-      id: undefined,
-      type: "boolean",
-      enabled: true,
-      visible: undefined,
-      label: "With threads",
-      default: true,
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    }
-  },
-  presets: {},
-  published: {
-    url: "/archiyou/simplestep:0.9.1",
-    version: "0.9.1",
-    title: "SimpleStep",
-    public: true,
-    published: "2025-02-14T16:52:40.587113",
-    description: "A simple step for in the kitchen or outside",
-    params: {
-      HEIGHT: {
-        MAX_TEXT_LENGTH: 255,
-        name: "HEIGHT",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Height",
-        default: 60,
-        min: 40,
-        max: 90,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "cm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      WIDTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "WIDTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Width",
-        default: 50,
-        min: 40,
-        max: 100,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "cm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BEAM_WIDTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BEAM_WIDTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Beam Width",
-        default: 50,
-        min: 36,
-        max: 100,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BEAM_THICKNESS: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BEAM_THICKNESS",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Beam Thickness",
-        default: 25,
-        min: 18,
-        max: 50,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      WITH_TREADS: {
-        MAX_TEXT_LENGTH: 255,
-        name: "WITH_TREADS",
-        id: undefined,
-        type: "boolean",
-        enabled: true,
-        visible: undefined,
-        label: "With threads",
-        default: true,
-        min: undefined,
-        max: undefined,
-        step: undefined,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: null,
-        order: 0,
-        iterable: true,
-        description: null
-      }
-    },
-    presets: {},
-    libraryUrl: "http://localhost:4000"
-  }
-};
+    .height(0.5)

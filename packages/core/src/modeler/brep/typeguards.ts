@@ -1,9 +1,9 @@
 import { Point, Vector, Shape, Vertex, Edge, Wire, Face, Shell, ShapeCollection, VertexCollection, Beam } from '.'
 
-import type { Side, Plane, CoordArray, Coord, Cursor, MainAxis, Axis, SketchPlaneName, ObjStyle, PointLike,
+import type { Side, Plane, CoordArray, Coord, Cursor, MainAxis, Axis, SketchPlaneName, PointLike,
           LinearShape, AnyShape, PointLikeSequence, AnyShapeCollection, AnyShapeSequence,
           AnyShapeOrCollection, MakeSolidInput, SelectionString,
-          ShapeAttributes, BaseStyle,
+          ShapeAttributes,
           LinearShapeTail, ShapeType, ShapeTypes, Pivot, ColorInput,
           PointLikeOrVertexCollection, PointLikeOrAnyShape, MakeShapeCollectionInput,
           PointLikeOrAnyShapeOrCollection, MakeWireInput, MakeFaceInput, Alignment,
@@ -18,6 +18,10 @@ import { AXIS_TO_VECS, SIDES } from '.' // constants
 // Import utils directly to avoid circular dependency (typeguards is re-exported by internal)
 import { isNumeric } from '../../utils'
 import { isRelativeCoordString } from './utils'
+
+// The mesh kernel's point contract — brep accepts everything meshup does (see isPointLike).
+// Type-only elsewhere in core, but needed as a value here.
+import { isPointLike as isMeshupPointLike } from '@archiyou/meshup/src/types'
 
 
 
@@ -68,14 +72,22 @@ export function isAxis(o:any) : o is Axis
     return (typeof o === 'string') && Object.keys(AXIS_TO_VECS).includes(o);
 }
 
+/** A value that can be read as a point.
+ *
+ *  This is the SHARED contract between the two kernels: meshup's `isPointLike` is the base,
+ *  so meshup Points/Vectors/Vertices and plain `{x,y,z}` objects are accepted by brep methods
+ *  unchanged. brep additionally accepts its own coord forms — relative coordinate strings
+ *  ('+10', '50%') and axis shorthands ('x', 'xy') — so brep takes a strict superset.
+ *  `Point.fromPointLike()` handles every form listed here. */
 export function isPointLike(p: any=null) : p is PointLike
 {
-    return isCoord(p) // one or more Coords in args
-            || isAxis(p) // Axis: something like 'x' or 'xy
+    return isCoord(p) // one or more Coords in args (incl. relative coord strings)
+            || isAxis(p) // Axis: something like 'x' or 'xy'
             || ( Array.isArray(p) && isCoord(p[0]) ) // one or more Coords in array
             || p instanceof Vector
             || p instanceof Point
-            || p instanceof Vertex;
+            || p instanceof Vertex
+            || isMeshupPointLike(p); // meshup Point/Vector/Vertex and { x, y, z? }
 }
 
 export function isCursor(o:any) : o is Cursor
@@ -132,20 +144,6 @@ export function isPointLikeSequence(o: any, ...args: any[]) : o is PointLikeSequ
     return  (Array.isArray(o) && o.filter( e => isPointLike(e)).length >= 2) || // conventional: just an array of PointLike
             (isAnyShapeCollection(o) && o.getShapesByType('Vertex').length >= 2) ||
             (isPointLike(o) && args.some(e => isPointLike(e))) // allow single PointLike too with other PointLike args
-
-}
-
-export function isBaseStyle(o:any):  o is BaseStyle
-{
-    return typeof(o) === 'object' && (o.color !== null || o.opacity !== null || o.size !== null || o.dashed !== null)
-}
-
-export function isObjStyle(o:any):  o is ObjStyle
-{
-    // works on fragments too: { line : { dashed: true }}
-    return typeof(o) === 'object'
-        && (o.point || o.line || o.fill)
-        && Object.keys(o).some(geomType => isBaseStyle(o[geomType]))
 
 }
 

@@ -38,6 +38,9 @@ import { validate, optional } from "../decorators";
 import { type AnyShape, isAnyShape } from "./types";
 
 import { buildDXF, type toDXFOptions } from "./DXFExporter";
+import { buildSVG, buildProjectionSVG, buildThumbnailSVG,
+    type toSVGOptions, type toProjectionSVGOptions,
+    type ThumbnailSVGOptions, type ThumbnailSVGResult } from "./SVGExporter";
 import { buildDAE, type toDAEOptions } from "./DAEExporter";
 
 // Meshup namespace — imported as value (for instanceof) and type
@@ -47,28 +50,34 @@ import * as meshup from '@archiyou/meshup/src/index'
 // visual/app methods (dimension, label, material, onClick, addToScene, toDXF, …). Must load
 // before any script runs so those methods exist on the meshup shapes the modeler returns.
 import './shapeAnnotations'
+import { applyShapeAnnotations } from './shapeAnnotations'
 
 import type { Brep } from './brep/index'
+// Type-only namespace import: gives us brepTypes.Point / .AnyShape etc. for the union types
+// below WITHOUT pulling the OpenCascade barrel into the module graph at runtime.
+import type * as brepTypes from './brep/index'
 
 /** The meshup module namespace as a type. meshup no longer exports this alias itself:
  *  a self-referential `typeof import('./index')` inside its barrel broke its dts rollup. */
 type Meshup = typeof import('@archiyou/meshup/src/index')
 
-// Brep is loaded lazily in _loadBrep() to avoid pulling in the OpenCascade WASM at startup
-let brep: Brep | null = null;
 import { defaultTextFont, getFont, registerFont, fetchFont } from "./TextFonts";
 import { SceneNodeGraphNode, isPointLike } from "@archiyou/meshup/src/types";
 import { Layouter } from "./Layouter";
 import { GLTFBuilder } from "../GLTFBuilder";
 import { Make } from './Make';
+import { brepShapeToMeshup, isBrepShape, DEFAULT_MESHING_QUALITY } from './brep/toMeshup';
 
 import { GLTF_ANIMATION_DURATION } from '../constants';
 
 // Union classes that combine meshup and brep
 type PointLike = meshup.PointLike // only use one
-type Point = meshup.Point | brep.Point
-type Vector = meshup.Vector | brep.Vector
-type Vertex = meshup.Vertex | brep.Vertex
+type Point = meshup.Point | brepTypes.Point
+type Vector = meshup.Vector | brepTypes.Vector
+type Vertex = meshup.Vertex | brepTypes.Vertex
+/** Anything a Modeler primitive can hand back, from either kernel. Scripts mostly chain on
+ *  this, so it stays deliberately loose — the concrete class depends on the active kernel. */
+type AnyKernelShape = meshup.Mesh | meshup.Curve | meshup.Polygon | meshup.Vertex | brepTypes.AnyShape
 
 
 export class Modeler
@@ -77,7 +86,7 @@ export class Modeler
     
     private _kernels = {
         mesh: null as Meshup | null,
-        brep: null as Brep | null, // TODO: load OpenCascade WASM and assign here
+        brep: null as Brep | null, // loaded lazily by _loadBrep() - the OC WASM is 10MB
     } as Record<ModelMode, any>
 
     declare private _modules: ArchiyouModules
@@ -157,18 +166,22 @@ export class Modeler
     /** Adopt a freshly-created meshup shape into this modeler: tag it with the modeler
      *  back-reference (so its augmented visual methods can reach the app modules) and add it
      *  to the scene at the active layer. Returns the same shape for chaining. */
-    private _adopt<T extends AnyShape>(shape: T): T
+    private _adopt<T>(shape: T): T
     {
         (shape as any)._modeler = this;
         this.addToScene(shape);
         return shape;
     }
 
-    /** Brep mode is not yet re-wired after the SmartShape removal. The brep kernel files
-     *  under modeler/brep/ are kept but unused; mesh is the only wired branch. */
-    private _brepNotWired(method: string): never
+    /** Guard for primitives only the brep kernel provides (spiral, helix, cone, basePlane). */
+    private _requireBrep(method: string): void
     {
-        throw new Error(`Modeler::${method}(): brep mode is not yet wired after the SmartShape removal. Use mesh mode.`);
+        if (this._mode !== 'brep')
+        {
+            throw new Error(
+                `Modeler::${method}(): only available in brep mode — the mesh kernel has no ` +
+                `${method} primitive. Switch kernels with mode('brep') or run with kernel: 'brep'.`);
+        }
     }
 
     /** Get active kernel */
@@ -187,25 +200,30 @@ export class Modeler
 
     //// LOADING OF KERNELS ////
 
-    /** Dynamically load primary shape kernel */
+    /** Load the kernels this Modeler needs.
+     *
+     *  The MESH kernel is always loaded, in both modes. It is not just a geometry kernel here:
+     *  it owns the scene graph (SceneNode), the style model and the GLTF/SVG exporters that
+     *  both kernels share, and Modeler.sketch() uses meshup.Sketch whatever the mode. The brep
+     *  kernel is loaded on top of it only when brep mode is selected — its OpenCascade WASM is
+     *  ~10MB, so a mesh-only run must never pay for it. */
     async load(): Promise<this>
     {
-        if(!this._kernels[this._mode])
+        try
         {
-            try {
-                    if(this._mode === 'mesh')
-                    {
-                        await this._loadMeshup();    
-                    }
-                    else {
-                        await this._loadBrep();
-                    }
-                }
-            catch (e)
+            if(!this._kernels.mesh)
             {
-                console.error(`Failed to load ${this._mode} kernel:`, e);
-                throw e;
-            }            
+                await this._loadMeshup();
+            }
+            if(this._mode === 'brep' && !this._kernels.brep)
+            {
+                await this._loadBrep();
+            }
+        }
+        catch (e)
+        {
+            console.error(`Failed to load ${this._mode} kernel:`, e);
+            throw e;
         }
 
         return this;
@@ -226,8 +244,11 @@ export class Modeler
         console.info('Modeler: Loading BREP kernel...');
         const t = performance.now();
         this._kernels.brep = (await import('./brep/index')) as Brep;
-        brep = this._kernels.brep; // make available to method bodies that reference the brep namespace
         const oc = await this._kernels.brep.init(); // load wasm
+
+        // Give brep Shapes the same app-level methods (.dim(), .label(), .material(), …).
+        // Done here, not at import time, so a mesh-only run never touches the OC barrel.
+        applyShapeAnnotations(this._kernels.brep.Shape, this._kernels.brep.ShapeCollection, 'brep');
 
         console.info(`Modeler: BREP kernel loaded successfully in ${Math.round(performance.now() - t)} ms.`);
         console.info(`With these methods/classes: "${Object.keys(this._kernels.brep)}"`);
@@ -271,12 +292,14 @@ export class Modeler
 
     /** Add a meshup shape (or array of shapes) to the scene at the active layer. Tags each
      *  with the modeler back-reference so its augmented visual methods can reach the app. */
-    addToScene(shape: AnyShape | Array<AnyShape>): meshup.SceneNode
+    addToScene(shape: any | Array<any>): meshup.SceneNode
     {
         const shapes = Array.isArray(shape) ? shape : [shape];
-        if (!shapes.every(s => isAnyShape(s)))
+        // Structural check, not an instanceof one: brep Shapes answer isShapeClass() too, and
+        // both kernels' shapes go into the same scene.
+        if (!shapes.every(s => isAnyShape(s) || s?.isShapeClass?.()))
         {
-            throw new Error('Modeler::addToScene(): argument must be a meshup shape or array of meshup shapes.');
+            throw new Error('Modeler::addToScene(): argument must be a Shape (mesh or brep) or an array of them.');
         }
         shapes.forEach(s =>
         {
@@ -312,13 +335,35 @@ export class Modeler
 
     //// ==== MODELING PRIMITIVES ==== ////
 
+    /*  Every primitive dispatches on the active kernel. The mesh branch builds meshup shapes;
+        the brep branch builds OpenCascade ones. Both land in the SAME scene via _adopt(), and
+        both are exported by the same pipeline — see Modeler._exportGLBWithOptions().
+
+        NOTE: the @validate schemas are shared by both branches. They use meshup's isPointLike,
+        so brep's extra coord forms (relative strings like '+10') are not accepted at this
+        level — use the brep classes directly if you need those. */
+
+    /** The loaded brep kernel namespace. Throws a useful error when brep mode was selected but
+     *  the kernel never loaded (load() is async and must have completed). */
+    private _brep(): Brep
+    {
+        const k = this._kernels.brep as Brep | null;
+        if (!k)
+        {
+            throw new Error(
+                `Modeler: brep mode is selected but the BREP kernel is not loaded. ` +
+                `Call \`await modeler.load()\` (or set the kernel on the run request) first.`);
+        }
+        return k;
+    }
+
     //// POINTLIKES ////
 
     /** Creates a 2D/3D Point */
     @validate(PointLikeSchema)
     point(xp?:PointLike, y?:number, z?:number): Point
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('point');
+        if (this._mode === 'brep') return new (this._brep().Point)(xp as any, y, z)
         return new meshup.Point(xp, y, z) as meshup.Point
     }
 
@@ -326,7 +371,7 @@ export class Modeler
     @validate(PointLikeSchema)
     vector(xp?:PointLike, y?:number, z?:number): Vector
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('vector');
+        if (this._mode === 'brep') return new (this._brep().Vector)(xp as any, y, z)
         return new meshup.Vector(xp, y, z) as meshup.Vector
     }
 
@@ -334,9 +379,9 @@ export class Modeler
     /** Creates a Vertex and adds it to the scene so .color()/.name()/etc. work and the
      *  point is exported to the GLB. */
     @validate(PointLikeSchema)
-    vertex(xp?:PointLike, y?:number, z?:number): meshup.Vertex
+    vertex(xp?:PointLike, y?:number, z?:number): Vertex
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('vertex');
+        if (this._mode === 'brep') return this._adopt(new (this._brep().Vertex)(xp as any, y, z))
         return this._adopt(new meshup.Vertex(meshup.Point.from(xp, y, z)) as meshup.Vertex)
     }
 
@@ -345,90 +390,102 @@ export class Modeler
 
     /** Creates a Line Curve */
     @validate(PointLikeSchema, PointLikeSchema)
-    line(start: PointLike, end: PointLike): meshup.Curve
+    line(start: PointLike, end: PointLike): AnyKernelShape
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('line');
+        if (this._mode === 'brep') return this._adopt(new (this._brep().Edge)().makeLine(start as any, end as any))
         return this._adopt(meshup.Curve.Line(start, end) as meshup.Curve)
     }
 
     /** Makes an Arc through start, mid and end Point */
     @validate(PointLikeSchema, PointLikeSchema, PointLikeSchema)
-    arc(start: PointLike, mid: PointLike, end: PointLike): meshup.Curve
+    arc(start: PointLike, mid: PointLike, end: PointLike): AnyKernelShape
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('arc');
+        if (this._mode === 'brep') return this._adopt(new (this._brep().Edge)().makeArc(start as any, mid as any, end as any))
         return this._adopt(meshup.Curve.Arc(start, mid, end) as meshup.Curve)
     }
 
     /** Makes a Spline going through given Points */
-    spline(...points: PointLike[]): meshup.Curve
+    spline(...points: PointLike[]): AnyKernelShape
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('spline');
+        if (this._mode === 'brep') return this._adopt(new (this._brep().Edge)().makeSpline(points as any))
         return this._adopt(meshup.Curve.Interpolated(...points) as meshup.Curve)
     }
 
     /** Makes a Polyline through multiple points */
-    polyline(points: PointLike | PointLike[], ...args: PointLike[]): meshup.Curve
+    polyline(points: PointLike | PointLike[], ...args: PointLike[]): AnyKernelShape
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('polyline');
+        if (this._mode === 'brep')
+        {
+            const pts = (isPointLike(points) ? [points, ...args] : [...(points as PointLike[]), ...args]);
+            return this._adopt(new (this._brep().Wire)(pts as any))
+        }
         return this._adopt(meshup.Curve.Polyline(points, ...args) as meshup.Curve)
     }
 
-    /** Makes a 2D Spiral — brep only (not yet wired) */
-    spiral(..._args: any[]): never
+    /** Makes a 2D Spiral. brep only — meshup has no spiral primitive yet. */
+    spiral(firstRadius: number = 20, secondRadius: number = 50, angle: number = 360, lefthand: boolean = false): AnyKernelShape
     {
-        this._brepNotWired('spiral');
+        this._requireBrep('spiral');
+        return this._adopt(new (this._brep().Wire)().makeSpiral(firstRadius, secondRadius, angle, lefthand))
     }
 
-    /** Makes a Helix — brep only (not yet wired) */
-    helix(..._args: any[]): never
+    /** Makes a Helix. brep only — meshup has no helix primitive yet. */
+    helix(radius: number = 50, height: number = 100, angle: number = 360, pivot?: PointLike,
+          direction?: PointLike, lefthand: boolean = false, coneSemiAngle?: number): AnyKernelShape
     {
-        this._brepNotWired('helix');
+        this._requireBrep('helix');
+        return this._adopt(new (this._brep().Wire)().makeHelix(
+            radius, height, angle, pivot as any, direction as any, lefthand, coneSemiAngle))
     }
 
     //// CLOSED 2D SHAPES ////
 
-    /** Creates a rectangular Curve */
-    rect(width: number = 100, depth: number = 100, center: PointLike = [0, 0, 0]): meshup.Curve
+    /** Creates a rectangular Curve (mesh) or planar rectangular Face (brep) */
+    rect(width: number = 100, depth: number = 100, center: PointLike = [0, 0, 0]): AnyKernelShape
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('rect');
+        // brep has no separate rect primitive - a Plane of the same size IS the rectangle
+        if (this._mode === 'brep') return this.plane(width, depth, center)
         return this._adopt(meshup.Curve.Rect(width, depth, center) as meshup.Curve)
     }
 
     /** Creates a rectangular Curve between two Points */
     @validate(PointLikeSchema, PointLikeSchema)
-    rectBetween(from: PointLike, to: PointLike): meshup.Curve
+    rectBetween(from: PointLike, to: PointLike): AnyKernelShape
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('rectBetween');
+        if (this._mode === 'brep') return this._adopt(new (this._brep().Face)().makeRectBetween(from as any, to as any))
         return this._adopt(meshup.Curve.RectBetween(from, to) as meshup.Curve)
     }
 
     /** Creates a closed planar Polygon from 3+ points.
      *  Accepts either an array — polygon([p1, p2, p3]) — or flat args — polygon(p1, p2, p3). */
-    polygon(vertices: PointLike | PointLike[], ...args: PointLike[]): meshup.Polygon
+    polygon(vertices: PointLike | PointLike[], ...args: PointLike[]): AnyKernelShape
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('polygon');
-        const points = (isPointLike(vertices) ? [vertices, ...args] : [...vertices, ...args]) as PointLike[];
+        const points = (isPointLike(vertices) ? [vertices, ...args] : [...(vertices as PointLike[]), ...args]) as PointLike[];
+        if (this._mode === 'brep') return this._adopt(new (this._brep().Face)().fromVertices(points as any))
         return this._adopt(new meshup.Polygon(points) as meshup.Polygon)
     }
 
-    /** Creates a circular Curve */
-    circle(radius: number = 50, center: PointLike = [0, 0, 0]): meshup.Curve
+    /** Creates a circular Curve (mesh) or circular Face (brep) */
+    circle(radius: number = 50, center: PointLike = [0, 0, 0]): AnyKernelShape
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('circle');
+        if (this._mode === 'brep') return this._adopt(new (this._brep().Face)().makeCircle(radius, center as any))
         return this._adopt(meshup.Curve.Circle(radius, center) as meshup.Curve)
     }
 
     /** Creates a planar surface */
-    plane(...args: any[]): meshup.Polygon
+    plane(...args: any[]): AnyKernelShape
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('plane');
-
         const [
             width = 50,
             depth = 50,
             position = [0, 0, 0],
             normal = [0, 0, 1],
         ] = args as [number?, number?, PointLike?, PointLike?]
+
+        if (this._mode === 'brep')
+        {
+            return this._adopt(new (this._brep().Face)().makePlane(width, depth, position as any, normal as any))
+        }
 
         // A plane is a flat surface, so build it as a Polygon (not a solid Mesh): flat shapes
         // are cut in 2D (see Polygon.cutoff), whereas Mesh.cutoff needs a solid.
@@ -458,25 +515,30 @@ export class Modeler
 
     /** Creates a planar Face between two Points */
     @validate(PointLikeSchema, PointLikeSchema)
-    planeBetween(from: PointLike, to: PointLike): meshup.Polygon
+    planeBetween(from: PointLike, to: PointLike): AnyKernelShape
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('planeBetween');
+        if (this._mode === 'brep') return this._adopt(new (this._brep().Face)().makePlaneBetween(from as any, to as any))
         return this._adopt(meshup.Polygon.planeBetween(from, to) as meshup.Polygon)
     }
 
-    /** Creates a base plane along a main axis — brep only (not yet wired) */
-    basePlane(..._args: any[]): never
+    /** Creates a base plane along a main axis. brep only — it needs the kernel's notion of
+     *  a workplane, which meshup does not have. */
+    basePlane(axis: string = 'xy', size: number = 100): AnyKernelShape
     {
-        this._brepNotWired('basePlane');
+        this._requireBrep('basePlane');
+        return this._adopt(new (this._brep().Face)().makeBasePlane(axis as any, size))
     }
 
     //// 3D SHAPES ////
 
     /** Creates a Box shape */
     @validate(Type.Number(), Type.Number(), Type.Number(), optional(PointLikeSchema))
-    box(width: number = 100, depth?: number, height?: number, position?: PointLike): meshup.Mesh
+    box(width: number = 100, depth?: number, height?: number, position?: PointLike): AnyKernelShape
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('box');
+        if (this._mode === 'brep')
+        {
+            return this._adopt(new (this._brep().Solid)().makeBox(width, depth, height, position as any))
+        }
         const shape = meshup.Mesh.Box(width, depth, height) as meshup.Mesh
         if (position) { shape.move(position) }
         return this._adopt(shape)
@@ -484,40 +546,52 @@ export class Modeler
 
     /** Alias for box */
     @validate(Type.Number(), Type.Number(), Type.Number(), optional(PointLikeSchema))
-    cube(width: number = 100, depth?: number, height?: number, position?: PointLike): meshup.Mesh
+    cube(width: number = 100, depth?: number, height?: number, position?: PointLike): AnyKernelShape
     {
         return this.box(width, depth, height, position)
     }
 
     /** Creates a Box shape between two Points */
     @validate(PointLikeSchema, PointLikeSchema)
-    boxBetween(from: PointLike, to: PointLike): meshup.Mesh
+    boxBetween(from: PointLike, to: PointLike): AnyKernelShape
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('boxBetween');
+        if (this._mode === 'brep')
+        {
+            const box = new (this._brep().Solid)().makeBoxBetween(from as any, to as any);
+            if (!box)
+            {
+                throw new Error(`boxBetween(): failed to create a Box between ${from} and ${to}. Do the points span a 3D space?`);
+            }
+            return this._adopt(box)
+        }
         return this._adopt(meshup.Mesh.BoxBetween(from, to) as meshup.Mesh)
     }
 
     /** Creates a Sphere shape */
     @validate(Type.Number(), PointLikeSchema)
-    sphere(radius: number = 50, position?: PointLike): meshup.Mesh
+    sphere(radius: number = 50, position?: PointLike): AnyKernelShape
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('sphere');
+        if (this._mode === 'brep') return this._adopt(new (this._brep().Solid)().makeSphere(radius, position as any))
         const shape = meshup.Mesh.Sphere(radius) as meshup.Mesh
         if (position) { shape.move(position) }
         return this._adopt(shape)
     }
 
-    /** Creates a Cone — brep only (not yet wired) */
-    cone(..._args: any[]): never
+    /** Creates a Cone. brep only — meshup has no cone primitive yet. */
+    cone(bottomRadius: number = 50, topRadius: number = 0, height: number = 100, position?: PointLike): AnyKernelShape
     {
-        this._brepNotWired('cone');
+        this._requireBrep('cone');
+        // NOTE: makeCone builds from the base up; recentre it on the origin like the other solids
+        const cone = new (this._brep().Solid)().makeCone(bottomRadius, topRadius, height, position as any, 360)
+            .move(0, 0, -height / 2);
+        return this._adopt(cone)
     }
 
     /** Creates a Cylinder shape */
     @validate(Type.Number(), Type.Number(), PointLikeSchema)
-    cylinder(radius: number = 50, height: number = 100, position?: PointLike): meshup.Mesh
+    cylinder(radius: number = 50, height: number = 100, position?: PointLike): AnyKernelShape
     {
-        if (this.mode() !== 'mesh') this._brepNotWired('cylinder');
+        if (this._mode === 'brep') return this._adopt(new (this._brep().Solid)().makeCylinder(radius, height, position as any))
         const shape = meshup.Mesh.Cylinder(radius, height) as meshup.Mesh
         if (position) { shape.move(position) }
         return this._adopt(shape)
@@ -607,30 +681,25 @@ export class Modeler
     }
 
     //// ==== SKETCH API ==== ////
-    // These methods start a sketch or forward drawing commands to the active sketch.
-    // meshup.Sketch handles mesh mode; brep.Sketch handles brep mode.
 
     /** Start a 2D sketch on a given base plane.
-     *  In mesh mode creates a meshup.Sketch; in brep mode creates a brep.Sketch. */
-    sketch(plane: any = 'xy', yAxis?: any): meshup.Sketch | brep.Sketch
+     *
+     *  ALWAYS a meshup.Sketch, in both kernels. brep had its own Sketch implementation but it
+     *  was built around the deleted Brep god-class (layers, activeSketch) and duplicated what
+     *  meshup.Sketch already does; sketching in brep mode therefore produces meshup Curves in
+     *  the shared scene. That is fine — the scene and the exporters are kernel-agnostic — and a
+     *  brep-native sketch can be reintroduced later without changing this entry point. */
+    sketch(plane: any = 'xy', _yAxis?: any): meshup.Sketch
     {
-        if (this._mode === 'mesh')
+        this._activeSketch = new meshup.Sketch(plane);
+        // we register a callback to capture the result and add to scene
+        this._activeSketch.onEnd((curves) =>
         {
-            this._activeSketch = new meshup.Sketch(plane);
-            // we register a callback to capture the result and add to scene
-            this._activeSketch.onEnd((curves) =>
-            {
-                const sketchCurves = (curves as meshup.ShapeCollection<meshup.Curve>).toArray();
-                this.addToScene(sketchCurves);
-                return sketchCurves.length === 1 ? sketchCurves[0] : new meshup.ShapeCollection(...sketchCurves);
-            });
-            return this._activeSketch
-        }
-        if (this._kernels.brep)
-        {
-            this._activeSketch = new (this._kernels.brep.Sketch)(plane, yAxis)
-            return this._activeSketch
-        }
+            const sketchCurves = (curves as meshup.ShapeCollection<meshup.Curve>).toArray();
+            this.addToScene(sketchCurves);
+            return sketchCurves.length === 1 ? sketchCurves[0] : new meshup.ShapeCollection(...sketchCurves);
+        });
+        return this._activeSketch
     }
 
     //// TEXT ////
@@ -755,16 +824,58 @@ export class Modeler
 
 
     /** Export the scene's 2D shapes to an SVG string. Returns null when the scene
-     *  has no 2D geometry, so exporters don't hand the user an empty drawing. */
-    toSVG(): string | null
+     *  has no 2D geometry, so exporters don't hand the user an empty drawing.
+     *
+     *  Called with no options this is byte-for-byte the pre-SVGExporter output — scripts
+     *  that author their own 2D geometry and export 'default/model/svg' are unaffected.
+     *  Pass options to opt into the richer serializer (padding, square framing, relative
+     *  coordinate precision, theme-aware stroke). */
+    toSVG(options?: toSVGOptions): string | null
     {
-        const has2D = this.scene().shapes().toArray().some((s:any) => s?.is2D?.())
+        const exportScene = this._exportScene();
+        const has2D = exportScene.shapes().toArray().some((s:any) => s?.is2D?.())
         if (!has2D)
         {
             console.warn('Modeler::toSVG(): No 2D shapes in scene. Nothing to export.')
             return null
         }
-        return this.scene().toSVG()
+        if (!options || Object.keys(options).length === 0) return exportScene.toSVG()
+
+        return buildSVG(exportScene.shapes().curves(), { units: this.units(), ...options })
+    }
+
+    /** Hidden-line projection of every Mesh in the scene to a 2D SVG line drawing.
+     *  Unlike toSVG() this does not need the script to have authored any 2D geometry —
+     *  it projects the 3D model on demand. Does NOT mutate the scene.
+     *  Returns null when the scene holds no meshes. */
+    toProjectionSVG(options?: toProjectionSVGOptions): string | null
+    {
+        const meshes = this._sceneMeshCollection('toProjectionSVG')
+        if (!meshes) return null
+        return buildProjectionSVG(meshes, { units: this.units(), ...(options ?? {}) })
+    }
+
+    /** Size-capped projection SVG for use as a thumbnail or list icon. Returns null when
+     *  the scene has no meshes, or when even the degraded drawing exceeds the hard cap —
+     *  callers show a placeholder rather than storing something unusable. */
+    toThumbnailSVG(options?: ThumbnailSVGOptions): ThumbnailSVGResult | null
+    {
+        const meshes = this._sceneMeshCollection('toThumbnailSVG')
+        if (!meshes) return null
+        return buildThumbnailSVG(meshes, { units: this.units(), ...(options ?? {}) })
+    }
+
+    /** The scene's Meshes as a ShapeCollection (the projection entrypoints live on the
+     *  collection, not on a plain array). Warns and returns null when there is no 3D geometry. */
+    private _sceneMeshCollection(method: string): any | null
+    {
+        const meshes = this._exportScene().shapes().meshes()
+        if (!meshes || meshes.length === 0)
+        {
+            console.warn(`Modeler::${method}(): No Meshes in scene. Nothing to export.`)
+            return null
+        }
+        return meshes
     }
 
     /** Export all Meshes in the scene to one binary STL. Non-mesh shapes (curves,
@@ -818,7 +929,7 @@ export class Modeler
      *  and returns [] when the scene holds no 3D geometry. */
     private _sceneMeshes(method: string): Array<any>
     {
-        const meshes = this.scene().shapes().toArray()
+        const meshes = this._exportScene().shapes().toArray()
             .filter((s:any) => s?.type === 'Mesh') as Array<any>
 
         if (meshes.length === 0)
@@ -890,7 +1001,7 @@ export class Modeler
      *  `dxf` model output. */
     toDXF(options?: toDXFOptions): string | null
     {
-        const shapes = this.scene().shapes().toArray()
+        const shapes = this._exportScene().shapes().toArray()
         const annotations = this._modules?.annotator?.getAnnotations?.() ?? []
         return buildDXF(shapes as any, annotations, { units: this.units(), ...(options ?? {}) })
     }
@@ -901,7 +1012,7 @@ export class Modeler
      *  <lines>. Returns null when the scene holds no exportable geometry. */
     async toDAE(options?: toDAEOptions): Promise<string | null>
     {
-        return buildDAE(this.scene(), { units: this.units(), ...(options ?? {}) })
+        return buildDAE(this._exportScene(), { units: this.units(), ...(options ?? {}) })
     }
 
     /** Build the ArchiyouStateData payload (scenegraph + annotations + managedHandles) used by
@@ -932,6 +1043,66 @@ export class Modeler
         return this._activeSketch
     }
 
+    /** The scene as the exporters should see it.
+     *
+     *  All output (GLB/SVG/DXF/STL/DAE) is produced by the mesh-kernel exporters walking a
+     *  SceneNode graph, so brep geometry has to be tessellated into meshup shapes first (see
+     *  brep/toMeshup.ts). This returns a parallel node tree — same names, same hierarchy, same
+     *  styles — with brep shapes swapped for their stand-ins.
+     *
+     *  In a pure mesh run it returns the live scene untouched, so nothing about the existing
+     *  mesh output changes.
+     *
+     *  NOTE: the tree references the ORIGINAL meshup shapes rather than copies, and assigns
+     *  them via the node's private `_shape` on purpose: SceneNode.setShape() would re-point
+     *  each shape's `_node` at the export tree and tear the live scene apart — and the scene
+     *  is still needed afterwards for toArchiyouState().
+     */
+    private _exportScene(quality?: any): meshup.SceneNode
+    {
+        const scene = this.scene();
+        const hasBrep = scene.shapes().toArray().some((s: any) => isBrepShape(s));
+        if (!hasBrep) { return scene }
+
+        const build = (src: meshup.SceneNode): meshup.SceneNode =>
+        {
+            const out = new meshup.SceneNode(src.name);
+            out.setStyle(src.style.explicitData());
+
+            const shape = src.shape() as any;
+            if (shape)
+            {
+                const exported = isBrepShape(shape)
+                    ? brepShapeToMeshup(shape, quality ?? DEFAULT_MESHING_QUALITY)
+                    : shape;
+
+                if (exported)
+                {
+                    if ((exported as any).isShapeCollection?.())
+                    {
+                        // one brep Shape became several meshup ones (mesh + its edges):
+                        // nest them so the node keeps one identity in the scene graph
+                        (exported as meshup.ShapeCollection).toArray().forEach((s: any, i: number) =>
+                        {
+                            const child = new meshup.SceneNode(`${src.name}_${i}`);
+                            (child as any)._shape = s;
+                            out.addChild(child);
+                        })
+                    }
+                    else
+                    {
+                        (out as any)._shape = exported;
+                    }
+                }
+            }
+
+            src.children().forEach(child => out.addChild(build(child)));
+            return out;
+        }
+
+        return build(scene);
+    }
+
     private async _exportGLBWithOptions(options?: ModelerSceneExportGLTFOptions): Promise<Uint8Array>
     {
         // Settings
@@ -955,8 +1126,9 @@ export class Modeler
         // builder can bake them into the GLB. No-op when no materials carry textures.
         await this._modules?.materials?.embedTexturesInShapes?.(this.scene().shapes());
 
-        // Base GLB
-        const glb = await this.scene().toGLB();
+        // Base GLB — from an export view of the scene, which converts any brep geometry to
+        // its meshup equivalent (see _exportScene). In a pure mesh run this IS the scene.
+        const glb = await this._exportScene().toGLB();
         const builder = new GLTFBuilder(glb);
 
         // Animations
@@ -994,18 +1166,6 @@ export class Modeler
 
         // finalize GLB
         return await builder.toGLB();
-    }
-
-    /** @internal Guard for brep-only sketch methods. */
-    private _requireBrepSketch(method: string): void
-    {
-        if (this._mode === 'mesh')
-        {
-            throw new Error(
-                `Modeler::${method}(): not available on a mesh-mode sketch. ` +
-                `Switch to brep mode or use the equivalent meshup.Sketch methods directly.`
-            )
-        }
     }
 
     /** @internal Guard for mesh-only sketch methods. */

@@ -33,6 +33,9 @@ async function main(): Promise<void> {
     // from the proxy's container IP, which silently collapses the per-IP rate
     // limiters (auth + /proxy) into a single shared bucket for all traffic.
     trustProxy: true,
+    // Fastify defaults to 1 MiB. Script bodies (code + params + presets, plus a thumbnail
+    // SVG on publish/share) can legitimately exceed that.
+    bodyLimit: config.bodyLimitBytes,
   });
 
   // The whole API at the root — one JWT/CORS, one /scripts namespace.

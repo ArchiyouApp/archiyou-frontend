@@ -1,12 +1,14 @@
-export default {
-  id: "archiyou/workbench/0.9.0",
-  name: "workbench",
-  author: "archiyou",
-  description: "Workbench by Waldmiller and Howell ",
-  tags: [],
-  created: "2025-02-13T14:45:41.521Z",
-  updated: "2025-01-16T14:12:13.000Z",
-  code: `// Archiyou 0.5
+// workbench
+// Workbench by Waldmiller and Howell 
+
+$PARAMS.define('LENGTH', 'number', { label: "Length", units: "mm", order: 0, default: 1000, minimum: 600, maximum: 2440, multipleOf: 1 });
+$PARAMS.define('DEPTH', 'number', { label: "Depth", units: "mm", order: 0, default: 610, minimum: 400, maximum: 1220, multipleOf: 1 });
+$PARAMS.define('HEIGHT', 'number', { label: "Height", units: "mm", order: 0, default: 840, minimum: 500, maximum: 1000, multipleOf: 1 });
+$PARAMS.define('BEAM_WIDTH', 'number', { label: "Beam Width", units: "mm", order: 0, default: 89, minimum: 30, maximum: 140, multipleOf: 1 });
+$PARAMS.define('BEAM_THICKNESS', 'number', { label: "Beam Thickness", units: "mm", order: 0, default: 38, minimum: 22, maximum: 50, multipleOf: 1 });
+$PARAMS.define('BOARD_THICKNESS', 'number', { label: "Board thickness", units: "mm", order: 0, default: 18, minimum: 10, maximum: 22, multipleOf: 1 });
+
+// Archiyou 0.5
 /*
     Parametric worktable
     Original design by Bob Waldmiller and Russ Erb
@@ -37,17 +39,17 @@ layer('top').color('green');
 
 tableTopLatBeamFront = boxbetween([0,0,0],[LENGTH, BEAM_THICKNESS, BEAM_WIDTH])
                         .name('top length');
-tableTopLatBeamBack = tableTopLatBeamFront.clone().moveY(DEPTH-1*BEAM_THICKNESS)
+tableTopLatBeamBack = tableTopLatBeamFront.copy().moveY(DEPTH-1*BEAM_THICKNESS)
 tableTopLatBeamLeft = boxbetween([0,BEAM_THICKNESS,0],[BEAM_THICKNESS, DEPTH-1*BEAM_THICKNESS, BEAM_WIDTH])
                         .name('top depth');
-tableTopLatBeamRight = tableTopLatBeamLeft.clone().move(LENGTH-BEAM_THICKNESS)
+tableTopLatBeamRight = tableTopLatBeamLeft.copy().move(LENGTH-BEAM_THICKNESS)
 
 tableTopNumBetweenBeams = Math.round((LENGTH-2*BEAM_THICKNESS)/TABELTOP_BEAM_SPACING_TARGET);
 tableTopBetweenBeamsSpacing = (LENGTH-2*BEAM_THICKNESS)/tableTopNumBetweenBeams;
 tableTopBetweenBeams = collection().name('top laterals');
 
 new Array(tableTopNumBetweenBeams - 1).fill().forEach((n,i) => 
-    tableTopBetweenBeams.add(tableTopLatBeamLeft.clone().move((tableTopBetweenBeamsSpacing)*(i+1)+BEAM_THICKNESS/2)))
+    tableTopBetweenBeams.add(tableTopLatBeamLeft.copy().move((tableTopBetweenBeamsSpacing)*(i+1)+BEAM_THICKNESS/2)))
 
 
 tabletop = layer('top')
@@ -67,17 +69,17 @@ legBottom = boxbetween([BEAM_THICKNESS, 0, 0],
                         .name('leg bottom');
 
 legLeftFront = collection(legMain,legMid,legBottom);
-legRightFront = legLeftFront.clone().move(LENGTH-BEAM_WIDTH-BEAM_THICKNESS*2)
-legLeftBack = legLeftFront.mirroredX((DEPTH)/2).color('red'); // BUG: Color not from layer
-legRightBack = legLeftBack.moved(LENGTH-BEAM_WIDTH-BEAM_THICKNESS*2).color('red'); // BUG: Clone after mirror 
+legRightFront = legLeftFront.copy().move(LENGTH-BEAM_WIDTH-BEAM_THICKNESS*2)
+legLeftBack = legLeftFront.copy().mirrorY((DEPTH)/2).color('red'); // BUG: Color not from layer
+legRightBack = legLeftBack.copy().move(LENGTH-BEAM_WIDTH-BEAM_THICKNESS*2).color('red'); // BUG: Clone after mirror 
 
 layer('laterals').color('purple');
 
 lateralLengthFront = boxbetween( legBottom.select('V||topleftfront'),
-            legBottom.select('V||topleftfront').moved(LENGTH-BEAM_THICKNESS*2, BEAM_THICKNESS, BEAM_WIDTH))
+            legBottom.select('V||topleftfront').copy().move(LENGTH-BEAM_THICKNESS*2, BEAM_THICKNESS, BEAM_WIDTH))
             .name('along length')
 
-lateralLengthBack = lateralLengthFront.clone().moveY(DEPTH-BEAM_THICKNESS)
+lateralLengthBack = lateralLengthFront.copy().moveY(DEPTH-BEAM_THICKNESS)
 
 lateralDepthLeft = boxbetween(
                     [0, 0, 0],
@@ -85,7 +87,7 @@ lateralDepthLeft = boxbetween(
                     ).move(BEAM_WIDTH+BEAM_THICKNESS, BEAM_THICKNESS, SHELF_HEIGHT-BOARD_THICKNESS-BEAM_WIDTH)
                     .name('along depth')
 
-lateralDepthRight = lateralDepthLeft.clone().move(LENGTH - 2*BEAM_WIDTH - 3*BEAM_THICKNESS)
+lateralDepthRight = lateralDepthLeft.copy().move(LENGTH - 2*BEAM_WIDTH - 3*BEAM_THICKNESS)
 
 allBeams = all(); // Keep that for later
 
@@ -95,8 +97,8 @@ tableTopBoard = boxbetween([0,0,0],[LENGTH, DEPTH, BOARD_THICKNESS])
                     .moveZ(HEIGHT-BOARD_THICKNESS)
 
 bottomBoard = boxbetween(
-                    lateralDepthLeft.select('V||frontlefttop')._copy().moveY(-BEAM_THICKNESS),
-                    lateralDepthRight.select('V||backrighttop')._copy().moveY(BEAM_THICKNESS).moveZ(BOARD_THICKNESS));
+                    lateralDepthLeft.select('V||frontlefttop').copy().tmp().moveY(-BEAM_THICKNESS),
+                    lateralDepthRight.select('V||backrighttop').copy().tmp().moveY(BEAM_THICKNESS).moveZ(BOARD_THICKNESS));
 
 
 //// METRICS ////
@@ -113,10 +115,10 @@ calc.metric('material cost est', Math.round(allBeams.volume()*1e-9*SLS_WOOD_EUR_
 
 parts = make.partList(allBeams)
             .name('parts')
-            .addRow(['boards', \`board top \${BOARD_THICKNESS}mm\`, 
-                \`\${tableTopBoard.bbox().width()}x\${tableTopBoard.bbox().depth()}\`, '', 1])
-            .addRow(['boards', \`board bottom \${BOARD_THICKNESS}mm\`, 
-                \`\${bottomBoard.bbox().width()}x\${bottomBoard.bbox().depth()}\`, '', 1])
+            .addRow(['boards', `board top ${BOARD_THICKNESS}mm`, 
+                `${tableTopBoard.bbox().width()}x${tableTopBoard.bbox().depth()}`, '', 1])
+            .addRow(['boards', `board bottom ${BOARD_THICKNESS}mm`, 
+                `${bottomBoard.bbox().width()}x${bottomBoard.bbox().depth()}`, '', 1])
 
 
 //// DOC ////
@@ -125,7 +127,7 @@ function docPipeline()
 {
     layer('doc')
 
-    tableTopElevation = tabletop.flattened('z').move(LENGTH * 2);
+    tableTopElevation = tabletop.copy().flatten('z').move(LENGTH * 2);
     tableTopElevation.autoDim({ levels: 
                                     [
                                         { axis: 'y', at: 0.5, align: 'min', offset: 50 }, // TODO: align does not work
@@ -135,14 +137,14 @@ function docPipeline()
     tableTopElevation.bbox().right().dim({ offset: 50 });
 
 
-    bottomFrameFlat = layer('laterals').shapes().flattened('z').move(LENGTH*2, -DEPTH*1.4)
+    bottomFrameFlat = layer('laterals').shapes().copy().flatten('z').move(LENGTH*2, -DEPTH*1.4)
     bottomFrameFlat.autoDim({ levels: [
         { axis: 'y', at: 0.5, align: 'min', offset: 50 }
     ]})
     bottomFrameFlat.bbox().back().dim({ offset: 50 });
     bottomFrameFlat.bbox().left().dim({ offset: 50 });
 
-    legFlat = legLeftFront.flattened('y').rotateX(-90).moveToZ(0).move(LENGTH*3.1, -DEPTH/2)
+    legFlat = legLeftFront.copy().flatten('y').rotateX(-90).moveToZ(0).move(LENGTH*3.1, -DEPTH/2)
     legFlat.bbox().front().dim({ offset: 50 });
     legFlat.bbox().left().dim({ offset: 50 });
     legFlat.autoDim({ levels: [
@@ -187,272 +189,4 @@ doc
     .position(0.85, 0)
     .width(0.25)
     .height(0.35)
-`,
-  params: {
-    LENGTH: {
-      name: "LENGTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Length",
-      default: 1000,
-      _value: undefined,
-      min: 600,
-      max: 2440,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    DEPTH: {
-      name: "DEPTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Depth",
-      default: 610,
-      _value: undefined,
-      min: 400,
-      max: 1220,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    HEIGHT: {
-      name: "HEIGHT",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Height",
-      default: 840,
-      _value: undefined,
-      min: 500,
-      max: 1000,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BEAM_WIDTH: {
-      name: "BEAM_WIDTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Beam Width",
-      default: 89,
-      _value: undefined,
-      min: 30,
-      max: 140,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BEAM_THICKNESS: {
-      name: "BEAM_THICKNESS",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Beam Thickness",
-      default: 38,
-      _value: undefined,
-      min: 22,
-      max: 50,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BOARD_THICKNESS: {
-      name: "BOARD_THICKNESS",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Board thickness",
-      default: 18,
-      _value: undefined,
-      min: 10,
-      max: 22,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    }
-  },
-  presets: {},
-  published: {
-    url: "/archiyou/workbench:0.9.0",
-    version: "0.9.0",
-    title: "Workbench",
-    public: true,
-    published: "2025-02-13T15:45:41.521588",
-    description: "Workbench by Waldmiller and Howell ",
-    params: {
-      LENGTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "LENGTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Length",
-        default: 1000,
-        min: 600,
-        max: 2440,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      DEPTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "DEPTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Depth",
-        default: 610,
-        min: 400,
-        max: 1220,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      HEIGHT: {
-        MAX_TEXT_LENGTH: 255,
-        name: "HEIGHT",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Height",
-        default: 840,
-        min: 500,
-        max: 1000,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BEAM_WIDTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BEAM_WIDTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Beam Width",
-        default: 89,
-        min: 30,
-        max: 140,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BEAM_THICKNESS: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BEAM_THICKNESS",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Beam Thickness",
-        default: 38,
-        min: 22,
-        max: 50,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BOARD_THICKNESS: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BOARD_THICKNESS",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Board thickness",
-        default: 18,
-        min: 10,
-        max: 22,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      }
-    },
-    presets: {},
-    libraryUrl: "http://localhost:4000"
-  }
-};
+

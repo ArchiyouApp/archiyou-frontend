@@ -10,6 +10,8 @@
 // The failure is non-deterministic (~1 in 4) due to hash-map randomisation in
 // csgrs; run 30 iterations to reliably catch regressions.
 
+import fs from 'node:fs';
+
 import { describe, it, expect, beforeAll } from 'vitest';
 
 import type { RunnerScriptExecutionRequest } from '../../src/runner/types';
@@ -25,7 +27,8 @@ describe('slidercabinet – spade CDT T-intersection panic regression', () => {
     it(
         'runs the slider cabinet + layflat script 30 times without panicking',
         async () => {
-            const { default: script } = await import('./scripts/slidercabinet.js');
+            const code = fs.readFileSync('./tests/cadscripts/scripts/slidercabinet.js', 'utf8');
+            const script = { name: 'slidercabinet', code, params: {} };
 
             const RUNS = 30;
             for (let run = 0; run < RUNS; run++) {

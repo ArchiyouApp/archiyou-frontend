@@ -39,6 +39,13 @@ import { flattenEntities, toRad, roundToTolerance } from '.' // utils
 type IShell = Shell
 type ISolid = Solid
 
+
+// Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
+// run at class-definition time, before it has finished initialising.
+import { sceneAdd, sceneCarry } from '@archiyou/meshup/src/sceneDecorators'
+import { checkInput, protectOC } from './decorators'
+import { hostAnnotator } from './host'
+
 export class Face extends Shape
 {   
     
@@ -67,6 +74,7 @@ export class Face extends Shape
     }
 
     /** Create Face from all kinds of inputs */
+    @checkInput('MakeFaceInput', 'auto')
     fromAll(o:MakeFaceInput, ...args)
     {
         /* 
@@ -107,6 +115,7 @@ export class Face extends Shape
     
     //@cacheOperation
     /** Create Face from a Wire */
+    @checkInput('Wire', 'Wire')
     fromWire(wire: Wire):Face|Shell
     {   
         /*
@@ -161,6 +170,7 @@ export class Face extends Shape
 
     /** Create a Face from Vertices */
     //@cacheOperation
+    @checkInput('PointLikeSequence', 'VertexCollection')
     fromVertices(vertices:PointLikeSequence, ...args):Face // also get args for ex: Face.fromVertices([0,0,0],[100,0,0])
     {
         vertices = vertices as VertexCollection; // auto converted
@@ -171,6 +181,7 @@ export class Face extends Shape
     }
 
     //@cacheOperation
+    @checkInput('AnyShapeSequence', 'ShapeCollection')
     fromEdges(shapes:AnyShapeSequence, ...args):Face // also flat arguments Face.fromEdges(edge1,edge2)
     {
         // TODO: auto-connect Edges?
@@ -217,6 +228,7 @@ export class Face extends Shape
     //// CREATION METHODS ////
 
     //@cacheOperation
+    @checkInput([ [Number,FACE_PLANE_WIDTH], [Number, FACE_PLANE_DEPTH],  ['PointLike',FACE_PLANE_POSITION], ['PointLike',FACE_PLANE_NORMAL]],[Number, Number, 'Point', 'Vector'])
     makePlane(width?:number, depth?:number, position?:PointLike, normal?:PointLike):Face
     {
         /**
@@ -241,6 +253,7 @@ export class Face extends Shape
     }
 
     /** Make Plane parallel to one of the baseplanes */
+    @checkInput([ 'PointLike', 'PointLike' ], ['Vector','Vector'])
     makePlaneBetween(from:PointLike, to:PointLike)
     {
         const PLANE_TO_NORMAL = {
@@ -274,6 +287,7 @@ export class Face extends Shape
      *  @param axis can be 'z' for 'xy' plane, or directly 'xy'
     */
     //@cacheOperation
+    @checkInput([['Axis', FACE_BASEPLANE_AXIS], [Number, FACE_BASEPLANE_SIZE]], ['auto','auto'] )
     makeBasePlane(axis?:Axis, size?:number)
     {
         // We work with the XY Plane as a basis, then simple transform it according to below settings
@@ -295,6 +309,7 @@ export class Face extends Shape
 
     /** Make a 2D plane from two coordinates. See makePlaneBetween for 3D */
     //@cacheOperation
+    @checkInput(['PointLike','PointLike'],['Vector', 'Vector'])
     makeRectBetween(from:PointLike,to:PointLike):Face
     {
         let fromV = from as Vector; // auto converted
@@ -315,7 +330,11 @@ export class Face extends Shape
 
     }
 
-    makeCircle(radius:number, center:PointLike ):Face
+    /** Create a circular Face with given radius (default:50) and center (default: [0,0,0]) */
+    // NOTE: center defaults to the origin, like Edge.makeCircle — without a default,
+    // `makeCircle(50)` was rejected as a missing argument.
+    @checkInput([ [Number, FACE_CIRCLE_RADIUS ], ['PointLike', [0,0,0]] ], ['auto', 'Point'])
+    makeCircle(radius?:number, center?:PointLike ):Face
     {
         const circleFace = new Face().fromWire(new Edge().makeCircle(radius, center)._toWire());
         removeOcTargetForGarbageCollection(circleFace._ocShape); // Avoid sharing OC instances
@@ -327,6 +346,7 @@ export class Face extends Shape
     /** 
      *  docs: https://dev.opencascade.org/doc/occt-7.5.0/refman/html/class_b_rep_offset_a_p_i___make_filling.html#a50e5b1deb08a18908eb8c8dde15dcefd
      *  NOTE: Taken from code by Roger Maitland for CadQuery: https://github.com/CadQuery/cadquery/issues/562 */
+    @checkInput(['AnyShapeOrCollection', ['PointLikeSequence', null], ['AnyShapeOrCollection',null]], ['ShapeCollection', 'auto', 'ShapeCollection'])
     makeNonPlanar(wireOrEdges:AnyShapeOrCollection, surfacePoints?:PointLikeSequence, holes?:AnyShapeOrCollection):this|AnyShapeOrCollection
     {
         const ocMakeFilling = new this._oc.BRepOffsetAPI_MakeFilling(3,15,2,false, 0.0001, 0.0001, 0.01, 0.1, 8, 9)
@@ -377,6 +397,7 @@ export class Face extends Shape
         return this.wires()[0];
     }
 
+    @sceneAdd
     toWire():Wire
     {
         return this.wires()[0];
@@ -498,6 +519,7 @@ export class Face extends Shape
     }
 
     /** Get the normal at a certain Point location on the Face */
+    @checkInput('PointLike','Point')
     normalAt(p:PointLike):Vector
     {
         const point = Point.fromPointLike(p); // auto converted by @checkInput
@@ -520,6 +542,7 @@ export class Face extends Shape
     }
 
     /** Get normal at given uv coordinates */
+    @checkInput([Number,Number],[Number,Number])
     normalAtUv(u:number, v:number):Vector
     {
         // OC docs: GeomLProp_SLProps - https://dev.opencascade.org/doc/refman/html/class_geom_l_prop___s_l_props.html
@@ -554,6 +577,7 @@ export class Face extends Shape
     }
 
     /** Create a Edge for Planar Face Normal */
+    @checkInput([Number,FACE_NORMAL_EDGE_SIZE], Number)
     normalEdge(size?:number)
     {
         return new Edge(this.center(), this.surfaceCenter().toVector().added(this.normal().scaled(size)))
@@ -575,6 +599,7 @@ export class Face extends Shape
     //// OPERATIONS ON FACE ////
 
     /** Rotate this Face to its normal is parallel to the given Vector */
+    @checkInput(['PointLike',['PointLike', null]], ['Vector', 'auto'])
     rotateTo(vector:PointLike,pivot?:PointLike):Face
     {
         const toVec = (vector as Vector).normalize();
@@ -599,6 +624,7 @@ export class Face extends Shape
     /** Extrude a Face a certain amount into a given direction. (private: not added to Scene)
      *  This always creates a different type of Shape ( from Face to Solid ) to use extruded instead of extrude for now
     */
+    @checkInput([ [Number, FACE_EXTRUDE_AMOUNT], ['PointLike',null]], [Number, 'auto']) // don't check direction
     _extruded(amount?:number, direction?:PointLike):ISolid
     {
         // OC docs: https://dev.opencascade.org/doc/occt-7.5.0/refman/html/class_b_rep_prim_a_p_i___make_prism.html
@@ -613,12 +639,15 @@ export class Face extends Shape
     }
 
     /** Extrude a Face a certain amount into a given direction. (private: not added to Scene) */
+    @checkInput([ [Number, FACE_EXTRUDE_AMOUNT], ['PointLike',null]], [Number, 'auto']) // don't check direction
+    @sceneAdd
     extruded(amount?:number, direction?:PointLike):ISolid
     {
         return this._extruded(amount, direction);
     }
 
     /** Same as extruded() but replaces old Shape with extruded one */
+    @checkInput([ [Number, FACE_EXTRUDE_AMOUNT], ['PointLike',null]], [Number, 'auto']) // don't check direction
     extrude(amount?:number, direction?:PointLike):ISolid
     {
         let extrudedFace = this._extruded(amount, direction) as Solid;
@@ -633,12 +662,14 @@ export class Face extends Shape
     }
 
     /** For consistency: Refer shell() to extrude() on Faces */
+    @checkInput([[Number,FACE_EXTRUDE_AMOUNT]], ['auto'])
     shell(amount?:number):ISolid
     {
         console.warn(`Face::IShell: Shelling does not really work on Faces. Did an extrude instead!`)
         return this.extrude(amount);
     }
 
+    @checkInput([[Number,FACE_EXTRUDE_AMOUNT]], ['auto'])
     shelled(amount?:number):ISolid
     {
         console.warn(`Face::IShell: Shelling does not really work on Faces. Did an extrude instead!`)
@@ -648,6 +679,7 @@ export class Face extends Shape
     /** Make a bigger (+amount) or smaller (-amount) Face (private)
      *  NOTE: onPlaneNormal is for consistency and does nothing
     */
+    @checkInput([[Number,FACE_OFFSET_AMOUNT],[String, FACE_OFFSET_TYPE],['PointLike',null]], ['auto', 'auto', 'Vector'])
     _offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):this
     {
         /*
@@ -675,12 +707,15 @@ export class Face extends Shape
     }
 
     /** Make a bigger (+amount) or smaller (-amount) Face (private) */
+    @checkInput([[Number,FACE_OFFSET_AMOUNT],[String, FACE_OFFSET_TYPE],['PointLike',null]], ['auto', 'auto', 'Vector'])
+    @sceneAdd
     offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):this
     {
         return this._offsetted(amount,type,onPlaneNormal);
     }
 
     /** Make the Face bigger (+amount) or smaller (-amount) */
+    @checkInput([[Number,FACE_OFFSET_AMOUNT],[String, FACE_OFFSET_TYPE],['PointLike',null]], ['auto', 'auto', 'Vector'])
     offset(amount?:number, type?:string, onPlaneNormal?:PointLike):this
     {
        const offsetFace = this._offsetted(amount, type)
@@ -701,18 +736,22 @@ export class Face extends Shape
 
 
     /** Thicken the Face a given amount and direction to create a Solid */
+    @checkInput([ [Number,FACE_THICKEN_AMOUNT],['ThickenDirection',FACE_THICKEN_DIRECTION]], [Number, 'auto'])
     _thickened(amount?:number, direction?:ThickenDirection):ISolid
     {
         // This is actually extrude with extra alignments, we use the methods on Shell
         return this.toShell().thickened(amount, direction);
     }
 
+    @checkInput([ [Number,FACE_THICKEN_AMOUNT],['ThickenDirection',FACE_THICKEN_DIRECTION]], [Number, 'auto'])
+    @sceneAdd
     thickened(amount?:number, direction?:ThickenDirection):ISolid
     {
         return this._thickened(amount,direction);
     }   
 
     /** Thicken current Face  */
+    @checkInput([ [Number,FACE_THICKEN_AMOUNT],['ThickenDirection',FACE_THICKEN_DIRECTION]], [Number, 'auto'])
     thicken(amount?:number, direction?:ThickenDirection):ISolid
     {
         let thickenedShape = this._thickened(amount, direction);
@@ -727,18 +766,22 @@ export class Face extends Shape
     }
 
     /** Make a Shell or Solid by lofting outerWire of Face to other Wire Shapes  */
+    @checkInput(['AnyShapeOrCollection', [Boolean, FACE_LOFT_SOLID ]], ['ShapeCollection', 'auto'])
     _lofted(sections:AnyShapeOrCollection, solid?:boolean):IShell|Solid
     {
         let outerWire = this.outerWire();
         return outerWire._lofted(sections, solid); // already added to Scene
     }
 
+    @checkInput(['AnyShapeOrCollection', [Boolean, FACE_LOFT_SOLID ]], ['ShapeCollection', 'auto'])
+    @sceneAdd
     lofted(sections:AnyShapeOrCollection, solid?:boolean):IShell|Solid
     {
         return this._lofted(sections, solid)
     }
 
     /** Loft current Face */
+    @checkInput(['AnyShapeOrCollection', [Boolean, FACE_LOFT_SOLID ]], ['ShapeCollection', 'auto'])
     loft(sections:AnyShapeOrCollection, solid?:boolean):IShell|Solid
     {
         let outerWire = this.outerWire();
@@ -748,6 +791,7 @@ export class Face extends Shape
     }
 
     /** Extrude and twist a given amount of angles (private, without adding to scene ) */
+    @checkInput([[Number,100],[Number, 360],['PointLike', null],['PointLike',[0,0,1]],[Boolean,false]],['auto','auto', 'Point', 'Vector','auto'])
     _twistExtruded(amount?:number, angle?:number, pivot?:PointLike, direction?:PointLike, lefthand?:boolean):ISolid
     {
         let outerSolid = this.outerWire()._twistExtruded(amount,angle,pivot,direction,lefthand);
@@ -767,6 +811,7 @@ export class Face extends Shape
     }
 
     /** Extrude and twist a given amount of angles (public ) */
+    @checkInput([[Number,100],[Number, 360],['PointLike', null],['PointLike',[0,0,1]],[Boolean,false]],['auto','auto', 'Point', 'Vector','auto'])
     twistExtruded(amount?:number, angle?:number, pivot?:PointLike, direction?:PointLike, lefthand?:boolean):ISolid
     {
         let resultSolid = this._twistExtruded(amount,angle,pivot,direction,lefthand);
@@ -776,6 +821,7 @@ export class Face extends Shape
 
 
     /** Extrude Face and rotate a given angle */
+    @checkInput([[Number,100],[Number, 360],['PointLike', null],['PointLike',[0,0,1]],[Boolean,false]],['auto','auto', 'Point', 'Vector','auto'])
     twistExtrude(amount?:number, angle?:number, pivot?:PointLike, direction?:PointLike, lefthand?:boolean):ISolid
     {
        let resultSolid = this._twistExtruded(amount,angle,pivot,direction,lefthand);
@@ -784,6 +830,8 @@ export class Face extends Shape
     }
 
     /** Round corners of Wire with given radius, at given Vertex (same or equals) or VertexCollection or all if given none */
+    @protectOC('Size of fillet may not exceed length of neighboring Edges')
+    @checkInput([[Number,FACE_FILLET_RADIUS],['PointLikeOrAnyShapeOrCollectionOrSelectionString', null]],['auto','auto'])
     fillet(radius?:number, at?:PointLikeOrAnyShapeOrCollectionOrSelectionString )
     {
         // OC docs: BRepFilletAPI_MakeFillet2d: https://dev.opencascade.org/doc/occt-7.5.0/refman/html/class_b_rep_fillet_a_p_i___make_fillet2d.html
@@ -867,6 +915,8 @@ export class Face extends Shape
     }
 
      /** Chamfer two connected Edges at given Vertex and with and angle of given Edge */
+     @protectOC('Size of chamfer may not exceed length of neighboring Edges')
+     @checkInput([[Number,FACE_CHAMFER_DISTANCE],[Number,FACE_CHAMFER_ANGLE],['PointLikeOrVertexCollection', null],['AnyShapeOrCollection',null]],['auto','auto', 'VertexCollection', 'ShapeCollection'])
      chamfer(distance?:number, angle?:number, vertices?:PointLikeOrVertexCollection, edges?:ShapeCollection )
      {
          // OC docs: BRepFilletAPI_MakeFillet2d: https://dev.opencascade.org/doc/occt-7.5.0/refman/html/class_b_rep_fillet_a_p_i___make_fillet2d.html
@@ -942,6 +992,7 @@ export class Face extends Shape
      *   TODO: FINISH
     */
     
+    @checkInput(['AnyShape', ['PointLike',null], ['PointLike', null]], ['auto','Vector', 'Vector'])
     _projectTo(other:AnyShape, direction:Vector, center?:Vector):null|ShapeCollection
     {
         if(!direction && !center){ throw new Error(`Wire._projectTo: Please supply a PointLike for direction or center!`);}
@@ -1009,6 +1060,7 @@ export class Face extends Shape
 
     //// FACE SPECIFIC CALCULATED PROPERTIES ////
 
+   @checkInput([Number,Number],[Number,Number])
    _testUvToBounds(u:number, v:number):boolean
     {
         let bounds = this.uvBounds();
@@ -1016,6 +1068,7 @@ export class Face extends Shape
     }
 
     /** Get position Vector at UV coords */
+    @checkInput([Number,Number],[Number, Number])
     pointAtUv(u:number, v:number):Point
     {
         // OC docs: https://dev.opencascade.org/doc/occt-7.5.0/refman/html/class_shape_analysis___surface.html#ad17aee92b394ed751cb743ba2c905192
@@ -1026,6 +1079,7 @@ export class Face extends Shape
     }
 
     /** Get UV coordinates of point on Face */
+    @checkInput('PointLike', 'Vertex')
     uvAt(point:PointLike):Array<number>
     {
         // OC docs - ShapeAnalysis_Surface: https://dev.opencascade.org/doc/refman/html/class_shape_analysis___surface.html#a7afb0a355d4e5cbddb8b9b66d71a4d7e
@@ -1063,6 +1117,7 @@ export class Face extends Shape
     //// PREDICATES RELATED TO OTHER SHAPES ////
 
     /** Check if a given Point or Shape can be considered parallel to current Face */
+    @checkInput('PointLikeOrAnyShape', 'auto')
     parallel(other:PointLikeOrAnyShape):boolean
     {
         const NOT_WORKING_TYPES = [ 'Vertex', 'Edge', 'Wire', 'Shell', 'Solid'];
@@ -1117,13 +1172,15 @@ export class Face extends Shape
     /** Simply generate dimension lines for all visible Edges in this Face 
      *  TODO: make sure offsets are right, skip same edges in boxes
     */
+    @checkInput([['DimensionOptions',null]], ['auto'])
     dimension(dim?:DimensionOptions):DimensionLine|Array<DimensionLine>
     {
         // centralized creation in the Annotator (see DimensionLine.fromShape)
-        return this._brep._annotator.dimensionLine().fromShape(this, dim) as DimensionLine|Array<DimensionLine>;
+        return hostAnnotator(this, 'Face::dimension()').dimensionLine().fromShape(this, dim) as DimensionLine|Array<DimensionLine>;
     }
 
     /** Alias for dimension() */
+    @checkInput([['DimensionOptions',null]], ['auto'])
     dim(dim?:DimensionOptions):DimensionLine|Array<DimensionLine>
     {
         return this.dimension(dim);

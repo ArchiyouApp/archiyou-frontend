@@ -7,6 +7,11 @@ import type { MakeShapeCollectionInput } from '.' // types
 import { ShapeCollection } from '.'
 import { isCoordArray} from '.' // typeguards
 
+
+// Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
+// run at class-definition time, before it has finished initialising.
+import { checkInput } from './decorators'
+
 /** A ShapeCollection with only Vertices */
 export class VertexCollection extends ShapeCollection
 {
@@ -27,6 +32,7 @@ export class VertexCollection extends ShapeCollection
     }
 
     /** Try to turn anything into a VertexCollection (based on ShapeCollection._addEntities) ) */
+    @checkInput('MakeShapeCollectionInput', 'auto')
     fromAll(entities?:MakeShapeCollectionInput, ...args):VertexCollection
     {
         // Fix single PointLike

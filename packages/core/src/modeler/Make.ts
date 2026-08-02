@@ -10,6 +10,7 @@
 import { ArchiyouModules } from '../types';
 import type { Modeler } from './Modeler';
 import { ShapeCollection } from '@archiyou/meshup/src/index';
+import type * as meshup from '@archiyou/meshup/src/index';
 import type { Polygon } from '@archiyou/meshup/src/index';
 import type { Mesh } from '@archiyou/meshup/src/index';
 import { Table } from '../calc/Table';
@@ -42,10 +43,84 @@ function loadSharedBinPacker(): Promise<BinPacker>
 
 export type PackOptions = Static<typeof PackOptionsSchema>;
 
+/** An opening (window/door) in a wall built by wall() */
+export interface WallOpening
+{
+    left: number
+    sill: number
+    width: number
+    height: number
+}
+
+/** Corner a 2D layout starts filling from */
+export type Alignment2D = 'topleft' | 'topright' | 'bottomleft' | 'bottomright'
+
+/** Statistics on the last make operation, with the important metrics and the shapes behind
+ *  them. Read them after the operation at `make.stats` — this avoids complex return values. */
+export interface MakeStats
+{
+    efficiency: number | null       // [0-100]: how much of the stock used ends up in the layout
+    wastedArea: number | null
+    numStock: number                // total number of stock sheets/boards needed
+    full: ShapeCollection           // elements that use a full stock piece
+    cut: ShapeCollection            // elements that need to be cut from stock
+    fitted: ShapeCollection         // the cut elements nested onto stock sheets
+    waste: ShapeCollection          // areas that could not be filled
+}
+
+/** Options for a 2D layout of stock elements (boards, sheets) over a rectangular area */
+export interface Layout2DOptions
+{
+    width: number                              // total width of the layout, in model units
+    height: number                             // total height of the layout, in model units
+    stockWidth?: number                        // size of the stock elements to fill it with
+    stockHeight?: number
+    start?: Alignment2D                        // corner to start filling from (default bottomleft)
+    direction?: 'horizontal' | 'vertical'      // direction elements are laid in sequence
+    grid?: number                              // snap element ends to a grid along the main axis
+    gridOffset?: number                        // offset of that grid along the main axis
+    leftover?: boolean                         // continue the next row with the cut-off remainder
+    cutMargin?: number                         // margin between parts when nesting cut elements
+    stats?: boolean                            // gather stats afterwards (default true)
+}
+
+/** The Modeler as Make uses it: each primitive narrowed to the concrete meshup class its
+ *  mesh branch actually returns. See the `modeler` getter for why this exists. */
+type MeshModeler = Omit<Modeler,
+        'box'|'cube'|'boxBetween'|'sphere'|'cylinder'|'rect'|'rectBetween'|'circle'
+        |'line'|'arc'|'spline'|'polyline'|'plane'|'planeBetween'|'polygon'|'vertex'
+        |'point'|'vector'>
+    & {
+        point(...args: Parameters<Modeler['point']>): meshup.Point
+        vector(...args: Parameters<Modeler['vector']>): meshup.Vector
+        box(...args: Parameters<Modeler['box']>): meshup.Mesh
+        cube(...args: Parameters<Modeler['cube']>): meshup.Mesh
+        boxBetween(...args: Parameters<Modeler['boxBetween']>): meshup.Mesh
+        sphere(...args: Parameters<Modeler['sphere']>): meshup.Mesh
+        cylinder(...args: Parameters<Modeler['cylinder']>): meshup.Mesh
+        rect(...args: Parameters<Modeler['rect']>): meshup.Curve
+        rectBetween(...args: Parameters<Modeler['rectBetween']>): meshup.Curve
+        circle(...args: Parameters<Modeler['circle']>): meshup.Curve
+        line(...args: Parameters<Modeler['line']>): meshup.Curve
+        arc(...args: Parameters<Modeler['arc']>): meshup.Curve
+        spline(...args: Parameters<Modeler['spline']>): meshup.Curve
+        polyline(...args: Parameters<Modeler['polyline']>): meshup.Curve
+        plane(...args: Parameters<Modeler['plane']>): meshup.Polygon
+        planeBetween(...args: Parameters<Modeler['planeBetween']>): meshup.Polygon
+        polygon(...args: Parameters<Modeler['polygon']>): meshup.Polygon
+        vertex(...args: Parameters<Modeler['vertex']>): meshup.Vertex
+    }
+
 export class Make
 {
+    //// SETTINGS ////
+    LAYOUT2D_BOX_DEFAULT_FITTING_MARGIN_SIZE = 5;
+
     declare private _modeler: Modeler;
     declare private _modules: ArchiyouModules;
+
+    /** Stats on the last operation that gathers them (boarding). See MakeStats. */
+    declare stats: MakeStats;
 
     constructor(modeler: Modeler)
     {
@@ -75,15 +150,23 @@ export class Make
         return this._modules;
     }
 
-    /** Get the Modeler module */
-    get modeler(): Modeler
+    /**
+     *  Get the Modeler module.
+     *
+     *  Typed as MeshModeler, not Modeler: Make only ever builds MESH geometry (walls, studs,
+     *  sheet packing), while the Modeler's primitives are now typed for both kernels and hand
+     *  back a mesh-or-brep union. Narrowing here — rather than at ~40 call sites — keeps this
+     *  module type-checking against the concrete meshup classes it actually works with.
+     *  Running Make in brep mode is not supported.
+     */
+    get modeler(): MeshModeler
     {
         const m = this._modules ? this._modules.modeler : this._modeler;
         if (!m)
             throw new Error(
                 'Make: Modeler module not set. Use constructor(modeler) or setArchiyou() to set it.'
             );
-        return m;
+        return m as unknown as MeshModeler;
     }
 
     /** Resolves once the BinPacker WASM module is loaded and `pack()` can be called. */
@@ -977,6 +1060,301 @@ export class Make
             .addGroup('openingJackStuds', openingJackStuds.color('brown'))
             .addGroup('openingDiagrams', checkedOpenings.color('grey').hide())
             .addGroup('insulation', insulation.color('#222'));
+    }
+
+    //// 2D LAYOUTS ////
+
+    /** Reset (and return) the stats of the last stats-gathering operation */
+    resetStats(): MakeStats
+    {
+        this.stats = {
+            efficiency: null,
+            wastedArea: null,
+            numStock: 0,
+            full: this.modeler.collection(),
+            cut: this.modeler.collection(),
+            fitted: this.modeler.collection(),
+            waste: this.modeler.collection(),
+        };
+
+        return this.stats;
+    }
+
+    /** The corner of a width x height layout that `start` names, as a point on the XY plane */
+    private _alignment2DToPoint(a: Alignment2D, width: number, height: number): meshup.Point
+    {
+        return this.modeler.point(
+            a.includes('right') ? width : 0,
+            a.includes('top') ? height : 0,
+            0,
+        );
+    }
+
+    /** Fill in the defaults of a Layout2DOptions */
+    private _checkLayoutOptions(o: Layout2DOptions): Required<Layout2DOptions>
+    {
+        return {
+            width:       o?.width || 1000,
+            height:      o?.height || 1000,
+            stockWidth:  o?.stockWidth || 100,
+            stockHeight: o?.stockHeight || 100,
+            start:       o?.start || 'bottomleft',
+            direction:   o?.direction || 'horizontal',
+            grid:        o?.grid ?? null as unknown as number,
+            gridOffset:  o?.gridOffset || 0,
+            leftover:    o?.leftover || false,
+            cutMargin:   o?.cutMargin ?? this.LAYOUT2D_BOX_DEFAULT_FITTING_MARGIN_SIZE,
+            stats:       o?.stats ?? true,
+        };
+    }
+
+    /** Next stock element at `cursor`, cut back where it would run past the layout edges and
+     *  snapped to the grid along the main axis. Returns null when nothing fits any more. */
+    private _layout2DBoxesNewBox(cursor: meshup.Point, o: Required<Layout2DOptions>, leftOverSize?: number | null): Polygon | null
+    {
+        const mainAxis = (o.direction === 'horizontal') ? 'x' : 'y'; // axis elements are laid along
+        const secAxis  = (o.direction === 'horizontal') ? 'y' : 'x';
+
+        const mainLimit = (o.direction === 'horizontal') ? o.width : o.height;
+        const secLimit  = (o.direction === 'horizontal') ? o.height : o.width;
+
+        const origBoxSize = { x: o.stockWidth, y: o.stockHeight };
+        const boxSize = { ...origBoxSize };
+
+        if (leftOverSize) // continue with what was left of the previous element
+        {
+            boxSize[mainAxis] = leftOverSize;
+        }
+
+        // cut back where the element would run past the layout in the secondary direction
+        if (cursor[secAxis] + boxSize[secAxis] > secLimit)
+        {
+            boxSize[secAxis] = secLimit - cursor[secAxis];
+        }
+
+        // ... and in the main direction
+        let boxLimitedPrim = false;
+        if (cursor[mainAxis] + boxSize[mainAxis] > mainLimit)
+        {
+            boxSize[mainAxis] = mainLimit - cursor[mainAxis];
+            boxLimitedPrim = true;
+        }
+
+        // if it still fits in the main direction, snap its end to the grid
+        if (!boxLimitedPrim && o.grid)
+        {
+            const startGridOffset = (cursor[mainAxis] < o.gridOffset) ? o.gridOffset : 0;
+            const sizeAlongGrid = Math.floor((boxSize[mainAxis] - startGridOffset) / o.grid) * o.grid + startGridOffset;
+
+            if (sizeAlongGrid < 0)
+            {
+                // can't fit an element to the grid here: register the gap as waste
+                this.stats.waste.add(this._layout2DRect(cursor, boxSize));
+            }
+
+            boxSize[mainAxis] = (sizeAlongGrid > 0)
+                ? sizeAlongGrid
+                : (cursor[mainAxis] + origBoxSize[mainAxis] > mainLimit)
+                    ? mainLimit - cursor[mainAxis]
+                    : Math.floor((origBoxSize[mainAxis] - startGridOffset) / o.grid) * o.grid + startGridOffset;
+        }
+
+        if (boxSize.x <= 0 || boxSize.y <= 0) { return null; } // nothing left to place
+
+        return this._layout2DRect(cursor, boxSize);
+    }
+
+    /** A layout element: a flat rectangle on the XY plane from `cursor`, `size` big */
+    private _layout2DRect(cursor: meshup.Point, size: { x: number, y: number }): Polygon
+    {
+        return this.modeler.planeBetween(
+            [cursor.x, cursor.y, 0],
+            [cursor.x + size.x, cursor.y + size.y, 0],
+        );
+    }
+
+    /** Lay out stock elements over a rectangular area on the XY plane, cutting them to the
+     *  layout edges and (optionally) to a grid. Shared engine behind boarding(). */
+    private _layout2DBoxes(options?: Layout2DOptions): ShapeCollection
+    {
+        this.resetStats();
+
+        if (!options?.width || !options?.height)
+        {
+            console.warn(`Make::_layout2DBoxes(): Zero or nullish width and height given: returned an empty ShapeCollection`);
+            return this.modeler.collection();
+        }
+
+        const o = this._checkLayoutOptions(options);
+
+        if ((o.direction === 'horizontal' && o.grid > o.stockWidth) ||
+            (o.direction === 'vertical' && o.grid > o.stockHeight))
+        {
+            throw new Error(`Make::_layout2DBoxes(): Make sure the stock size (stockWidth or stockHeight, depending on direction) is bigger than the grid!`);
+        }
+
+        const createdElems = this.modeler.collection();
+        createdElems.name('boards'); // name() is a getter/setter, so keep it off the chain
+        let cursor = this._alignment2DToPoint(o.start, o.width, o.height);
+
+        const mainAxis = (o.direction === 'horizontal') ? 'x' : 'y';
+        const mainLimit = (o.direction === 'horizontal') ? o.width : o.height;
+        const secLimit = (o.direction === 'horizontal') ? o.height : o.width;
+
+        let leftOverBoxSize: number | null = null; // remainder of the previous element, along the main axis
+
+        // Hard stop: every iteration must place an element, so this can only be hit if the
+        // cursor stops advancing — cheaper to bound than to prove it never happens.
+        const MAX_ELEMENTS = 10000;
+
+        for (let i = 0; i < MAX_ELEMENTS; i++)
+        {
+            const newBox = this._layout2DBoxesNewBox(cursor, o, leftOverBoxSize);
+            if (!newBox) { break; } // nothing fits any more
+
+            leftOverBoxSize = null;
+            createdElems.add(newBox);
+
+            const boxWidth = newBox.bbox().width();
+            const boxDepth = newBox.bbox().depth();
+
+            // full stock element, or one that had to be cut?
+            if (Math.round(boxWidth) !== o.stockWidth || Math.round(boxDepth) !== o.stockHeight)
+            {
+                this.stats.cut.add(newBox);
+            }
+            else
+            {
+                this.stats.full.add(newBox);
+            }
+
+            // advance the cursor along the main axis
+            cursor = (o.direction === 'horizontal')
+                ? this.modeler.point(cursor.x + boxWidth, cursor.y, 0)
+                : this.modeler.point(cursor.x, cursor.y + boxDepth, 0);
+
+            // main direction filled up: start the next row
+            if (cursor[mainAxis] >= mainLimit)
+            {
+                cursor = (o.direction === 'horizontal')
+                    ? this.modeler.point(0, cursor.y + boxDepth, 0)
+                    : this.modeler.point(cursor.x + boxWidth, 0, 0);
+
+                leftOverBoxSize = (o.leftover)
+                    ? ((o.direction === 'horizontal') ? o.stockWidth - boxWidth : o.stockHeight - boxDepth)
+                    : null;
+                if (leftOverBoxSize !== null && leftOverBoxSize <= 0) { leftOverBoxSize = null; }
+            }
+
+            // secondary direction filled up: done
+            if ((o.direction === 'horizontal' && cursor.y >= secLimit) ||
+                (o.direction === 'vertical' && cursor.x >= secLimit))
+            {
+                break;
+            }
+        }
+
+        if (o.stats) { this._layout2DBoxesStats(o); }
+
+        return createdElems;
+    }
+
+    /** Work out how much stock a finished layout needs, by nesting its cut elements */
+    private _layout2DBoxesStats(o: Required<Layout2DOptions>): MakeStats
+    {
+        this.stats.numStock = this.stats.full.length;
+        this.stats.efficiency = 100;
+
+        if (this.stats.cut.length === 0) { return this.stats; }
+
+        if (!this._binPacker)
+        {
+            // pack() is synchronous but its WASM is not: skip the nesting rather than throw,
+            // the layout itself is already complete.
+            console.warn(`Make::boarding(): the bin packer is not loaded yet, so cut elements were not nested — stats.efficiency and stats.wastedArea are left unset.`);
+            this.stats.efficiency = null;
+            return this.stats;
+        }
+
+        this.stats.fitted = this.pack(this.stats.cut, {
+            width: o.stockWidth,
+            height: o.stockHeight,
+            kerf: o.cutMargin,
+            rotation: false,
+        });
+
+        // pack() groups its results per sheet (sheet1, sheet2, …): one sheet = one stock piece
+        let sheets = 0;
+        this.stats.fitted.forEachGroup(() => { sheets++; });
+        this.stats.numStock += sheets;
+
+        const stockUsedArea = this.stats.numStock * o.stockWidth * o.stockHeight;
+        const cutPartsArea = this.stats.cut.reduce((sum, shape) => sum + ((shape as any).area?.() ?? 0), 0);
+        const fullPartsArea = this.stats.full.reduce((sum, shape) => sum + ((shape as any).area?.() ?? 0), 0);
+
+        this.stats.efficiency = (stockUsedArea > 0)
+            ? Math.round((fullPartsArea + cutPartsArea) / stockUsedArea * 100)
+            : null;
+        this.stats.wastedArea = stockUsedArea - fullPartsArea - cutPartsArea;
+
+        return this.stats;
+    }
+
+    /**
+     * Board up a rectangular area on the XY plane with stock elements (boards, sheets).
+     *
+     * Elements are laid in sequence along `direction`, cut back at the layout edges and — when
+     * a `grid` is given — snapped so their ends land on that grid (how boarding meets the studs
+     * behind it). With `leftover: true` the off-cut of a row starts the next one.
+     *
+     * Statistics on cuts, stock count and waste land on `make.stats` afterwards.
+     */
+    boarding(options?: Layout2DOptions): ShapeCollection
+    {
+        return this._layout2DBoxes(options);
+    }
+
+    //// SPECIALS WITH STRUTS AND FRAMEWORKS ////
+
+    /**
+     * Find the 2D strut of a given width that exactly fits diagonally into a rectangular space,
+     * as a flat Polygon on the XY plane (extrude it to get a solid).
+     *
+     * NOTE: it's easiest to see how this works by considering the special cases
+     * width = spaceWidth, width = spaceHeight and angle(spaceWidth, spaceHeight) = 45 deg.
+     *
+     * @param width      Width of the strut.
+     * @param space      [width, height] of the space it has to fit into.
+     * @param withSpace  Also return the space itself as a blue outline (for debugging a fit).
+     */
+    fitRectStrut(width: number, space: Array<number>, withSpace: boolean = false): Polygon | ShapeCollection
+    {
+        if (typeof width !== 'number' || !Array.isArray(space) || space.length < 2)
+        {
+            throw new Error(`Make::fitRectStrut(width, space): Please supply a strut width and a space as [width, height]!`);
+        }
+
+        const spaceAngle = Math.atan((space[1] - width) / (space[0] - width));
+        const diagAlignHeight = Math.cos(spaceAngle) * width;
+        const diagAlignWidth = Math.sin(spaceAngle) * width;
+
+        const baseLine = this.modeler.line(
+            [diagAlignWidth, 0, 0],
+            [space[0], space[1] - diagAlignHeight, 0],
+        );
+
+        // Sweep the base line sideways *within* the XY plane. A straight line has no unique
+        // normal, so Curve.extrude()'s own default would fall back to +Z and stand the strut
+        // upright; z x direction is the in-plane perpendicular (what brep's Edge.normal() used).
+        const sideways = this.modeler.vector(0, 0, 1).cross(baseLine.direction()).normalize();
+        const strut = baseLine.extrude(width, sideways) as Polygon;
+
+        if (!withSpace) { return strut; }
+
+        return this.modeler.collection(
+            strut,
+            this.modeler.rectBetween([0, 0, 0], [space[0], space[1], 0]).color('blue'),
+        );
     }
 
     /**

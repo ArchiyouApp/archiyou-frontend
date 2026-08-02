@@ -1,12 +1,16 @@
-export default {
-  id: "archiyou/timberfloor/0.6.6",
-  name: "timberfloor",
-  author: "archiyou",
-  description: "Basic timber frame floor with extra documentation like construction calculations",
-  tags: [],
-  created: "2025-02-13T14:45:44.203Z",
-  updated: "2024-12-10T13:33:13.000Z",
-  code: `// Archiyou 0.5
+// timberfloor
+// Basic timber frame floor with extra documentation like construction calculations
+
+$PARAMS.define('WIDTH', 'number', { label: "Width", units: "cm", order: 0, default: 300, minimum: 150, maximum: 500, multipleOf: 1 });
+$PARAMS.define('DEPTH', 'number', { label: "Depth", units: "cm", order: 0, default: 300, minimum: 200, maximum: 500, multipleOf: 1 });
+$PARAMS.define('BEAM_CTC', 'number', { label: "Beam distance (CTC)", units: "cm", order: 0, default: 60, minimum: 20, maximum: 120, multipleOf: 1 });
+$PARAMS.define('BEAM_AUTO', 'boolean', { label: "Beam section auto", order: 0, default: true });
+$PARAMS.define('BEAM_WIDTH', 'number', { label: "Beam Width", units: "mm", order: 0, default: 38, minimum: 38, maximum: 100, multipleOf: 1 });
+$PARAMS.define('BEAM_HEIGHT', 'number', { label: "Beam Height", units: "mm", order: 0, default: 140, minimum: 1, maximum: 300, multipleOf: 1 });
+$PARAMS.define('JOIST_HEADER', 'boolean', { label: "With joist header", order: 0, default: true });
+$PARAMS.define('HIDE_BOARDS', 'boolean', { label: "Hide boards", order: 0, default: true });
+
+// Archiyou 0.5
 
 // PARAMS
 WIDTH = $WIDTH*10; // in mm 
@@ -76,7 +80,8 @@ if($HIDE_BOARDS){ boards.hide() };
 
 floorDiagram = boards
                 .select('F||bottom')
-                .toWire()
+                .toMesh()
+                .edges()
                 .color('blue')
 
 // INTERACTIVE DIMENSIONS //
@@ -98,7 +103,7 @@ if($JOIST_HEADER)
     joistHeaderLeft = boxbetween([-WIDTH/2,0,0],[-WIDTH/2+BEAM_WIDTH, DEPTH, BEAM_HEIGHT])
                     .moveZ(SUPPORT_HEIGHT)
                     .color('blue')
-    joistHeaderRight = joistHeaderLeft.moved(SPAN+BEAM_WIDTH).color('blue')
+    joistHeaderRight = joistHeaderLeft.copy().move(SPAN+BEAM_WIDTH).color('blue')
 }
 
 numBeams = Math.floor( (DEPTH-BEAM_WIDTH) / BEAM_CTC) + 1;
@@ -117,7 +122,7 @@ supportLeft = boxbetween([0,0,0],[SUPPORT_WIDTH,DEPTH,SUPPORT_HEIGHT])
             .move(-WIDTH/2)
             .color('grey')
             
-supportRight = supportLeft.moved(WIDTH-SUPPORT_WIDTH)
+supportRight = supportLeft.copy().move(WIDTH-SUPPORT_WIDTH)
                 .color('grey')
 
 //// TABLES ////
@@ -130,7 +135,8 @@ baseCalculationRows = [
     ['joist', 'density', 'dj', WOOD_DENSITY, 'kg/m3'  ],
     ['joist', 'moment of inertia', 'I = wj * hj^3 / 12 ', I = Math.round((wj)*Math.pow(hj,3)/12), 'mm4'  ],
     ['joist', 'joist mass per m floorspan', 
-        \`mj = wj*hj*10^-6*1m*dj\n=\${BEAM_HEIGHT}mm*\${BEAM_WIDTH}mm*10^-6*1m*\${WOOD_DENSITY}kg/m3\`, 
+        `mj = wj*hj*10^-6*1m*dj
+=${BEAM_HEIGHT}mm*${BEAM_WIDTH}mm*10^-6*1m*${WOOD_DENSITY}kg/m3`, 
         mj = Math.round(BEAM_HEIGHT*BEAM_WIDTH*WOOD_DENSITY * 1e-6), 'kg/m'],
     ['joist', 'joist weight per m floorspan', 'gj ~= mj * 10',
             gj = mj*10, 'N/m'],
@@ -138,10 +144,11 @@ baseCalculationRows = [
     ['boards', 'width', 'wb', BEAM_CTC, 'mm'],
     ['boards', 'density', 'ρb', BOARD_DENSITY, 'kg/m3'  ],
     ['boards', 'board mass per m floorspan', 
-        \`mb = hb*wb*db\n=\${BOARD_THICKNESS}mm*\${BEAM_CTC}mm*10^-6*1m*\${BOARD_DENSITY}\`, 
+        `mb = hb*wb*db
+=${BOARD_THICKNESS}mm*${BEAM_CTC}mm*10^-6*1m*${BOARD_DENSITY}`, 
         mb = Math.round(BOARD_THICKNESS*BEAM_CTC*BOARD_DENSITY * 1e-6), 'kg/m'],
     ['boards', 'board weight per m floorspan', 
-        \`gb ~= mb * 10\`, 
+        `gb ~= mb * 10`, 
         gb = mb*10, 'N/m'],
 ]
 
@@ -161,22 +168,24 @@ supportLineLoad = Math.round((totalLiveLoad + totalDeadLoad)*0.5 / (DEPTH/1000))
 loadColumns = ['load', 'calculation', 'value', 'unit', 'notes']
 loadRows = [
     ['LOADS', '', '', '', ''], 
-    ['extra floor weight finish per m', \`gf = G fl * ctc = 500 N/m2 * \${BEAM_CTC/1000} m\`, gf = roundTo(500*(BEAM_CTC/1000),0), 'N/m', 'floor or ceiling finishes (example)'],
-    ['total dead weight per m span', \`G = gj + gb + gf = \${gj} + \${gb} + \${gf}\`, G = gj+gb+gf, 'N/m', ''],
-    ['live load', \`Q = \${LOADS_VARIABLE_PER_M2} N/m2 * ctc = \${LOADS_VARIABLE_PER_M2} N/m2 * \${BEAM_CTC/1000}m\`, 
-        Q = LOADS_VARIABLE_PER_M2*(BEAM_CTC/1000), 'N/m', \`\${LOADS_VARIABLE_PER_M2} N/m2 is example value. Check local one.\`],
+    ['extra floor weight finish per m', `gf = G fl * ctc = 500 N/m2 * ${BEAM_CTC/1000} m`, gf = roundTo(500*(BEAM_CTC/1000),0), 'N/m', 'floor or ceiling finishes (example)'],
+    ['total dead weight per m span', `G = gj + gb + gf = ${gj} + ${gb} + ${gf}`, G = gj+gb+gf, 'N/m', ''],
+    ['live load', `Q = ${LOADS_VARIABLE_PER_M2} N/m2 * ctc = ${LOADS_VARIABLE_PER_M2} N/m2 * ${BEAM_CTC/1000}m`, 
+        Q = LOADS_VARIABLE_PER_M2*(BEAM_CTC/1000), 'N/m', `${LOADS_VARIABLE_PER_M2} N/m2 is example value. Check local one.`],
     ['LOAD COMBINATIONS', '', '', '', ''],
     ['Please use load combinations and factors of your local building code', '','', '',''],
-    ['general', \`F = G + Q = \${G} + \${Q}\`, F = G+Q, 'N/m', '', ''],
+    ['general', `F = G + Q = ${G} + ${Q}`, F = G+Q, 'N/m', '', ''],
     ['CONSTRUCTION UNDER LOAD', '', '', '', ''],
-    ['max joist moment under total load (center)', \`M max = 1/8*(F*span^2)\n= 1/8*(\${F} N/m2* \${SPAN/1000}m^2)\`, 
+    ['max joist moment under total load (center)', `M max = 1/8*(F*span^2)
+= 1/8*(${F} N/m2* ${SPAN/1000}m^2)`, 
                 Mmax = roundTo((F*(SPAN/1000*SPAN/1000))/8,0 ), 'Nm', 'See basic beam formulas under uniformly distributed load'],
-    [ 'max joist tension under total load', \`sigma max = 6*M max/ wj*hj^2 \n= 6 * \${Mmax} Nm * 10^3 / \${wj}mm * \${hj}mm^2\`, 
+    [ 'max joist tension under total load', `sigma max = 6*M max/ wj*hj^2 
+= 6 * ${Mmax} Nm * 10^3 / ${wj}mm * ${hj}mm^2`, 
             Tm = roundTo(6*Mmax*1e3 / (wj*hj*hj),2), 'MPa', 'MPa = 1x10^3kN/m2 (1Pa = 1 N/m2)'],
-    [ 'tensile strengh (parallel to grain)', \`ft = \${WOOD_MAX_COMPRESSION_PARALLEL} N/mm2\`, 
+    [ 'tensile strengh (parallel to grain)', `ft = ${WOOD_MAX_COMPRESSION_PARALLEL} N/mm2`, 
         ft = roundTo(WOOD_MAX_COMPRESSION_PARALLEL,2), 'MPa', 'softwood C18 strength class'], 
     [ 'joist tension versus tensile strength', 'sigma perc = sigma max / ft', tensionPerc = Math.round(Tm/ft*100), '%', 'please add local safety factors'],
-    [ 'joist max deflection (at center)', \`delta max = 5/384 * F * span^4 / E * I = 5/384 * \${F} N/m * \${SPAN/1000} m^4 / \${WOOD_ELASTIC_MODULUS*1e6} N/mm2 * \${I}\`,
+    [ 'joist max deflection (at center)', `delta max = 5/384 * F * span^4 / E * I = 5/384 * ${F} N/m * ${SPAN/1000} m^4 / ${WOOD_ELASTIC_MODULUS*1e6} N/mm2 * ${I}`,
             defl = roundTo( (5*F*Math.pow(SPAN,4)) / (384*WOOD_ELASTIC_MODULUS*1e6*I),2), 'mm', 'See basic beam formulas under uniformly distributed load' 
     ],
     [ 'floor total mass', '', totalMass, 'kg', 'joists and boards (18mm)'],
@@ -187,7 +196,7 @@ calc.table('loads and calculations', loadRows, loadColumns)
 
 // Parts
 
-section = \`\${BEAM_WIDTH}x\${BEAM_HEIGHT}\`;
+section = `${BEAM_WIDTH}x${BEAM_HEIGHT}`;
 
 partRows = [
     [ 'joist','C18 CLS/SLS timber',section, SPAN, numBeams]
@@ -200,7 +209,7 @@ if($JOIST_HEADER)
     )
 }
 partRows.push(
-    ['boards', 'OSB/multiplex', '18mm', '', \`~\${Math.round(WIDTH*DEPTH*1e-6)} m2\`]
+    ['boards', 'OSB/multiplex', '18mm', '', `~${Math.round(WIDTH*DEPTH*1e-6)} m2`]
 )
 
 
@@ -272,356 +281,4 @@ doc
     .width(0.6)
     .height(0.7)
 
-`,
-  params: {
-    WIDTH: {
-      name: "WIDTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Width",
-      default: 300,
-      _value: undefined,
-      min: 150,
-      max: 500,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "cm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    DEPTH: {
-      name: "DEPTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Depth",
-      default: 300,
-      _value: undefined,
-      min: 200,
-      max: 500,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "cm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BEAM_CTC: {
-      name: "BEAM_CTC",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Beam distance (CTC)",
-      default: 60,
-      _value: undefined,
-      min: 20,
-      max: 120,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "cm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BEAM_AUTO: {
-      name: "BEAM_AUTO",
-      id: undefined,
-      type: "boolean",
-      enabled: true,
-      visible: undefined,
-      label: "Beam section auto",
-      default: true,
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BEAM_WIDTH: {
-      name: "BEAM_WIDTH",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Beam Width",
-      default: 38,
-      _value: undefined,
-      min: 38,
-      max: 100,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    BEAM_HEIGHT: {
-      name: "BEAM_HEIGHT",
-      id: undefined,
-      type: "number",
-      enabled: true,
-      visible: undefined,
-      label: "Beam Height",
-      default: 140,
-      _value: undefined,
-      min: 1,
-      max: 300,
-      step: 1,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: "mm",
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    JOIST_HEADER: {
-      name: "JOIST_HEADER",
-      id: undefined,
-      type: "boolean",
-      enabled: true,
-      visible: undefined,
-      label: "With joist header",
-      default: true,
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    },
-    HIDE_BOARDS: {
-      name: "HIDE_BOARDS",
-      id: undefined,
-      type: "boolean",
-      enabled: true,
-      visible: undefined,
-      label: "Hide boards",
-      default: true,
-      _value: undefined,
-      min: undefined,
-      max: undefined,
-      step: undefined,
-      options: undefined,
-      length: undefined,
-      listElem: undefined,
-      schema: undefined,
-      units: null,
-      order: 0,
-      iterable: true,
-      description: null
-    }
-  },
-  presets: {},
-  published: {
-    url: "/archiyou/timberfloor:0.6.6",
-    version: "0.6.6",
-    title: "TimberFloor",
-    public: true,
-    published: "2025-02-13T15:45:44.203544",
-    description: "Basic timber frame floor with extra documentation like construction calculations",
-    params: {
-      WIDTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "WIDTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Width",
-        default: 300,
-        min: 150,
-        max: 500,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "cm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      DEPTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "DEPTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Depth",
-        default: 300,
-        min: 200,
-        max: 500,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "cm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BEAM_CTC: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BEAM_CTC",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Beam distance (CTC)",
-        default: 60,
-        min: 20,
-        max: 120,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "cm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BEAM_AUTO: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BEAM_AUTO",
-        id: undefined,
-        type: "boolean",
-        enabled: true,
-        visible: undefined,
-        label: "Beam section auto",
-        default: true,
-        min: undefined,
-        max: undefined,
-        step: undefined,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: null,
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BEAM_WIDTH: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BEAM_WIDTH",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Beam Width",
-        default: 38,
-        min: 38,
-        max: 100,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      BEAM_HEIGHT: {
-        MAX_TEXT_LENGTH: 255,
-        name: "BEAM_HEIGHT",
-        id: undefined,
-        type: "number",
-        enabled: true,
-        visible: undefined,
-        label: "Beam Height",
-        default: 140,
-        min: 1,
-        max: 300,
-        step: 1,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: "mm",
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      JOIST_HEADER: {
-        MAX_TEXT_LENGTH: 255,
-        name: "JOIST_HEADER",
-        id: undefined,
-        type: "boolean",
-        enabled: true,
-        visible: undefined,
-        label: "With joist header",
-        default: true,
-        min: undefined,
-        max: undefined,
-        step: undefined,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: null,
-        order: 0,
-        iterable: true,
-        description: null
-      },
-      HIDE_BOARDS: {
-        MAX_TEXT_LENGTH: 255,
-        name: "HIDE_BOARDS",
-        id: undefined,
-        type: "boolean",
-        enabled: true,
-        visible: undefined,
-        label: "Hide boards",
-        default: true,
-        min: undefined,
-        max: undefined,
-        step: undefined,
-        options: undefined,
-        length: undefined,
-        listElem: undefined,
-        schema: undefined,
-        units: null,
-        order: 0,
-        iterable: true,
-        description: null
-      }
-    },
-    presets: {},
-    libraryUrl: "http://localhost:4000"
-  }
-};
+

@@ -142,23 +142,25 @@ describe('Doc', () =>
 					}
 				},
 			},
-			worker: {
-				_activeExecRequest: {
-					script: {
-						params: {
-							BEAM_WIDTH: {
-								name: 'BEAM_WIDTH',
-								label: 'Beam Width',
+			// The live params of the running script come from the ParamManager in the
+			// active scope, and the version from the request the Runner is executing.
+			// (This used to stub an `_archiyou.worker` module — which nothing ever sets,
+			// so these summaries were dead in every real run: always "no parameters"/v0.)
+			runner: {
+				getActiveScope()
+				{
+					return {
+						_paramManager: {
+							getParams()
+							{
+								return [{ name: 'BEAM_WIDTH', label: 'Beam Width', _value: '1200mm' }]
 							},
 						},
-					},
-					params: {
-						BEAM_WIDTH: '1200mm',
-					},
+					}
 				},
-				lastExecutionRequest: {
-					version: '2.3.4',
-					createdAtString: '2026-05-18 10:00',
+				getActiveExecRequest()
+				{
+					return { script: { version: '2.3.4' } }
 				},
 			},
 		})
@@ -171,7 +173,21 @@ describe('Doc', () =>
 		expect(summaryDoc._getMetricSummary()).toBe('BL:123.4 mm')
 		expect(summaryDoc._getParamSummary()).toBe('BW:1200')
 		expect(summaryDoc._getVersion()).toBe('v2.3.4')
-		expect(summaryDoc._getVersionSummary()).toBe('v2.3.4 at 2026-05-18 10:00')
+		// Stamped at render time — the request carries no creation timestamp.
+		expect(summaryDoc._getVersionSummary()).toMatch(/^v2\.3\.4 at .+/)
+	})
+
+	it('summarises "no metrics"/"no parameters" instead of throwing when there are none', () =>
+	{
+		// Regression: _getMetricSummary() ran Object.values() on a possibly-undefined
+		// calc.metrics(), which THREW instead of returning 'no metrics' — and since
+		// titleblock() calls it, that took the whole document down with it.
+		const { doc } = createDoc({ calc: undefined, runner: { getActiveScope: () => ({}) } })
+		const summaryDoc = doc.create('empty-summaries')
+
+		expect(summaryDoc._getMetricSummary()).toBe('no metrics')
+		expect(summaryDoc._getParamSummary()).toBe('no parameters')
+		expect(summaryDoc._getVersion()).toBe('v0')
 	})
 
 	it('exports two simple documents to SVG and saves them to disk', async () =>
@@ -274,6 +290,19 @@ describe('Doc', () =>
 
 	it('exports a richer document to SVG and saves it to disk', async () =>
 	{
+		// Stub the network: this document (and the titleblock it places) loads images by
+		// URL, and a live fetch made the test depend on a CMS being up — it fails at the
+		// 5s timeout whenever that host is slow or down. The bytes are irrelevant here;
+		// what is asserted below is the SVG the document builds around them.
+		const realFetch = globalThis.fetch
+		globalThis.fetch = (async () => ({
+			status: 200,
+			arrayBuffer: async () => new Uint8Array([137, 80, 78, 71]).buffer,
+			text: async () => '<svg></svg>',
+		})) as any
+
+		try {
+
 		const { doc } = createDoc()
 
         // make a isometric drawing too
@@ -315,6 +344,8 @@ describe('Doc', () =>
 		expect(savedSvg).toContain('font-size="4.5"')
 		expect(savedSvg).toContain('Hello from archiyou!')
 		expect(savedSvg).toContain('Test Document')
+
+		} finally { globalThis.fetch = realFetch }
 	})
 
 	it('exports a mesh-mode document pipeline view built from collection iso()', async () =>

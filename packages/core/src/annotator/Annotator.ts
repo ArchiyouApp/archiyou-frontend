@@ -22,7 +22,7 @@ import { BaseAnnotation } from './AnnotatorBaseAnnotation';
 import { DimensionLine } from './AnnotatorDimensionLine';
 import { Label } from './AnnotatorLabel';
 
-import { validate } from '../decorators'
+import { validate, optional } from '../decorators'
 import { PointLikeSchema } from '../modeler/schemas'
 
 import { roundTo } from '../utils' // utils
@@ -58,16 +58,16 @@ export class Annotator
     }
 
     /** Make dimension line. Is added to list automatically */
-    @validate(PointLikeSchema, PointLikeSchema)
+    @validate(optional(PointLikeSchema), optional(PointLikeSchema))
     dimensionLine(start?:PointLike, end?:PointLike, options?:DimensionOptions, autoAdd:boolean=true)
     {
-        const newDimension = new DimensionLine(start as Point, end as Point, options).setArchiyou(this._archiyou);
+        const newDimension = new DimensionLine(start as Point, end as Point, options, this._archiyou);
         if(autoAdd){ this.annotations.push(newDimension);}
         return newDimension;
     }
 
     /** Make a Dimension Line without adding to list yet! */
-    @validate(PointLikeSchema, PointLikeSchema)
+    @validate(optional(PointLikeSchema), optional(PointLikeSchema))
     makeDimensionLine(start?:PointLike, end?:PointLike, options?:DimensionOptions)
     {
         return this.dimensionLine(start,end,options,false);
@@ -196,8 +196,13 @@ export class Annotator
     //@checkInput(['ShapeOrCollection', ['DimensionOptions', null], ['AnnotationAutoDimStrategy', null]], ['ShapeCollection', 'auto','auto'])
     autoDim(shapes:AnyShapeCollection, options?:DimensionOptions|DimensionLevelSettings, strategy?:AnnotationAutoDimStrategy)
     {
-        strategy = strategy || this._getAutoDimStrategy(shapes);
-        
+        // Settings that carry `levels` name their own strategy — otherwise a 3D Shape/collection
+        // handed explicit levels fell through to _getAutoDimStrategy(), which only knows how to
+        // pick for flat geometry, and silently produced nothing.
+        strategy = strategy
+                    || (Array.isArray((options as DimensionLevelSettings)?.levels) ? 'levels' : null)
+                    || this._getAutoDimStrategy(shapes);
+
         switch (strategy)
         {
             case 'part':
@@ -228,7 +233,9 @@ export class Annotator
             return 'levels'
         }
         else {
-            console.warn(`Annotator._getAutoDimStrategy(): `)
+            console.warn(`Annotator._getAutoDimStrategy(): cannot pick a strategy for these Shapes. `+
+                `'part' needs a single flat 2D Shape, 'levels' a flat collection. Supply a strategy `+
+                `(and for 'levels' its { levels: [...] } settings) yourself.`)
             return null;
         }
     }
@@ -245,7 +252,7 @@ export class Annotator
     //@checkInput(['ShapeOrCollection', ['DimensionOptions', null]], ['ShapeCollection', 'auto'])
     autoDimPart(shapes:AnyShapeCollection, options?:DimensionOptions):AnyShapeCollection
     {
-        const OFFSET_PER_LEVEL = 15;
+        const OFFSET_PER_LEVEL = 30;
         const DIMENSION_MIN_DISTANCE = 1;
         const LEVEL_COORD_ROUND_DECIMALS = 0; // round to full units
         const LEVEL_CHECK_VERTICES_TOLERANCE = 3; // when check
@@ -259,15 +266,41 @@ export class Annotator
         const part = shapes.first();
         const newAnnotations = [] as Array<Annotation>;
 
-        if(!part.is2D()){ throw new Error('Annotator.autoDimPart(): Please make sure you have a 2D part on the XY plane!');}
+        // NOTE: check the bbox, not only part.is2D() — a meshup Polygon reports is2D() true by
+        // definition (it is planar), even when it sits tilted in space. Part dimensioning needs
+        // a part that is actually flat along an axis.
+        if(!part.is2D() || !(part as any).bbox()?.is2D())
+        {
+            throw new Error('Annotator.autoDimPart(): Please make sure you have a 2D part on the XY plane! Use layflat() to lay a tilted part down first.');
+        }
 
         // Level 1: stock size (bbox)
-        newAnnotations.push(part.bbox(false).back().dimension({ offset: dimLevelOffset * 3, units: dimUnits }) as DimensionLine);
-        newAnnotations.push(part.bbox(false).left().dimension({ offset: dimLevelOffset * 3, units: dimUnits }) as DimensionLine);
+        // NOTE: dimension the bbox side edges through makeDimensionLine() rather than
+        // sideEdge.dimension() — a bbox side is a throwaway Shape that carries no modeler
+        // (and so no annotator) in the mesh kernel.
+        const partBbox = (part as any).bbox(false) as Bbox; // brep takes a 'add to scene' flag, meshup ignores it
+        [partBbox.back(), partBbox.left()].forEach(sideEdge =>
+        {
+            if(typeof (sideEdge as any)?.start !== 'function'){ return; } // 3D/degenerate bbox: no side edge
+            const stockDim = this.makeDimensionLine(
+                (sideEdge as Curve).start() as any,
+                (sideEdge as Curve).end() as any,
+                {
+                    offset: dimLevelOffset * 3,
+                    units: dimUnits,
+                    offsetVec: (sideEdge as Curve).center().toVector().subtracted(partBbox.center()).normalize(),
+                });
+            stockDim.link(part);
+            newAnnotations.push(stockDim);
+        });
 
-        
+
         // Level 2: edges on and parallel to sides of bbox
-        const bboxSideEdges = part.bbox().rect().edges().shapes as Array<Curve>;
+        const bboxRect = partBbox.rect(); // null when the bbox is not flat (both kernels warn)
+        const bboxSideEdges = (bboxRect ? bboxRect.edges().toArray() : []) as Array<Curve>;
+        // NOTE: cache the part's edges — both kernels hand out fresh Shape instances per
+        // edges() call, and sideEdgesUsed.has() below matches on identity.
+        const partEdges = (part as any).edges() as AnyShapeCollection;
         const sideEdgesUsed = new this.classes.ShapeCollection();
 
         bboxSideEdges.forEach((sideEdge,i) => 
@@ -281,7 +314,7 @@ export class Annotator
             const levelCoordValue = roundTo(sideEdge.center()[levelCoordAxis],LEVEL_COORD_ROUND_DECIMALS);
 
             // These are the original edges on the sides of the part (this can also be only with one vertex)
-            const sideEdges = part.edges()
+            const sideEdges = partEdges
                             .intersecting(sideEdge)
                             .filter(e => {
                                 return !(e as Curve).direction().normalize().abs().round().equals(sideDir90) // no perpendicular
@@ -294,8 +327,8 @@ export class Annotator
             const sideDimOffsetVec = sideEdge.center().toVector().subtracted(part.bbox().center()).normalize();
             /*
             // Not really needed
-            if (part.bbox().center().distance(sideEdge.center().moved(sideDimOffsetVec)) 
-                    < part.bbox().center().distance(sideEdge.center().moved(sideDimOffsetVec.reversed())))
+            if (part.bbox().center().distance(sideEdge.center().copy(false).move(sideDimOffsetVec)) 
+                    < part.bbox().center().distance(sideEdge.center().copy(false).move(sideDimOffsetVec.reversed())))
             {
                 sideDimOffsetVec.reverse();
             }
@@ -350,9 +383,12 @@ export class Annotator
 
         
         // Level 3 - remaining Edges by direction and length
-        const remainingEdges = part.edges()
-                                .filter(e => !sideEdgesUsed.has(e)); 
-                                    //&& bboxSideEdges.every(bboxEdge => !e.intersects(bboxEdge)));  
+        // NOTE: skip closed edges (a circle/ellipse). They are loops with no distinct start and
+        // end, so they cannot become a single dimension line — fromEdge() would build a
+        // zero-length line and throw. Their extent is already covered by the level-1 bbox dims.
+        const remainingEdges = partEdges
+                                .filter(e => !sideEdgesUsed.has(e) && !DimensionLine.isClosedProfile(e));
+                                    //&& bboxSideEdges.every(bboxEdge => !e.intersects(bboxEdge)));
 
         remainingEdges.forEach((e,i) =>
         {
@@ -429,26 +465,31 @@ export class Annotator
 
             // to deal with accurary issues we use a section plane
             const sectionPlaneNormal = new this.classes.Vector(0,0,0)['set'+sectionLineDepthAxis.toUpperCase()](1);
+            if(typeof (sectionLine as any)._extruded !== 'function')
+            {
+                throw new Error(`Annotator.autoDimLevels(): the 'levels' strategy needs the BREP kernel — `+
+                    `the mesh kernel has no section-plane extrude yet. Use the 'part' strategy, or run with kernel: 'brep'.`);
+            }
+
             const sectionPlane = sectionLine._extruded(SECTION_PLANE_DEPTH, sectionPlaneNormal)
                                     ['move'+sectionLineDepthAxis.toUpperCase()](-SECTION_PLANE_DEPTH/2);
 
             // now get unique intersection points of all shapes
             const intersectionPointsAlongRangeAxis = []
 
-            // If we want dimensions from bbox too, add it to shallow copy of collection
-            if(ADD_BBOX_OUTLINE_TO_LEVEL_SECTION)
-            {
-                const bboxOutline = collectionBbox.rect()._toWire();
-                collection.add(bboxOutline);
-            }
+            /*  If we want dimensions from the bbox too, add its outline to the collection.
+                Bbox.rect() is null unless the bbox is flat — a 3D collection sectioned at levels
+                (the main use of this strategy) has no rect, and this used to die on
+                `null._toWire()`. brep hands back a Face, meshup the outline Curve itself. */
+            const bboxRect:any = ADD_BBOX_OUTLINE_TO_LEVEL_SECTION ? collectionBbox.rect() : null;
+            const bboxOutline = (typeof bboxRect?._toWire === 'function') ? bboxRect._toWire() : bboxRect;
+
+            if(bboxOutline){ collection.add(bboxOutline); }
 
             const intersections = collection._intersections(sectionPlane);
 
             // Remove last added bbox outline
-            if(ADD_BBOX_OUTLINE_TO_LEVEL_SECTION)
-            {
-                collection.pop();
-            }
+            if(bboxOutline){ collection.pop(); }
 
             if(intersections.length === 0)
             {
@@ -492,8 +533,8 @@ export class Annotator
             const minDistance = lvl?.minDistance ?? DEFAULT_MIN_DISTANCE;
             // Determine offset Vector based on line and collection: Should always point outwards of collection
             const offsetVec = sectionLine.normal()
-            if( collection.center().distance(sectionLine.center().moved(offsetVec)) 
-                    < collection.center().distance(sectionLine.center().moved(offsetVec.reversed())))
+            if( collection.center().distance(sectionLine.center().copy(false).move(offsetVec)) 
+                    < collection.center().distance(sectionLine.center().copy(false).move(offsetVec.reversed())))
             {
                 offsetVec.reverse(); 
             }

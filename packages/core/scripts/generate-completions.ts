@@ -127,7 +127,17 @@ function formatMethodSignature(method: MethodDeclaration | MethodSignature): str
 
 function getJsDoc(method: MethodDeclaration | MethodSignature): string | undefined
 {
-    return method.getJsDocs()[0]?.getDescription()?.trim() || undefined
+    const own = method.getJsDocs()[0]?.getDescription()?.trim()
+    if (own) return own
+
+    // an overloaded method carries its doc on the first overload, not on the implementation
+    const overloads = (method as MethodDeclaration).getOverloads?.() ?? []
+    for (const overload of overloads)
+    {
+        const doc = overload.getJsDocs()[0]?.getDescription()?.trim()
+        if (doc) return doc
+    }
+    return undefined
 }
 
 /** Extract all public instance methods from a class, excluding Object prototype methods. */

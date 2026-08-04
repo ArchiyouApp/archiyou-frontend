@@ -15,10 +15,12 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "admin:library": "tsx src/admin/library.admin.ts",
-    "test": "vitest run ./tests/",
+    "admin:import-cadscripts": "tsx src/admin/import-cadscripts.ts",
+    "test": "vitest run ./tests/unit/",
     "test:unit": "vitest run ./tests/unit/",
     "docker:dev": "docker compose -f docker-compose.yml up --force-recreate",
-    "docker:prod": "docker compose -f docker-compose.prod.yml up"
+    "docker:prod": "docker compose -f docker-compose.prod.yml up",
+    "test:parity": "vitest run ./tests/parity/"
   },
   "dependencies": {
     "@archiyou/core": "workspace:*",

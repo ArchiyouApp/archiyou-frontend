@@ -192,7 +192,7 @@ export class Shell extends Shape
             // a lofted Face Surface
             const firstEdge = edges[0];
             const otherEdge = edges[1];
-            const shellLoft = firstEdge._toWire().lofted(otherEdge, false); // Shell only ( can have only 1 Face)
+            const shellLoft = firstEdge._toWire()._lofted(otherEdge, false); // Shell only ( can have only 1 Face)
             removeOcTargetForGarbageCollection(shellLoft._ocShape); // Avoid shared OC references for garbage collection
             this._fromOcShell(shellLoft._ocShape);
             
@@ -475,12 +475,6 @@ export class Shell extends Shape
         }
     }
 
-    /** Thicken the shell to create a Solid (private: without adding to Scene) */
-    @checkInput([Number,'ThickenDirection'],['auto','auto'])
-    thickened(amount:number, direction:ThickenDirection):ISolid
-    {
-        return this._thickened(amount,direction);
-    }
 
     /** Private method that is used by thickened */
     @checkInput(Number, 'auto')
@@ -525,7 +519,7 @@ export class Shell extends Shape
     /** Export entity and minimal data as string (used for outputting on console and hashing ) */
     toString():string
     {
-        return `<Shell numFaces="${this.faces().length}">`;
+        return `<Shell numFaces="${this.faces().length}" ${this.nodeString()}>`;
     }
 
 }

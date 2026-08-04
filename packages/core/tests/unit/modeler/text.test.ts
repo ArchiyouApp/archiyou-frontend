@@ -46,7 +46,8 @@ describe('Modeler.text()', () =>
 
     it('loadFont registers bytes and text uses them', async () => {
         const { readFileSync } = await import('fs')
-        const bytes = new Uint8Array(readFileSync('../meshup/devlibs/csgrs/asar.ttf'))
+        // the meshup workspace package, not the old devlibs/csgrs checkout it used to live in
+        const bytes = new Uint8Array(readFileSync('../meshup/rust/asar.ttf'))
         await modeler.loadFont('asar', bytes)
         const r = modeler.text('Hi', { font: 'asar', size: 20 })
         expect(r).toBeTruthy()

@@ -35,6 +35,7 @@ import { Image } from './Image'
 import { Graphic } from './Graphic'
 
 import { ShapeCollection } from '@archiyou/meshup/src/index'
+import { isKernelShapeOrCollection } from '../modeler/typeguards'
 
 import { ScriptParam } from '../execution/ScriptParam'
 import type { ScriptParamData } from '../execution/types'
@@ -241,7 +242,7 @@ export class Document
         const newViewContainer = new View().on(this._getOrMakeActivePage()).setName(name);
         this._activeContainer = newViewContainer;
 
-        if(ShapeCollection.isShapeCollection(shapes))
+        if(isKernelShapeOrCollection(shapes))
         {
             this.shapes(shapes);
         }
@@ -532,12 +533,15 @@ export class Document
             .width('30mm')
             .height('8mm')
 
-        // Version info left of image
+        // Version info left of the logo. Positioned relative to the page's own width —
+        // the previous `297-30` mm hardcoded A4 landscape, so on any other page size
+        // (A4 portrait, A3, …) this text sat outside the page and was never drawn.
+        const pageWidthMm = convertValueFromToUnit(this._activePage._width, this._activePage._units, 'mm') ?? 297;
         this.text(this._getVersionSummary(), { size: '2mm'})
             .width(`${TITLE_BLOCK_NUM/2}mm`)
             .height('3mm')
             .pivot(1,0)
-            .position([`${297-30}mm`, '6mm'] as ContainerPositionAbs); // bit hacky
+            .position([`${pageWidthMm-30}mm`, '6mm'] as ContainerPositionAbs);
 
         // Metric labelblock
         this.labelblock('metrics', this._getMetricSummary(), { y: '11mm', width: TITLEBLOCK_WIDTH, numTextLines: 2 }); // TODO: dynamic param readout
@@ -573,19 +577,36 @@ export class Document
         const PARAM_IS_VALUE_CHAR = ':'
         const PARAM_SEPERATOR_CHAR = ' '
 
-        // New consistent way to get params from request
-        // Combine params with request.params for values
-        const params = (this._docs._archiyou as any)?.worker?._activeExecRequest?.script?.params as Record<string,ScriptParamData>;
+        // Params + values come from the ParamManager in the running scope: it holds the
+        // live set — both the params that came in on the request AND any declared from
+        // the script with $PARAMS.define() — each with its current value.
+        //
+        // NOTE: this used to read `_archiyou.worker._activeExecRequest`. There is no
+        // `worker` module on ArchiyouModules (a leftover from the pre-monorepo app), so
+        // the lookup was always undefined and every titleblock read "no parameters".
+        // Only the fields the summary needs — ScriptParam instances and plain wire data
+        // (ScriptParamData) both satisfy this, so either source can be read the same way.
+        type ParamSummarySource = { name?:string, label?:string, default?:any, _value?:any };
 
-        if (!params || Object.keys(params).length === 0){ return 'no parameters' }
+        const paramManager = (this._docs._archiyou?.runner?.getActiveScope?.() as any)?._paramManager;
+        const managedParams = paramManager?.getParams?.() as Array<ParamSummarySource>|undefined;
 
-        const paramValues = (this._docs._archiyou as any)?.worker?._activeExecRequest?.params;
+        // Fall back to the request's own params when there is no manager (e.g. a doc
+        // rendered outside a run).
+        const requestParams = this._docs._archiyou?.runner?.getActiveExecRequest?.()?.script?.params as Record<string,ScriptParamData>;
+        const params:Array<ParamSummarySource> = managedParams ?? (requestParams ? Object.values(requestParams) : []);
 
-        const paramsWithValues = (Object.values(params) as Array<ScriptParam>)
-                                .map((p) => { return { ...p, value: paramValues[p.name] }})
+        if (params.length === 0){ return 'no parameters' }
+
+        const paramsWithValues = params.map((p) => ({
+                                    name: p?.name,
+                                    label: p?.label,
+                                    value: (p as any)?._value ?? p?.default,
+                                }))
 
         return paramsWithValues.map(p => {
             const paramName = p.label || p.name;
+            if(!paramName){ return null } // unnamed param: nothing sensible to summarise
             let paramSummaryName;
             if(paramName.length <= PARAM_NAME_MAXCHAR)
             {
@@ -593,11 +614,14 @@ export class Document
             }
             // Shorten long name of param like BEAM_WIDTH = BW, SEAT-HEIGHT => SH
             else {
-                const paramNameParts = this._splitStringRecurse([p.name], PARAM_SPLIT_CHARS);
+                // Empty parts (from repeated separators like BEAM__WIDTH) have no [0] to read
+                const paramNameParts = (this._splitStringRecurse([paramName], PARAM_SPLIT_CHARS) ?? []).filter(s => s.length > 0);
                 paramSummaryName = paramNameParts.slice(0,PARAM_NAME_MAXCHAR).reduce((agg,cur) => agg += cur[0].toUpperCase(), '');
             }
             return `${paramSummaryName}${PARAM_IS_VALUE_CHAR}${this._formatMetricParamValue(p.value)}`;
-        }).join(PARAM_SEPERATOR_CHAR)
+        })
+        .filter(Boolean)
+        .join(PARAM_SEPERATOR_CHAR)
 
     }
 
@@ -608,25 +632,30 @@ export class Document
         const METRIC_IS_VALUE_CHAR = ':'
         const METRIC_SEPERATOR_CHAR = ' '
 
-        const metrics = Object.values((this._docs._archiyou as any)?.calc?.metrics()); // TODO: publishScript too?
-        if (!metrics)
+        // Object.values(undefined) THROWS — the `if(!metrics)` below never caught a missing
+        // calc module, it just crashed titleblock() (and with it the whole document).
+        const metrics = Object.values((this._docs._archiyou as any)?.calc?.metrics() ?? {}); // TODO: publishScript too?
+        if (metrics.length === 0)
         {
             return 'no metrics'
         }
 
         return metrics.map((m: any) => {
             const metricName = m.label || m.name;
+            if(!metricName){ return null } // unnamed metric: nothing sensible to summarise
             let metricSummaryName;
             if(metricName.length <= METRIC_NAME_MAXCHAR)
             {
                 metricSummaryName = metricName;
             }
             else {
-                const metricNameParts = this._splitStringRecurse([m.label||m.name], METRIC_SPLIT_CHARS);
+                const metricNameParts = (this._splitStringRecurse([metricName], METRIC_SPLIT_CHARS) ?? []).filter(s => s.length > 0);
                 metricSummaryName = metricNameParts.slice(0,METRIC_NAME_MAXCHAR).reduce((agg,cur) => agg += cur[0].toUpperCase(), '');
             }
             return `${metricSummaryName}${METRIC_IS_VALUE_CHAR}${this._formatMetricParamValue(m.data as any)} ${m?.options?.unit ?? ''}`;
-        }).join(METRIC_SEPERATOR_CHAR)
+        })
+        .filter(Boolean)
+        .join(METRIC_SEPERATOR_CHAR)
     }
 
     _formatMetricParamValue(v:string|number):string
@@ -656,8 +685,12 @@ export class Document
      */
     _getVersion():string
     {
-        const version = (this._docs._archiyou as any)?.worker?.lastExecutionRequest?.script?.published_as?.version // editor app
-            || (this._docs._archiyou as any)?.worker?.lastExecutionRequest?.version // compute worker context:  OcciCadScriptRequest
+        // Same dead `_archiyou.worker` lookup as _getParamSummary(): read the running
+        // request from the Runner instead, so a published/shared script shows its real
+        // semver instead of a permanent 'v0'.
+        const script = this._docs._archiyou?.runner?.getActiveExecRequest?.()?.script as any;
+        const version = script?.version           // Script.version (set on publish/share)
+            || script?.published?.version         // published metadata
             || '0'
 
         return `v${version}`
@@ -666,7 +699,7 @@ export class Document
     /** Get version string like 'v1.0 at 10-20-2025 */
     _getVersionSummary():string
     {
-        return `${this._getVersion()} at ${(this._docs._archiyou as any)?.worker?.lastExecutionRequest?.createdAtString || new Date().toLocaleString('nl-NL') }`;
+        return `${this._getVersion()} at ${new Date().toLocaleString('nl-NL')}`;
     }
 
     _splitStringRecurse(strings:Array<string>, splitChars:Array<string>):Array<string>

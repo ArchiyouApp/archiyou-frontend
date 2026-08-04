@@ -13,6 +13,8 @@
 import { signal } from '@lit-labs/signals';
 import type { AuthResponse, PublicUser } from '@archiyou/types';
 
+import { netFetch } from './network.js';
+
 const API_BASE = (import.meta.env.SERVER_API_BASE_URL as string | undefined) ?? '';
 const TOKEN_KEY = 'archiyou:auth:token';
 
@@ -31,7 +33,7 @@ function setToken(t: string | null): void {
 }
 
 async function post(path: string, body: unknown): Promise<AuthResponse> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await netFetch(`${API_BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -64,7 +66,7 @@ export const authService = {
   /** Request a password-reset email. The server always answers 200 (it never
    *  reveals whether the account exists), so this resolves for any valid input. */
   async forgotPassword(email: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+    const res = await netFetch(`${API_BASE}/auth/forgot-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
@@ -97,7 +99,7 @@ export const authService = {
   /** Ask the server to re-send the confirmation email to the signed-in user's
    *  address. Resolves true when the address was already verified. */
   async resendVerification(): Promise<boolean> {
-    const res = await fetch(`${API_BASE}/auth/resend-verification`, {
+    const res = await netFetch(`${API_BASE}/auth/resend-verification`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(_token ? { Authorization: `Bearer ${_token}` } : {}) },
     });
@@ -132,7 +134,7 @@ export const authService = {
   async refresh(): Promise<PublicUser | null> {
     if (!_token) { currentUser.set(null); return null; }
     try {
-      const res = await fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${_token}` } });
+      const res = await netFetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${_token}` } });
       if (!res.ok) { setToken(null); currentUser.set(null); return null; }
       const user = (await res.json()) as PublicUser;
       currentUser.set(user);

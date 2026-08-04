@@ -47,7 +47,7 @@ test("Shape Basics", () =>
     expect(box.bbox().height()).toEqual(100);
 
     // Transformations
-    expect(box.moved(100).center().toArray()).toEqual([100,0,0]);
+    expect(box.copy().move(100).center().toArray()).toEqual([100,0,0]);
 
     // Copy/Clone
     const copyBox = box.copy();

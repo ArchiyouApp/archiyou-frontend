@@ -107,7 +107,7 @@ describe('Modeler', async () =>
         
         const gltf = await modeler.scene().toGLTF();
         expect(typeof gltf).toBe('string');
-        save('test.modeler.scene.gltf', gltf);
+        save('./tests/outputs/modeler/test.modeler.scene.gltf', gltf);
 
     });
 
@@ -504,6 +504,18 @@ describe('Modeler — mesh mode methods', () =>
     {
         m.layer('test-layer');
         expect(m.layer()).toBeDefined();
+    });
+
+    it('side selector on a rotated box returns its own front polygon, not a bbox face', () =>
+    {
+        const box = m.box(10, 10, 100).rotateX(-10).rotateY(10);
+        const front = box.select('F||front') as any;
+
+        expect(front).toBeInstanceOf(SmartMeshPolygon);
+        expect(front.area()).toBeCloseTo(1000); // the box own 10 x 100 side face
+        // it really faces the front (a bbox face would be axis-aligned at -y)
+        expect(front.normal().y).toBeLessThan(-0.9);
+        expect(front.normal().y).toBeGreaterThan(-1);
     });
 
     //// TODO: sketch

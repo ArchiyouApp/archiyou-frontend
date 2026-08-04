@@ -730,7 +730,44 @@ export class Wire extends Shape
     {
         let vertex = point as Vertex; // auto converted
         let atEdge = this.edgeAtPoint(vertex);
-        return atEdge.directionAt(point); 
+        return atEdge.directionAt(point);
+    }
+
+    /** Find the point on this Wire where the line from the given point to that point is
+     *  perpendicular to the Wire (the foot of the perpendicular).
+     *
+     *  By default the *nearest* such point is returned. Some points have no perpendicular foot at
+     *  all — straight out from the corner of a rectangle, for example — and then the closest point
+     *  on the Wire is returned instead.
+     *
+     *  Pass `all = true` to get every perpendicular foot instead, sorted by distance ascending.
+     *  That list contains only genuine perpendicular feet and may be empty.
+     *
+     *  @param point - the point to drop the perpendicular from
+     *  @param all - return every perpendicular foot instead of only the nearest one
+     */
+    @checkInput([['PointLike',null],[Boolean, false]], ['Point', Boolean])
+    perpendicularPointTo(point:PointLike, all?:boolean):Point|Array<Point>|null
+    {
+        const at = point as Point; // auto converted
+
+        // NOTE: gather per Edge - a Wire's OC curve is an Adaptor, which the OC point projector
+        // does not take. Corners between Edges are skipped anyway: a corner has no tangent
+        const feet = this.edges().toArray()
+                .reduce( (acc:Array<Point>, e) => acc.concat((e as Edge)._perpendicularFeet(at)), [])
+                // the same foot can come out of two Edges that meet there
+                .filter( (p,i,points) => !points.slice(0,i).some( other => other.equals(p) ))
+                .sort( (a,b) => a.distance(at) - b.distance(at)); // distance ascending
+
+        if(all){ return feet; }
+        if(feet.length){ return feet[0]; }
+
+        // Nothing on this Wire is perpendicular to the given point: return the closest point on it
+        const closest = this.edges().toArray()
+                .map( e => (e as Edge).pointAtParam((e as Edge)._clampParam((e as Edge).getParamAt(at))))
+                .sort( (a,b) => a.distance(at) - b.distance(at));
+
+        return closest[0] ?? null;
     }
 
     /** Get a Point at a certain percentage of the Wire */
@@ -942,14 +979,6 @@ export class Wire extends Shape
         return (this.copy() as Wire).reverse();
     }
 
-    /** Connect two Wires together into new one: introducing new line Edges distance is less than radius */
-    @checkInput(['Wire',[Number, WIRE_COMBINE_RADIUS]], ['auto','auto'])
-    combined(other:Wire, radius?:number):Wire
-    {
-        // !!!! OC can be very weird with order of Edges in a Wire: use a own method
-        const allEdges:ShapeCollection = this.edges().concat(other.edges());
-        return this.combineEdges(allEdges);
-    }
 
     /** Extra algorithm to combine Edges into Wire - The OC WireBuilder does this mostly too - but this is triggered as last resort */
     @checkInput(['AnyShapeSequence',[Number,WIRE_COMBINE_RADIUS]], [ShapeCollection, 'auto'] )
@@ -1153,13 +1182,6 @@ export class Wire extends Shape
         }
     }
 
-    /** Make a new Solid by lofting from a flat Shape through a number of sections */
-    @checkInput(['AnyShapeOrCollection', [Boolean, WIRE_LOFTED_SOLID ]], ['ShapeCollection', 'auto'])
-    @sceneAdd
-    lofted(sections:AnyShapeOrCollection, solid?:boolean):IShell|Solid
-    {
-        return this._lofted(sections, solid);
-    }
 
     /** Make a Solid by lofting a flat Shape through a number of sections  */
     @checkInput(['AnyShapeOrCollection', [Boolean, WIRE_LOFTED_SOLID ]], ['ShapeCollection', 'auto'])
@@ -1242,13 +1264,6 @@ export class Wire extends Shape
         return outerSweep; // TODO: cut holes
     }
 
-    /** Sweep a profile Wire or Face ( see Face.ts implementation: splitting inner and outerwires) along a path to create a Shell or Solid  */
-    @checkInput(['LinearShape',['Boolean', WIRE_SWEEPED_SOLID],[Boolean, WIRE_SWEEPED_AUTOROTATE],['Alignment', null]],['auto','auto','auto','auto'])
-    @sceneAdd
-    sweeped(path:LinearShape, solid?:boolean, autoRotate?:boolean, alignToPath?:Alignment):IFace|Shell|Solid
-    {
-        return this._sweeped(path,solid,autoRotate,alignToPath);
-    }
 
     /** Sweep a profile Wire or Face ( see Face.ts implementation: splitting inner and outerwires) along a path to create a Shell or Solid  */
     @checkInput(['LinearShape',['Boolean', WIRE_SWEEPED_SOLID],[Boolean, WIRE_SWEEPED_AUTOROTATE],['Alignment', null]],['auto','auto','auto','auto'])
@@ -1322,12 +1337,6 @@ export class Wire extends Shape
         return newFace
     }
 
-    @checkInput([[Number,WIRE_THICKEN_AMOUNT],['ThickenDirection', WIRE_THICKEN_DIRECTION], ['PointLike', null]], ['auto', 'auto', 'Vector'])
-    @sceneAdd
-    thickened(amount:number, direction?:ThickenDirection, onPlaneNormal?:PointLike):IFace
-    {
-        return this._thickened(amount, direction, onPlaneNormal);
-    }
 
     /** Thicken (2D) Wire to create a thick Face  
         @param direction PointLike or Side (top,bottom,left,right,front,back)
@@ -1344,7 +1353,7 @@ export class Wire extends Shape
     /** Offset Wire to create a new parallel Wire at given distance (private) 
      *  IMPORTANT: minus amount means the Wire becomes smaller. We will check for that!
      *  TODO: Offsetting a simple Wire can generate unordered Edges and problems later on. Need to introduce checks
-     *  ex: polyline([0,0,25],[50,0,50],[100,0,25]).offsetted(5)  => 2 vertices!              
+     *  ex: polyline([0,0,25],[50,0,50],[100,0,25])._offsetted(5)  => 2 vertices!              
     */
     @checkInput([[Number,WIRE_OFFSET_AMOUNT],[String, WIRE_OFFSET_TYPE], ['PointLike', null]], ['auto', 'auto', 'Vector'])
     _offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):Wire
@@ -1417,13 +1426,6 @@ export class Wire extends Shape
         return offsetWire;
     }
 
-    /** Offset Wire to create a new parallel Wire at given distance */
-    @checkInput([[Number,WIRE_OFFSET_AMOUNT],[String, WIRE_OFFSET_TYPE], ['PointLike', null]], ['auto', 'auto', 'Vector'])
-    @sceneAdd
-    offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):Wire
-    {
-        return this._offsetted(amount,type,onPlaneNormal);
-    }
 
     /** Create a new version of current Wire that is parallel at a given distance */
     @checkInput([[Number,WIRE_OFFSET_AMOUNT],[String, WIRE_OFFSET_TYPE], ['PointLike',null]], ['auto', 'auto', 'Vector'])
@@ -1455,13 +1457,6 @@ export class Wire extends Shape
         return new Shape()._fromOcShape(newOcSolid) as Solid;
     }
 
-    @checkInput([[Number,100],[Number, 360],['PointLike', null],['PointLike',[0,0,1]],[Boolean,false]],['auto','auto', 'Point', 'Vector','auto'])
-    @sceneAdd
-    twistExtruded(amount?:number, angle?:number, pivot?:PointLike, direction?:PointLike, lefthand?:boolean):ISolid
-    {
-        let newSolid = this._twistExtruded(amount,angle,pivot,direction,lefthand)
-        return newSolid;
-    }
 
     @checkInput([[Number,100],[Number, 360],['PointLike', null],['PointLike',[0,0,1]],[Boolean,false]],['auto','auto', 'Point', 'Vector','auto'])
     twistExtrude(amount?:number, angle?:number, pivot?:PointLike, direction?:PointLike, lefthand?:boolean):ISolid
@@ -1888,7 +1883,53 @@ export class Wire extends Shape
     /** Export entity and minimal data as string (used for outputting on console and hashing ) */
     toString():string
     {
-        return `<Wire:${this.wireType()} numVertices="${this.vertices().length}" numEdges="${this.edges().length}">`;
+        return `<Wire:${this.wireType()} numVertices="${this.vertices().length}" numEdges="${this.edges().length}" ${this.nodeString()}>`;
+    }
+
+    //// MESH-KERNEL API PARITY ////
+
+    /** Fill this outline into a surface. Mesh-kernel name (a meshup Curve becomes a Polygon);
+     *  on brep a Wire becomes a Face. */
+    @sceneAdd
+    toPolygon():AnyShape
+    {
+        return this.toFace();
+    }
+
+    /** The atomic segments of this Wire — its Edges. Mesh-kernel name. */
+    @sceneCarry
+    segments():ShapeCollection
+    {
+        return this.edges();
+    }
+
+    /** A single segment (or a range of them) by index. Negative indexes count from the end.
+     *  One segment comes back as an Edge, several as a Wire — mirroring the mesh kernel,
+     *  where a multi-span selection becomes a CompoundCurve. */
+    @sceneAdd
+    segment(fromIndex:number, toIndex?:number):AnyShape
+    {
+        const edges = this.edges().toArray();
+        const norm = (i:number) => (i < 0) ? edges.length + i : i;
+        const from = norm(fromIndex);
+        const to = norm(toIndex ?? fromIndex);
+
+        const picked = edges.slice(Math.min(from,to), Math.max(from,to) + 1);
+        if(picked.length === 0)
+        {
+            console.warn(`Wire::segment(): no segment at index ${fromIndex}. This Wire has ${edges.length}.`);
+            return null;
+        }
+        return (picked.length === 1) ? picked[0] : new Wire().fromEdges(new ShapeCollection(picked));
+    }
+
+    /** Join another linear Shape onto this one, forming a single Wire. Mesh-kernel name. */
+    @checkInput('LinearShape', 'auto')
+    connect(other:LinearShape):this
+    {
+        const joined = new Wire().fromEdges(new ShapeCollection([...this.edges().toArray(), ...(other as any).edges().toArray()]));
+        this.replaceShape(joined);
+        return this;
     }
 
 }

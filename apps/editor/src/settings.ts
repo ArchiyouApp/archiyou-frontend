@@ -46,6 +46,7 @@ doc.create('myDoc')
   return { iso }
 })
 .page('myPage')
+.titleblock({ title: 'specialBox', designer: 'Archiyou' }) 
 .view('isometry')
 .shapes('iso')
 .text('MyText');
@@ -116,8 +117,8 @@ export const VIEWER_GIZMO_LABEL_SIZE     = 10;   // world units
 // axis arm of 20 gives a cone height of 20×0.18=3.6 and radius 20×0.055=1.1.
 // Dimension-line arrowheads (below) reuse these same ratios so both kinds of
 // arrow look identical, just scaled by their own base length.
-export const VIEWER_GIZMO_ARROW_LENGTH_RATIO = 0.18;
-export const VIEWER_GIZMO_ARROW_RADIUS_RATIO = 0.055;
+export const VIEWER_GIZMO_ARROW_LENGTH_RATIO = 0.05;
+export const VIEWER_GIZMO_ARROW_RADIUS_RATIO = 0.01;
 
 // Gizmo auto-scaling: scaleFactor = sceneSize * VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE
 // (sceneSize = largest bbox dimension). Calibrated for scene 100 → factor 1

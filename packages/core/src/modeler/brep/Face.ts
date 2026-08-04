@@ -638,13 +638,6 @@ export class Face extends Shape
         return newSolid;
     }
 
-    /** Extrude a Face a certain amount into a given direction. (private: not added to Scene) */
-    @checkInput([ [Number, FACE_EXTRUDE_AMOUNT], ['PointLike',null]], [Number, 'auto']) // don't check direction
-    @sceneAdd
-    extruded(amount?:number, direction?:PointLike):ISolid
-    {
-        return this._extruded(amount, direction);
-    }
 
     /** Same as extruded() but replaces old Shape with extruded one */
     @checkInput([ [Number, FACE_EXTRUDE_AMOUNT], ['PointLike',null]], [Number, 'auto']) // don't check direction
@@ -669,12 +662,6 @@ export class Face extends Shape
         return this.extrude(amount);
     }
 
-    @checkInput([[Number,FACE_EXTRUDE_AMOUNT]], ['auto'])
-    shelled(amount?:number):ISolid
-    {
-        console.warn(`Face::IShell: Shelling does not really work on Faces. Did an extrude instead!`)
-        return this.extruded(amount);
-    }
 
     /** Make a bigger (+amount) or smaller (-amount) Face (private)
      *  NOTE: onPlaneNormal is for consistency and does nothing
@@ -706,13 +693,6 @@ export class Face extends Shape
         return newFace;        
     }
 
-    /** Make a bigger (+amount) or smaller (-amount) Face (private) */
-    @checkInput([[Number,FACE_OFFSET_AMOUNT],[String, FACE_OFFSET_TYPE],['PointLike',null]], ['auto', 'auto', 'Vector'])
-    @sceneAdd
-    offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):this
-    {
-        return this._offsetted(amount,type,onPlaneNormal);
-    }
 
     /** Make the Face bigger (+amount) or smaller (-amount) */
     @checkInput([[Number,FACE_OFFSET_AMOUNT],[String, FACE_OFFSET_TYPE],['PointLike',null]], ['auto', 'auto', 'Vector'])
@@ -740,15 +720,9 @@ export class Face extends Shape
     _thickened(amount?:number, direction?:ThickenDirection):ISolid
     {
         // This is actually extrude with extra alignments, we use the methods on Shell
-        return this.toShell().thickened(amount, direction);
+        return this.toShell()._thickened(amount, direction);
     }
-
-    @checkInput([ [Number,FACE_THICKEN_AMOUNT],['ThickenDirection',FACE_THICKEN_DIRECTION]], [Number, 'auto'])
-    @sceneAdd
-    thickened(amount?:number, direction?:ThickenDirection):ISolid
-    {
-        return this._thickened(amount,direction);
-    }   
+   
 
     /** Thicken current Face  */
     @checkInput([ [Number,FACE_THICKEN_AMOUNT],['ThickenDirection',FACE_THICKEN_DIRECTION]], [Number, 'auto'])
@@ -773,12 +747,6 @@ export class Face extends Shape
         return outerWire._lofted(sections, solid); // already added to Scene
     }
 
-    @checkInput(['AnyShapeOrCollection', [Boolean, FACE_LOFT_SOLID ]], ['ShapeCollection', 'auto'])
-    @sceneAdd
-    lofted(sections:AnyShapeOrCollection, solid?:boolean):IShell|Solid
-    {
-        return this._lofted(sections, solid)
-    }
 
     /** Loft current Face */
     @checkInput(['AnyShapeOrCollection', [Boolean, FACE_LOFT_SOLID ]], ['ShapeCollection', 'auto'])
@@ -810,14 +778,6 @@ export class Face extends Shape
         }
     }
 
-    /** Extrude and twist a given amount of angles (public ) */
-    @checkInput([[Number,100],[Number, 360],['PointLike', null],['PointLike',[0,0,1]],[Boolean,false]],['auto','auto', 'Point', 'Vector','auto'])
-    twistExtruded(amount?:number, angle?:number, pivot?:PointLike, direction?:PointLike, lefthand?:boolean):ISolid
-    {
-        let resultSolid = this._twistExtruded(amount,angle,pivot,direction,lefthand);
-        resultSolid.addToScene();
-        return resultSolid;
-    }
 
 
     /** Extrude Face and rotate a given angle */
@@ -1191,7 +1151,7 @@ export class Face extends Shape
     /** Export entity and minimal data as string (used for outputting on console and hashing ) */
     toString():string
     {
-        return `<Face:${this.faceType()} numVertices="${this.vertices().length}" numEdges="${this.edges().length}">`;
+        return `<Face:${this.faceType()} numVertices="${this.vertices().length}" numEdges="${this.edges().length}" ${this.nodeString()}>`;
     }
 
 

@@ -15,16 +15,28 @@
 
 import type { ModelUnits } from './types'
 
-/** The host modeler, or null for a standalone shape. */
+/** The host modeler, or null for a standalone shape.
+ *
+ *  Also accepts a ShapeCollection. Collections are built ad-hoc (`new ShapeCollection(shape)`)
+ *  and never adopted by the Modeler, so they carry no `_modeler` of their own — but their
+ *  members do, and that is what `ShapeCollection.autoDim()` needs to reach the annotator. */
 export function hostModeler(shape: any): any
 {
-    return shape?._modeler ?? null
+    if (shape?._modeler){ return shape._modeler }
+
+    const members = shape?.shapes // brep ShapeCollection holds a plain Array<AnyShape>
+    if (Array.isArray(members))
+    {
+        for (const s of members){ if (s?._modeler){ return s._modeler } }
+    }
+
+    return null
 }
 
 /** The app modules (annotator, calc, docs, materials, …), or null when standalone. */
 export function hostModules(shape: any): any
 {
-    return shape?._modeler?.modules ?? null
+    return hostModeler(shape)?.modules ?? null
 }
 
 /** Model units of the host, defaulting to mm for a standalone shape — the same default

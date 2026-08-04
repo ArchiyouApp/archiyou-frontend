@@ -46,6 +46,36 @@ describe('brep → meshup conversion', () =>
         expect(shapes.filter((s: any) => s.type === 'Curve').length).toEqual(12)
     })
 
+    /** Regression: the stand-in Mesh used to be built from bare points, which leaves every
+     *  vertex normal at (0,0,0). A zero-normal surface takes no light, so a brep model
+     *  rendered flat grey while its (unlit) edge lines still showed the shape's colour. */
+    it('carries the tessellation normals onto the stand-in Mesh', () =>
+    {
+        const boxNormals = (brepShapeToMeshup(new brep.Solid().makeBox(100)) as any)
+            .toArray().find((s: any) => s.type === 'Mesh').toBuffer().normals
+
+        expect(boxNormals.length).toBeGreaterThan(0)
+        for (let i = 0; i < boxNormals.length; i += 3)
+        {
+            const len = Math.hypot(boxNormals[i], boxNormals[i + 1], boxNormals[i + 2])
+            expect(len).toBeCloseTo(1, 3)
+        }
+        // a box is flat-shaded: one normal per face, so six distinct directions
+        const distinct = (ns: Float32Array | Array<number>) =>
+        {
+            const set = new Set<string>()
+            for (let i = 0; i < ns.length; i += 3) set.add([0, 1, 2].map(k => ns[i + k].toFixed(3)).join(','))
+            return set.size
+        }
+        expect(distinct(boxNormals)).toEqual(6)
+
+        // a sphere keeps OC's per-node normals, so it shades smooth rather than faceted:
+        // many more distinct normals than it has triangles' worth of facets
+        const sphereNormals = (brepShapeToMeshup(new brep.Solid().makeSphere(50)) as any)
+            .toArray().find((s: any) => s.type === 'Mesh').toBuffer().normals
+        expect(distinct(sphereNormals)).toBeGreaterThan(distinct(boxNormals) * 10)
+    })
+
     it('preserves the box dimensions through tessellation', () =>
     {
         const result = brepShapeToMeshup(new brep.Solid().makeBox(100, 50, 20)) as any

@@ -1,5 +1,6 @@
 import { Vector as MeshupVector } from '@archiyou/meshup/src/index'
 import { ShapeCollection } from '@archiyou/meshup/src/ShapeCollection'
+import { isKernelShapeCollection } from './typeguards'
 import { SceneNode as MeshupSceneNode } from '@archiyou/meshup/src/SceneNode'
 
 import type {
@@ -244,9 +245,10 @@ export class Layouter
             return sceneOrShapes
         }
 
-        if (ShapeCollection.isShapeCollection(sceneOrShapes))
+        // Kernel-neutral: a brep ShapeCollection must take this branch too
+        if (isKernelShapeCollection(sceneOrShapes))
         {
-            return this._sceneFromCollection(sceneOrShapes)
+            return this._sceneFromCollection(sceneOrShapes as ShapeCollection<any>)
         }
 
         throw new Error('Layouter: expected a SceneNode or ShapeCollection input.')

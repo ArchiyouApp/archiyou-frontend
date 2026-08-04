@@ -4,6 +4,25 @@ import { isContainerAlignment, isImageOptionsFit } from './typeguards'
 import { arrayBufferToBase64, stripOuterSVGTags, stripXMLDeclaration, getPreserveAspectRatio } from './utils'
 
 
+/** Image bytes by URL, shared by every Image container in this context.
+ *
+ *  A doc render is asked for more than once per execution — the editor requests both
+ *  `docs/*​/svg` and `docs/*​/svg-pages`, and each render builds its own per-render
+ *  cache — so without this the SAME url is downloaded once per output, per page. With
+ *  a remote logo in a titleblock (the default) that turned a 200ms document into a
+ *  6s one, and worse through the server proxy in the browser.
+ *
+ *  Keyed on the URL and holding the in-flight promise, so concurrent containers share
+ *  one request. Entries are the fetched data; a URL that fails is remembered only
+ *  briefly (FAILED_TTL_MS) so a dead host stops stalling every render without making
+ *  the failure permanent for the lifetime of the worker. */
+const IMAGE_DATA_CACHE = new Map<string, Promise<any>>();
+const IMAGE_FAILED_AT = new Map<string, number>();
+const FAILED_TTL_MS = 60_000;
+/** Cap on a single image request, so an unresponsive host degrades the document
+ *  (image skipped) instead of hanging the whole export. */
+const IMAGE_FETCH_TIMEOUT_MS = 8_000;
+
 export class Image extends Container
 {
     DEFAULT_FIT:ImageOptionsFit = 'contain';
@@ -74,52 +93,90 @@ export class Image extends Container
     /** We want to load the raw data of the image in the ContainerContent for easy access later (in HTML and PDF exporter) */
     async loadImageData(cache?:Record<string,any>|undefined):Promise<any>
     {
-        let data;
-        if(cache && cache[this._url]) // get from cache
+        if(cache && cache[this._url]) // get from this render's cache
         {
-            console.info(`DocPageContainerImage::loadImageData: Loaded image "${this._url}" data from cache`)
-            data = cache[this._url];
+            return cache[this._url];
         }
-        else {
-            // async load the image through a proxy (to avoid CORS issues in browser)
-            const proxyUrl = this._page._docs?._settings?.proxy;
-            if(!proxyUrl)
+
+        // Shared across renders: one request per URL, however many outputs/pages use it.
+        let pending = IMAGE_DATA_CACHE.get(this._url);
+        if(!pending)
+        {
+            const failedAt = IMAGE_FAILED_AT.get(this._url);
+            if(failedAt && (Date.now() - failedAt) < FAILED_TTL_MS)
             {
-                console.warn(`DocPageContainerImage::loadImageData(): No proxy given. Please supply settings with proxy url in Doc()! Querying the images directly. This might not work in the browser!`);
+                // Recently unreachable — skip it rather than stalling this render too.
+                return undefined;
             }
 
-            const fetchUrl = (proxyUrl) ? proxyUrl : this._url;
-            const fetchSettings = (proxyUrl) 
-                                ?  {
-                                    method: 'POST',
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ url : this._url })       
-                                }
-                                : { 
-                                    method: 'GET',
-                                }
-            
-            // Do fetch
-            try 
-            {
-                const r = await fetch(fetchUrl, fetchSettings);                
+            pending = this._fetchImageData();
+            IMAGE_DATA_CACHE.set(this._url, pending);
+        }
 
-                if(r.status !== 200) 
-                {
-                    console.error(`DocPageContainerImage::loadImageData(): Could not get image. Check if it exists or proxy address: "${proxyUrl}"`)
-                }
-                else {
-                    data = (this.getImageFormat() === 'svg') ? await r.text() : this._exportImageDataBase64(await r.arrayBuffer());                     
-                    console.info(`DocPageContainerImage::loadImageData: Got data for image "${this._url}" with size ${data.length}`)
-                    if (cache) cache[this._url] = data;
-                }
-            }
-            catch(e)
-            {
-                console.warn(`DocPageContainerImage::loadImageData(): Could not load image at "${this._url}" fetching through proxy: "${proxyUrl}":  ERROR: "${e}".`);
-            }
-            
+        const data = await pending;
 
+        if(data === undefined)
+        {
+            // Don't keep a failure around: remember it briefly, then allow a retry.
+            IMAGE_DATA_CACHE.delete(this._url);
+            IMAGE_FAILED_AT.set(this._url, Date.now());
+        }
+        else if(cache)
+        {
+            cache[this._url] = data;
+        }
+
+        return data;
+    }
+
+    /** Fetch the image bytes (through the proxy when one is configured). Resolves to
+     *  undefined when the image cannot be loaded — never rejects, so one unreachable
+     *  image degrades to a missing picture instead of failing the whole document. */
+    private async _fetchImageData():Promise<any>
+    {
+        let data;
+
+        // async load the image through a proxy (to avoid CORS issues in browser)
+        const proxyUrl = this._page._docs?._settings?.proxy;
+        if(!proxyUrl)
+        {
+            console.warn(`DocPageContainerImage::loadImageData(): No proxy given. Please supply settings with proxy url in Doc()! Querying the images directly. This might not work in the browser!`);
+        }
+
+        const fetchUrl = (proxyUrl) ? proxyUrl : this._url;
+        // Bound the request: an unresponsive host used to stall the export for as long
+        // as it took to time out (or forever), once per output.
+        const timeout = AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS);
+        const fetchSettings = (proxyUrl)
+                            ?  {
+                                method: 'POST',
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ url : this._url }),
+                                signal: timeout,
+                            }
+                            : {
+                                method: 'GET',
+                                signal: timeout,
+                            }
+
+        // Do fetch
+        const t0 = Date.now();
+        try
+        {
+            const r = await fetch(fetchUrl, fetchSettings);
+
+            if(r.status !== 200)
+            {
+                console.error(`DocPageContainerImage::loadImageData(): Could not get image. Check if it exists or proxy address: "${proxyUrl}"`)
+            }
+            else {
+                data = (this.getImageFormat() === 'svg') ? await r.text() : this._exportImageDataBase64(await r.arrayBuffer());
+                console.info(`DocPageContainerImage::loadImageData: Got data for image "${this._url}" with size ${data.length} in ${Date.now()-t0}ms`)
+            }
+        }
+        catch(e)
+        {
+            console.warn(`DocPageContainerImage::loadImageData(): Could not load image at "${this._url}" fetching through proxy: "${proxyUrl}" after ${Date.now()-t0}ms:  ERROR: "${e}".`);
         }
 
         return data;

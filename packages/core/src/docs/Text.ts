@@ -95,7 +95,20 @@ export class Text extends Container
 
         const [, vAlign] = this._contentAlign ?? ['left', 'top'];
         const yPos             = vAlign === 'center' ? fmt(hMm / 2) : vAlign === 'bottom' ? fmt(hMm) : '0';
-        const dominantBaseline = vAlign === 'center' ? 'middle'     : vAlign === 'bottom' ? 'auto'   : 'hanging';
+        // Vertical alignment needs BOTH attributes — the two renderers read different ones:
+        //  - Browsers honour `dominant-baseline`. 'text-before-edge' (not 'hanging') puts
+        //    the top of the em box on y=0 so glyphs sit inside the container; the `hanging`
+        //    baseline is a typographic baseline ~0.8em up, which Latin caps and ascenders
+        //    overshoot — their tops then land outside the container's clip rect (0,0,w,h)
+        //    and get shaved off.
+        //  - svg2pdf (PDF export) reads only `vertical-align`/`alignment-baseline` and
+        //    ignores dominant-baseline entirely, defaulting to 'alphabetic' — which is why
+        //    top-aligned text sat an ascent too high in exported PDFs. 'text-top' is the
+        //    value it maps to jsPDF's top baseline.
+        // `alignment-baseline` does not apply to <text> in browsers (only to inline-level
+        // children), so the two never fight.
+        const dominantBaseline  = vAlign === 'center' ? 'middle' : vAlign === 'bottom' ? 'auto'     : 'text-before-edge';
+        const alignmentBaseline = vAlign === 'center' ? 'middle' : vAlign === 'bottom' ? 'baseline' : 'text-top';
 
         const attrs = [
             `x="${xPos}"`,
@@ -107,6 +120,7 @@ export class Text extends Container
             `fill="${escapeXml(fill)}"`,
             `text-anchor="${textAnchor}"`,
             `dominant-baseline="${dominantBaseline}"`,
+            `alignment-baseline="${alignmentBaseline}"`,
         ].join(' ');
 
         return `<text ${attrs}>${escapeXml(text)}</text>`;

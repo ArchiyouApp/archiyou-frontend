@@ -12,9 +12,10 @@
  */
 
 // constants
-import { USE_GARBAGE_COLLECTION, MESHING_MAX_DEVIATION, MESHING_ANGULAR_DEFLECTION, MESHING_MINIMUM_POINTS, MESHING_TOLERANCE, MESHING_EDGE_MIN_LENGTH, 
+import { USE_GARBAGE_COLLECTION, MESHING_MAX_DEVIATION, MESHING_ANGULAR_DEFLECTION, MESHING_MINIMUM_POINTS, MESHING_TOLERANCE, MESHING_EDGE_MIN_LENGTH,
             DEFAULT_WORKPLANE, SHAPE_ARRAY_DEFAULT_OFFSET, SHAPE_EXTRUDE_DEFAULT_AMOUNT, SHAPE_SWEEP_DEFAULT_SOLID,
             SHAPE_SWEEP_DEFAULT_AUTOROTATE, SHAPE_SCALE_DEFAULT_FACTOR, SHAPE_ALIGNMENT_DEFAULT, SHAPE_SHELL_AMOUNT,
+            SIDES, SIDE_TO_AXIS, SIDE_SELECTOR_TOLERANCE,
             } from './constants'
 
 import type {
@@ -26,7 +27,7 @@ import type {
     Link, SelectorPointRange, SelectorAxisCoord, SelectorBbox, SelectorIndex,
     ShapeAttributes,
     MeshShape, FaceMesh, EdgeMesh, VertexMesh, MeshCache,
-    Annotation, DimensionOptions,toSVGOptions,
+    Annotation, DimensionOptions, DimensionLevelSettings, AnnotationAutoDimStrategy, toSVGOptions,
     BeamLikeDims,
     Alignment, OrientationXY,
     ExportGLTFOptions, MeshingQualitySettings
@@ -39,10 +40,11 @@ import { Vector, Point, Bbox, OBbox, Vertex, Edge, Wire, Face,
 // Scene + style come from the MESH kernel: both kernels share one SceneNode graph and one
 // Style model, which is what lets the scene navigator and the GLTF exporter stay kernel-agnostic.
 import { SceneNode } from '@archiyou/meshup/src/SceneNode'
+import { nodeToString } from '@archiyou/meshup/src/utils'
 import { Style } from '@archiyou/meshup/src/Style'
 import type { StyleData } from '@archiyou/meshup/src/Style'
 import { Color } from '@archiyou/meshup/src/Color'
-import { replaceInScene, activeLayerOf, sceneAdd, sceneCarry, sceneUpdate } from '@archiyou/meshup/src/sceneDecorators'
+import { replaceInScene, activeLayerOf, sceneAdd, sceneCarry, sceneReplace, sceneUpdate } from '@archiyou/meshup/src/sceneDecorators'
 
 import { BaseAnnotation } from '../../annotator/AnnotatorBaseAnnotation'
 import { DimensionLine } from '../../annotator/AnnotatorDimensionLine'
@@ -59,7 +61,7 @@ import { getOc } from './index'
 // Import decorators directly (not via the barrel) — the barrel is a cycle and decorators run
 // at class-definition time, before it has finished initialising.
 import { checkInput, protectOC } from './decorators'
-import { hostModeler } from './host'
+import { hostModeler, hostAnnotator } from './host'
 
 
 // this can disable TS errors when subclasses are not initialized yet
@@ -383,6 +385,14 @@ export class Shape
         return this._node;
     }
 
+    /** Scene membership of this Shape, as shown by every toString(): the node holding it,
+     *  or that it is not in the scene at all. Handy to check whether something you expected
+     *  to see actually made it into the scene. */
+    nodeString():string
+    {
+        return nodeToString(this._node);
+    }
+
     /** Set color on this Shape */
     @checkInput('ColorInput', 'auto')
     color(value:string|number):this
@@ -412,7 +422,11 @@ export class Shape
     _effectiveStyle():Style
     {
         if(!this._node){ return this.style }
-        const cascaded = new Style(this._node.effectiveStyle().toData());
+        // Merge only what was EXPLICITLY set, at every level. Going through toData() would
+        // materialise the kernel defaults (meshup's default colour is red) as if the user had
+        // asked for them — which is how untouched brep geometry came out red in SVG exports.
+        const cascaded = new Style();
+        cascaded.merge(this._node.effectiveStyle().explicitData() as StyleData);
         cascaded.merge(this.style.explicitData() as StyleData);
         return cascaded;
     }
@@ -825,6 +839,18 @@ export class Shape
         return this._getEntities("Edge");
     }
 
+    /** Turn this Shape into a plain wireframe: all its Edges, no hidden-line removal.
+     *  Unlike edges() this REPLACES the Shape in the scene, so `box(100).wireframe()`
+     *  shows the wireframe instead of the box. */
+    @sceneReplace
+    wireframe(): AnyShapeCollection
+    {
+        const wires = this.edges();
+        const from = this.name() ?? this._node?.name;
+        if (from) { wires.name(`${from}_wireframe`); }
+        return wires;
+    }
+
     /** Get all Wires of this Shape */
     @sceneCarry
     wires():AnyShapeCollection
@@ -863,7 +889,7 @@ export class Shape
 
         if(this._ocShape)
         {
-            let newBbox = new Bbox();
+            let newBbox = new Bbox()._fromShape(this);
             this._oc.BRepBndLib.AddOptimal(this._ocShape, newBbox._ocBbox, true, false); // useTriangulation, useShapeTolerance
             newBbox.updateFromOcBbox();
             
@@ -871,7 +897,7 @@ export class Shape
             if(withAnnotations && this.annotations.length > 0)
             {
                 const annotationShapes = new ShapeCollection(this.annotations.map(a => a.toShape()));
-                newBbox = newBbox.added(annotationShapes.bbox())
+                newBbox = newBbox.added(annotationShapes.bbox())._fromShape(this)
             }
 
             return newBbox;
@@ -1049,15 +1075,6 @@ export class Shape
         return this;
     }
 
-    /** Move a copy of the Shape */
-    ////@addResultShapesToScene
-    @checkInput('PointLike','Vector')
-    @sceneAdd
-    moved(v:PointLike, ...args):this
-    {
-        // move a copy 
-        return this._copy().move(v as Vector); // return specific Shape class
-    }
 
     /** Move Shape to a specific location using the pivot as center */
     @checkInput('PointLike','Vector')
@@ -1338,7 +1355,7 @@ export class Shape
 
     /** Try to align Shape with x (horizontal) or y axis (vertical) as much as possible */
     @checkInput([['OrientationXY', 'vertical']], ['auto'])
-    rotateToOrthoXY(o?:OrientationXY)
+    rotateToOrtho(o?:OrientationXY)
     {
         /* We determine the primary axis of a Shape by different methods:
             - using the largest dimension of bbox first, but might not result in best alignment to XY
@@ -1380,19 +1397,18 @@ export class Shape
     }
 
     /** Rotate Shape to align as much as possible to axis
-        Alias for rotateToOrthoXY */
+        Alias for rotateToOrtho */
     autoRotate():this
     {
-        return this.rotateToOrthoXY();
+        return this.rotateToOrtho();
     }
 
     /** Rotate Shape to place flat on XY plane. Keeps x,y position */
     @checkInput([['OrientationXY', 'vertical']], ['auto'])
     rotateToLayFlat(o?:OrientationXY):this
     {
-        this.rotateToAxesOBbox();
-        this.rotateToOrthoXY(o); 
-        this.moveToZ(0); // also move on XY plane
+        this.rotateToOrtho(o); // NOTE: already starts with rotateToAxesOBbox(). Doing that twice can tilt the Shape again
+        this.moveToZ(0, 'bottom'); // rest on the XY plane, not straddle it
 
         return this;
     }
@@ -1520,13 +1536,6 @@ export class Shape
         return flatFace;
     }
 
-    //@addResultShapesToScene
-    @checkInput([['MainAxis',null]], ['auto'])
-    @sceneAdd
-    flattened(axis?:MainAxis):AnyShape
-    {
-        return this._flattened(axis);
-    }
 
     /** 
      *   Move, rotate and (later) scale a Shape based on given points on the Shape and destination points
@@ -1658,13 +1667,6 @@ export class Shape
         return newShape as this;
     }
 
-    //@addResultShapesToScene
-    @checkInput([ ['PointLike', [0,0,0]], ['PointLike', 'x']], ['Vector', 'Vector']) // the default mirror plane is the YZ plane with normal +X-axis at [0,0,0]
-    @sceneAdd
-    mirrored(origin?:PointLike, normal?:PointLike):this
-    {
-        return this._mirrored(origin,normal);
-    }
     
     /** Mirror Shape at x coordinate (YZ plane) 
      *  NOTE: this changed: check scripts!
@@ -1753,7 +1755,7 @@ export class Shape
     @checkInput([ [Number, SHAPE_EXTRUDE_DEFAULT_AMOUNT], ['PointLike', null ]], [Number, 'Vector'])
     extrude(amount?:number, direction?:PointLike):IEdge|Face|Shell|ISolid
     {
-       const newShape = this.extruded(amount, direction); // auto converted to Vector
+       const newShape = this._extruded(amount, direction); // auto converted to Vector
        this.replaceShape(newShape as AnyShapeOrCollection);
        return newShape; // return the new Shape, not the original!
     }
@@ -1798,13 +1800,6 @@ export class Shape
         return newShape as Edge|Face|Shell|Solid;
     }
 
-    //@addResultShapesToScene
-    @checkInput([ [Number, SHAPE_EXTRUDE_DEFAULT_AMOUNT], ['PointLike', null ]], [Number, 'Vector'])
-    @sceneAdd
-    extruded(amount?:number, direction?:PointLike):IEdge|Face|Shell|Solid
-    {
-        return this._extruded(amount, direction);
-    }
 
     /** Extrude this Shape towards a given Point or other Shape - we do keep the normal of the Shape if available */
     // TODO: Add ShapeCollection as input
@@ -1843,7 +1838,7 @@ export class Shape
         let v2 = this.center().toVector().subtracted(normal)._toVertex();
         let extrudeAmount = (v1.distance(toVertex) < v2.distance(toVertex)) ? distance : -distance; // flip amount if needed
         
-        return this.extruded(extrudeAmount);
+        return this._extruded(extrudeAmount);
         
     }
 
@@ -1911,17 +1906,6 @@ export class Shape
         return newShape;
     }
 
-    //@addResultShapesToScene
-    @checkInput([[Number,null],[String,null],['PointLike', null]], ['auto', 'auto', 'Vector'])
-    @sceneAdd
-    offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):AnyShapeOrCollection
-    {
-        if(!['Face','Shell','Solid'].includes(this.type))
-        {
-            throw new Error(`Shape::offset: Cannot offset Shape type ${this.type}. Check if it makes sense!`);
-        }
-        return this._offsetted(amount); 
-    }
 
     /** Thicken Shell or Solid to create a hollow Solid (private) */
     @protectOC(['Check thickness of Shell does not create self-intersection',
@@ -2048,14 +2032,6 @@ export class Shape
         }
     }
 
-    /** Thicken Face, Shell or Solid to create a hollow Solid (private) */
-    //@addResultShapesToScene
-    @checkInput([ [Number,SHAPE_SHELL_AMOUNT],['AnyShapeOrCollectionOrSelectionString', null],[String,'arc']],['auto','auto', 'auto'])
-    @sceneAdd
-    shelled(amount:number, excludeFaces?:AnyShapeOrCollectionOrSelectionString, type?:string):ISolid
-    {
-        return this._shelled(amount,excludeFaces,type);
-    }
     
     /** Same as shelled but with replacing the original */
     @checkInput([ [Number,SHAPE_SHELL_AMOUNT],['AnyShapeOrCollectionOrSelectionString', null],[String,'arc']],['auto','auto', 'auto'])
@@ -2078,17 +2054,6 @@ export class Shape
         return null;
     }
 
-    /** Thicken a Shape depending on its type
-    *  @param direction - all (grow from center), bottom, left, right, top
-    */
-    @checkInput([Number, String], [Number, String]) // TODO: more
-    thickened(amount:number, direction:string='all'):AnyShape
-    {
-        // method to be overrided in subclasses
-        // implemented in Edge and Wire ( closed Wires untested !)
-        console.warn(`Shape::thickened: Not implemented yet in Shape type ${this.type}`);
-        return null;
-    }
     
     @checkInput([Number, String], [Number, String]) // TODO: more
     thicken(amount:number, direction:string='all'):AnyShape
@@ -2135,14 +2100,6 @@ export class Shape
         return revolvedShape
     }
 
-    /** Make a new Shape by revolving a non-solid Shape around an axis given by two Points */
-    //@addResultShapesToScene
-    @checkInput([['Number', 360],['PointLike',[0,0,0]],['PointLike',[0,0,1]]],['auto','Vector','Vector'])
-    @sceneAdd
-    revolved(angle?:number,axisStart?:PointLike,axisEnd?:PointLike):AnyShapeOrCollection
-    {
-        return this._revolved(angle,axisStart,axisEnd);
-    }
     
     //// OPERATIONS WITH OTHER SHAPES ////
 
@@ -2159,10 +2116,6 @@ export class Shape
         throw new Error(`Shape::lofted: Sorry, cannot loft a Shape of type '${this.type}'!`);
     }
 
-    lofted(sections:AnyShapeOrCollection, solid?:boolean)
-    {
-        this._lofted(sections, solid);
-    }
 
     loft(sections:AnyShapeOrCollection, solid?:boolean):Shell|Solid 
     {   
@@ -2180,14 +2133,6 @@ export class Shape
         return sweepWire._sweeped(path, solid, autoRotate, alignToPath);        
     }
 
-    /** Sweep and add result to Scene */
-    //@addResultShapesToScene
-    @checkInput([ 'LinearShape', [Boolean,SHAPE_SWEEP_DEFAULT_SOLID ], [Boolean, SHAPE_SWEEP_DEFAULT_AUTOROTATE],[String, null]], ['Wire', Boolean, Boolean, String ] )
-    @sceneAdd
-    sweeped(path:LinearShape, solid?:boolean, autoRotate?:boolean, alignToPath?:string):Face|Shell|Solid 
-    {
-        return this._sweeped(path, solid, autoRotate, alignToPath);
-    }
 
     /** Is the same Shape in OC */
     @checkInput('AnyShape','auto')
@@ -2609,7 +2554,8 @@ export class Shape
         // NOTE: Face Face operations don't work (anymore) - even with solidifying the operants: now use a own method
         if(ShapeCollection.isShapeCollection(other))
         {
-            return (other as ShapeCollection)._unioned(this)
+            // union with every Shape in the collection (ShapeCollection has no `added`)
+            return (other as ShapeCollection).copy().add(this).union()
         }
      
         // Don't try to union if operants don't touch
@@ -2688,50 +2634,10 @@ export class Shape
 
     }
 
-    /** Unions one with another Shape */
-    //@addResultShapesToScene
-    @checkInput('AnyShapeOrCollection', 'auto')
-    @sceneAdd
-    unioned(other:AnyShapeOrCollection):AnyShapeOrCollection
-    {
-        return this._unioned(other);
-    }
 
-    /** Alias for unioned */
-    //@addResultShapesToScene
-    @checkInput('AnyShapeOrCollection', 'auto')
-    @sceneAdd
-    combined(other:AnyShapeOrCollection):AnyShapeOrCollection
-    {
-        return this._unioned(other);
-    }
 
-    /** Alias for unioned */
-    //@addResultShapesToScene
-    @checkInput('AnyShapeOrCollection', 'auto')
-    @sceneAdd
-    added(other:AnyShapeOrCollection):AnyShapeOrCollection
-    {
-        return this._unioned(other);
-    }
 
-    /** Alias for unioned */
-    //@addResultShapesToScene
-    @checkInput('AnyShapeOrCollection', 'auto')
-    @sceneAdd
-    fused(other:AnyShapeOrCollection):AnyShapeOrCollection
-    {
-        return this._unioned(other);
-    }
 
-    /** Alias for unioned */
-    //@addResultShapesToScene
-    @checkInput('AnyShapeOrCollection', 'auto')
-    @sceneAdd
-    merged(other:AnyShapeOrCollection):AnyShapeOrCollection
-    {
-        return this._unioned(other);
-    }
 
     /** Same as unioned but replacing the current Shape in the scene */
     @checkInput('AnyShapeOrCollection', 'auto')
@@ -2809,14 +2715,6 @@ export class Shape
         return splitShapes.checkSingle();
     }
 
-    /** Split current Shape into multiple ones using the given other Shapes */
-    //@addResultShapesToScene
-    @checkInput([['AnyShapeOrCollection', null],['Boolean', false]], ['ShapeCollection', 'auto'])
-    @sceneAdd
-    splitted(others:AnyShapeOrCollection,  excludeOverlapping?:boolean):AnyShapeOrCollection
-    {
-        return this._splitted(others, excludeOverlapping);
-    }
 
     @checkInput([['AnyShapeOrCollection', null],['Boolean', false]], ['ShapeCollection', 'auto'])
     split(others:AnyShapeOrCollection, excludeOverlapping:boolean):AnyShapeOrCollection
@@ -2845,7 +2743,7 @@ export class Shape
         
 
         // do a split
-        let splittedShapes = new ShapeCollection(this.splitted(othersCollection)); // can result single or ShapeCollection: convert to ShapeCollection
+        let splittedShapes = new ShapeCollection(this._splitted(othersCollection)); // can result single or ShapeCollection: convert to ShapeCollection
 
         /* A split operation can result in a higher order Shape, like Face => Shell
             We need to get the original Shape type and return the biggest one! */ 
@@ -2977,12 +2875,6 @@ export class Shape
         return this.align(other, pivot, alignment);
     }
 
-    /** Copy and then align */
-    @checkInput(['AnyShape',['Pivot','center'],['Alignment', 'center']],['auto','auto','auto'])
-    aligned(other:AnyShape, pivot?:Pivot, alignment?:Alignment):this
-    {
-        return this.copy().align(other, pivot, alignment);
-    }
 
     @checkInput('Alignment', 'auto')
     _alignStringToAlignPerc(alignment:Alignment): Array<number>
@@ -3120,15 +3012,6 @@ export class Shape
         return (!i) ? null : i;
     }
 
-    /** Return first Shape of intersections as copy */
-    //@addResultShapesToScene
-    @checkInput('PointLikeOrAnyShapeOrCollection', 'auto')
-    @sceneAdd
-    intersected(others:PointLikeOrAnyShapeOrCollection):AnyShape
-    {
-        let intersections = this._intersections(others);
-        return intersections.first();
-    }
 
     /** Return first Shape of intersections and replace current Shape */
     //@addResultShapesToScene
@@ -3257,7 +3140,7 @@ export class Shape
     {
         const SCAN_LENGTH = 1000;
 
-        let rayEdge = ray.extended(SCAN_LENGTH); // BEWARE: make a copy: or it will interfere with rendering!
+        let rayEdge = ray._extended(SCAN_LENGTH); // BEWARE: make a copy: or it will interfere with rendering!
 
         let closestIntersection:Vertex = null;
         let closestDistance:number = null;
@@ -3380,7 +3263,7 @@ export class Shape
         shapes.add(this) // Don't include original Shape (start at index 1), but do add to array
         for(let i = 1; i < size; i++) 
         {
-            const newShape = this.moved( (offset as Vector).scaled(i)); // offset is auto converted
+            const newShape = this.copy(false).move( (offset as Vector).scaled(i)); // offset is auto converted
             shapes.add(newShape);
         }
 
@@ -4060,39 +3943,108 @@ export class Shape
 
     }
 
-    /** Selects Shapes that intersect with the sides of the Bbox
+    /** Selects the subshapes that are on - or, failing that, face - the given side(s) of this Shape's Bbox
      *  example: "V||fronttop"
-     *  TODO: Really make this more robust
+     *
+     *  Two passes, so that rotated Shapes give a useful answer too:
+     *    1. flush: subshapes lying entirely on the requested bbox side plane(s). This is the
+     *       common, axis-aligned case and is greedy (all Faces on the top plane are returned).
+     *    2. facing: nothing is flush (a rotated box has no subshape parallel to its bbox), so
+     *       take the subshapes that face the side most - Faces by normal, Edges/Vertices by
+     *       how far they reach along the side direction. Equal scorers are all returned.
+     *  A side selector therefore always returns at least one subshape, as long as this Shape
+     *  has subshapes of the requested type at all.
      */
     @checkInput(['ShapeCollection', String], ['auto', 'auto'])
     _selectorSide(shapes:AnyShapeCollection, sidesString:string):AnyShapeCollection
     {
-        const sideShapes = this._getSide(sidesString);
+        const sides = this._sideKeywords(sidesString);
+        const subShapes = shapes.toArray();
 
-        if (!sideShapes || sideShapes.length === 0)
+        if (sides.length === 0 || subShapes.length === 0)
         {
-            console.warn(`Shape::_selectorSide: Cannot find side Shape. No shapes selected!`)
+            console.warn(`Shape::_selectorSide: No sides in "${sidesString}" or no subshapes to select from. No shapes selected!`);
             return new ShapeCollection();
         }
 
-        const selectedShapes = new ShapeCollection(shapes.filter( shape => 
-        {
-            // More robust than contains dealing with tolerances
-            // use Shape.center() instead of real Shape otherwise touching Shapes also get selected
-            return sideShapes.toArray().some( sideShape => 
-            {
-                if (sideShape.distance(shape.center()._toVertex()) < this._oc.SHAPE_TOLERANCE) 
-                {
-                    return true
-                }
-                return false;
-            })
-            
-        })); // force collection, filter can return single Shape
+        const flush = this._sideFlushShapes(subShapes, sides);
+        const selectedShapes = new ShapeCollection(
+            (flush.length > 0) ? flush : this._sideFacingShapes(subShapes, sides));
 
         console.info(`Shape::_selectorSide: Selected ${selectedShapes.length} shapes that belong to given sides "${sidesString}" of main Shape.`);
 
-        return selectedShapes; 
+        return selectedShapes;
+    }
+
+    //// SIDE SELECTOR HELPERS ////
+
+    /** The side keywords used in a side string, e.g. 'left-front-bottom' → ['left','front','bottom'] */
+    _sideKeywords(sidesString:string):Array<Side>
+    {
+        const s = (sidesString || '').toLowerCase();
+        return SIDES.filter(side => s.includes(side)) as Array<Side>;
+    }
+
+    /** Outward unit direction of the given side(s): 'front' → -y, 'frontleft' → (-y-x) normalized */
+    _sideDirection(sides:Array<Side>):Vector
+    {
+        return sides.reduce((dir,side) =>
+            {
+                const axisString = SIDE_TO_AXIS[side]; // like '-y'
+                const axis = axisString.replace('-','');
+                dir[axis] += (axisString.includes('-')) ? -1 : 1;
+                return dir;
+            }, new Vector(0,0,0)).normalize();
+    }
+
+    /** Tolerance for side comparisons, scaled to the size of this Shape */
+    _sideTolerance():number
+    {
+        return SIDE_SELECTOR_TOLERANCE * Math.max(this.bbox().maxSize(), 1);
+    }
+
+    /** The subshapes that lie entirely on all the given bbox side planes (within tolerance) */
+    _sideFlushShapes(subShapes:Array<AnyShape>, sides:Array<Side>):Array<AnyShape>
+    {
+        const bbox = this.bbox();
+        const tolerance = this._sideTolerance();
+
+        return subShapes.filter(subShape => sides.every(side =>
+        {
+            const axisString = SIDE_TO_AXIS[side]; // like '-y': the min bound of the y axis
+            const axis = axisString.replace('-','');
+            const bound = (axisString.includes('-')) ? bbox.min()[axis] : bbox.max()[axis];
+            return subShape.vertices().toArray().every(v => Math.abs(v[axis] - bound) <= tolerance);
+        }));
+    }
+
+    /** The subshapes facing the given side(s) most.
+     *  Faces are ranked by how much their normal points that way (the Face *facing* the side),
+     *  then - like Edges and Vertices - by how far they reach along the side direction.
+     */
+    _sideFacingShapes(subShapes:Array<AnyShape>, sides:Array<Side>):Array<AnyShape>
+    {
+        const dir = this._sideDirection(sides);
+        let candidates = subShapes;
+
+        if (subShapes[0]?.type === 'Face')
+        {
+            const alignment = (f:any) => f.normal().dot(dir);
+            // Faces turned away from the side are no candidates - unless none is turned towards it
+            // (a flat plate has no Face facing 'front'), then reach along the direction decides
+            const facing = subShapes.filter(f => alignment(f) > SIDE_SELECTOR_TOLERANCE);
+            candidates = this._sideBestScoring((facing.length) ? facing : subShapes, alignment, SIDE_SELECTOR_TOLERANCE);
+        }
+
+        return this._sideBestScoring(candidates, s => s.center().toVector().dot(dir), this._sideTolerance());
+    }
+
+    /** All subshapes whose score is the highest, ties (within tolerance) included */
+    _sideBestScoring(subShapes:Array<AnyShape>, score:(s:AnyShape) => number, tolerance:number):Array<AnyShape>
+    {
+        const scores = subShapes.map(score);
+        const best = Math.max(...scores);
+        return subShapes.filter((_,i) => scores[i] >= best - tolerance);
     }
 
     /** Select Shapes that have _all_ vertices at a specific coordinate within a certain tolerance 
@@ -4163,157 +4115,38 @@ export class Shape
         return sortedShapes[0]; // TODO: count
     }
 
-    /** Get side subshapes - public version of _getSide */
+    /** Get the subshapes on a side of this Shape - the untyped version of the "||" selector.
+     *  The subshape type follows from the side string: one side of a Solid is a Face,
+     *  two sides ('frontleft') meet in an Edge, three ('frontlefttop') in a Vertex.
+     *  Falls back to whatever faces the side when nothing lies flush on it (rotated Shapes).
+     */
     @checkInput('String', 'auto')
     side(sidesString?:string):AnyShapeCollection|null
     {
-        return this._getSide(sidesString);
-    }
-
-    /** Getting Side sub shapes that overlap with side of bbox 
-        New approach that ties Vertices/Edges/Faces to sides based on distance (and some tolerance)
-        
-        TODO: Visually it's evident that when a Face is touching a side, its subshapes (Edges,Vertices) need to be evaluated too! 
-    */
-    @checkInput('String', 'auto')
-    _getSide(sidesString?:string):AnyShapeCollection|null
-    {
-        const DISTANCE_FUZZYNESS_PERC = 0.01; // percentage of min size of Bbox
-
-        // A Vertex does not have side
+        // A Vertex does not have sides
         if(this.type === 'Vertex')
         {
-            console.warn(`Shape::_getSide: Shape is a Vertex and has no sides: returned null!`);
+            console.warn(`Shape::side: Shape is a Vertex and has no sides: returned null!`);
             return null;
         }
 
-        const resultsByTypeAndSide = {
-            faces: {} as Record<Side,ShapeCollection>,
-            edges: {} as Record<Side,ShapeCollection>,
-            vertices: {} as Record<Side,ShapeCollection>
-        }
+        const sides = this._sideKeywords(sidesString);
 
-        const selectedBboxSideShapes = this.bbox()._getIndividualSideShapes(sidesString); // { side: Face|Edge|Vertex }
-
-        if (Object.keys(selectedBboxSideShapes).length === 0)
+        if(sides.length === 0)
         {
-            console.error('Shape::_getSide(): Could not get any sides of bounding box!')
+            console.error(`Shape::side: No valid sides in "${sidesString}". Use one or more of ${SIDES.join(',')}!`);
             return null;
         }
 
-        const selectDistance = DISTANCE_FUZZYNESS_PERC*this.bbox().minSize();
-
-        let faceWithinSideRange = true;
-        let edgeWithinSideRange = true;
-
-        /* Iterate all subshapes of current Shape and check distance of vertices
-            If all vertices of Edge are close to side include Edge, 
-            If all vertices of edges include Face.
-            
-            Start iteration of Shapes is bound by type of current Shape
-            Solid,Shell,Face => Face
-            Edge => Edge - We use a dummy if this is the case
-        */
-        for (const [side,sideShape] of Object.entries(selectedBboxSideShapes))
+        // Highest order subshape first: 'front' on a Box is a Face, 'frontleft' an Edge
+        for (const subShapes of [this.faces(), this.edges(), this.vertices()])
         {
-            const facesOrNullArr = (['Edge','Wire'].includes(this.type)) ? [null] : this.faces().toArray();
-            facesOrNullArr.forEach( face => 
-            {
-                const edges = (face) ? face.edges() : this.edges(); 
-                faceWithinSideRange = true;
-
-                edges.forEach( edge => 
-                {
-                    edge.vertices().forEach( vertex => 
-                    {
-                        if(sideShape.distance(vertex) < selectDistance)
-                        {
-                            if(!resultsByTypeAndSide.vertices[side]){
-                                resultsByTypeAndSide.vertices[side] = new ShapeCollection();
-                            }
-                            resultsByTypeAndSide.vertices[side].add(vertex);
-                        }
-                        else {
-                            // not within distance
-                            edgeWithinSideRange = false;
-                            faceWithinSideRange = false;
-                        }
-                    })
-                    // evaluate Edge within distance
-                    if(edgeWithinSideRange)
-                    {
-                        if(!resultsByTypeAndSide.edges[side])
-                        {
-                            resultsByTypeAndSide.edges[side] = new ShapeCollection();
-                        }
-                        resultsByTypeAndSide.edges[side].add(edge);
-                    }
-                    edgeWithinSideRange = true; // reset
-                })
-                // evaluate Face
-                // NOTE: Vertices don't always describe a Face well
-                if(faceWithinSideRange && face) // Skip Face if was iteration dummy
-                {
-                    if(!resultsByTypeAndSide.faces[side])
-                    {
-                        resultsByTypeAndSide.faces[side] = new ShapeCollection();
-                    }
-                    resultsByTypeAndSide.faces[side].add(face);
-                }
-                faceWithinSideRange = true; // reset
-            });
+            const flush = this._sideFlushShapes(subShapes.toArray(), sides);
+            if(flush.length){ return new ShapeCollection(flush) }
         }
 
-        // Based on number of sides in sidesString we return results
-        const sz = sidesString.includes('top') || sidesString.includes('bottom') ? 1 : 0;
-        const sx = sidesString.includes('left') || sidesString.includes('right') ? 1 : 0;
-        const sy = sidesString.includes('front') || sidesString.includes('back') ? 1 : 0;
-        const numSides = sx + sy + sz;
-
-        const sideX = sidesString.includes('left') ? 'left' : sidesString.includes('right') ? 'right' : null;
-        const sideY = sidesString.includes('front') ? 'front' : sidesString.includes('back') ? 'back' : null; 
-        const sideZ = sidesString.includes('top') ? 'top' : sidesString.includes('bottom') ? 'bottom' : null;
-
-        const sides = [sideX,sideY,sideZ].filter(s => s !== null);
-
-        switch(numSides)
-        {
-            case 1: 
-                // Return Face or if not present any other Shape that is on the given side
-                const side = sides[0];
-                const results = resultsByTypeAndSide.faces[side] || resultsByTypeAndSide.edges[side] || resultsByTypeAndSide.vertices[side];
-                return results?.distinct();
-            case 2: 
-            case 3:
-                // Return Edges or Vertices
-
-                // Based on what Shape type the sides or highest order are, the overlapping Shape is one order below (if any)
-                const highestOrderSideShapes = (Object.keys(resultsByTypeAndSide.faces).length) 
-                                                    ? 'faces' 
-                                                    : (Object.keys(resultsByTypeAndSide.edges).length) 
-                                                        ? 'edges' : 'vertices';
-
-                let shapesOnAllSides:ShapeCollection;
-                const shapesOnSides = (numSides === 2) 
-                    ? ((highestOrderSideShapes === 'faces') ? resultsByTypeAndSide.edges : resultsByTypeAndSide.vertices) 
-                        : resultsByTypeAndSide.vertices;
-                        
-                sides.forEach((s,i) => 
-                {
-                    if(i === 0)
-                    {
-                        shapesOnAllSides = shapesOnSides[s];
-                    }
-                    else {
-                        shapesOnAllSides = shapesOnAllSides.getEquals(shapesOnSides[s]);
-                    }
-                })
-                return shapesOnAllSides.distinct();
-            
-            default:
-                return null;
-        }
-
+        // Nothing flush: what faces the side most (see _selectorSide)
+        return this._selectorSide(this.faces(), sidesString);
     }
 
     /** Getting Side sub shapes that clearly overlaps Side of bbox 
@@ -4434,12 +4267,189 @@ export class Shape
     }
 
 
+    //// MESH-KERNEL API PARITY ////
+    /*  Methods the mesh kernel offers under these names. Scripts written against either kernel
+        should not have to know which one is running, so brep answers to the same vocabulary.
+        Where brep already has the concept under a different name, these are thin bridges. */
+
+    /** Move by an offset. Mesh-kernel name for move(). */
+    @checkInput('PointLike', 'Vector')
+    translate(v:PointLike, ...args):this
+    {
+        return this.move(v as Vector);
+    }
+
+    /** Distance to another Shape or point. Mesh-kernel name for distance(). */
+    distanceTo(other:PointLikeOrAnyShapeOrCollection):number
+    {
+        return this.distance(other);
+    }
+
+    /** A single number for "how big": the solid volume when meaningfully positive, otherwise
+     *  the surface area. Matches the mesh kernel, where it is used to rank shapes — a flat
+     *  shape has zero volume, so area is the right discriminator there. */
+    size():number
+    {
+        const v = this.volume();
+        return (v !== undefined && v > this._oc.SHAPE_TOLERANCE) ? v : this.area();
+    }
+
+    /** The Faces of this Shape. Mesh-kernel name (a meshup Mesh is made of polygons). */
+    polygons():AnyShapeCollection
+    {
+        return this.faces();
+    }
+
+    /** The corner points of this Shape. */
+    points():Array<Point>
+    {
+        return this.vertices().toArray().map((v:any) => v.toPoint());
+    }
+
+    /** Repeat this Shape on a 3D grid, spaced by `spacing` between bounding boxes.
+     *  Mesh-kernel parity — row() in up to three directions at once. */
+    @checkInput([[Number,2],[Number,2],[Number,1],[Number,10]], ['auto','auto','auto','auto'])
+    grid(cx?:number, cy?:number, cz?:number, spacing?:number):ShapeCollection
+    {
+        const bbox = this.bbox();
+        const step = [ bbox.width() + spacing, bbox.depth() + spacing, bbox.height() + spacing ];
+
+        const shapes = new ShapeCollection();
+        for (let z = 0; z < cz; z++){
+        for (let y = 0; y < cy; y++){
+        for (let x = 0; x < cx; x++)
+        {
+            const first = (x === 0 && y === 0 && z === 0);
+            const shape = first ? this : this.copy(false);
+            shape.move(x * step[0], y * step[1], z * step[2]);
+            shapes.add(shape);
+        }}}
+        return shapes;
+    }
+
+    //// IN-PLACE TRANSFORMS ////
+    /*  Mutating counterparts of the copy-returning privates, following the same contract as
+        union()/shell(): do the work, swap the result into this Shape's place in the scene, and
+        return the new Shape. The mesh kernel names these without the -ed suffix, so scripts
+        written against either kernel now call the same thing. */
+
+    /** Sweep this Shape along a path in place. */
+    @checkInput(['LinearShape', ['Boolean', null], ['Boolean', null], [String, null]], ['auto','auto','auto','auto'])
+    sweep(path:LinearShape, solid?:boolean, autoRotate?:boolean, alignToPath?:string):AnyShape
+    {
+        const newShape = this._sweeped(path, solid, autoRotate, alignToPath);
+        this.replaceShape(newShape);
+        return newShape;
+    }
+
+    /** Mirror this Shape in place across the plane at `origin` with `normal`. */
+    @checkInput([['PointLike',[0,0,0]], ['PointLike','x']], ['Vector','Vector'])
+    mirror(origin?:PointLike, normal?:PointLike):AnyShape
+    {
+        const newShape = this._mirrored(origin, normal);
+        this.replaceShape(newShape);
+        return newShape;
+    }
+
+    /** Flatten this Shape in place onto a plane (along `axis`, or its extrusion plane). */
+    @checkInput([['MainAxis',null]], ['auto'])
+    flatten(axis?:MainAxis):AnyShape
+    {
+        const newShape = this._flattened(axis);
+        this.replaceShape(newShape);
+        return newShape;
+    }
+
+    /** Revolve this Shape in place around an axis. */
+    @checkInput([[Number,360],['PointLike',null],['PointLike',null]], ['auto','auto','auto'])
+    revolve(angle?:number, axisStart?:PointLike, axisEnd?:PointLike):AnyShapeOrCollection
+    {
+        const newShape = this._revolved(angle, axisStart, axisEnd);
+        this.replaceShape(newShape);
+        return newShape;
+    }
+
+    //// LAYOUT HELPERS ////
+    /*  Kernel-agnostic conveniences that the mesh kernel also offers (meshup Mesh.row/place).
+        Both are pure bbox arithmetic, so they behave identically here. */
+
+    /** Repeat this Shape `count` times along `direction`, spaced by `spacing` between their
+     *  bounding boxes. The first item IS this Shape; the rest are copies.
+     *  @param count     - total number of shapes (including the original)
+     *  @param spacing   - gap between bounding boxes (default: 10)
+     *  @param direction - direction of the row (default: 'x') */
+    @sceneAdd
+    @checkInput([[Number, 2], [Number, 10], ['PointLike', 'x']], ['auto', 'auto', 'Vector'])
+    row(count?:number, spacing?:number, direction?:PointLike):ShapeCollection
+    {
+        const dirVec = (direction as Vector).normalized();
+        const bbox = this.bbox();
+        // extent of this Shape along the row direction
+        const offsetSize = new Vector(bbox.width(), bbox.depth(), bbox.height())
+                                .scaled(dirVec).length();
+
+        const shapes = new ShapeCollection();
+
+        for (let i = 0; i < count; i++)
+        {
+            const shape = (i === 0) ? this : this.copy(false); // copy() without auto-adding: the decorator places the result
+            shape.move(dirVec.scaled(i * (offsetSize + spacing)));
+            shapes.add(shape);
+        }
+
+        return shapes;
+    }
+
+    /** Replicate this Shape `num` times, letting `transform` position/alter each copy.
+     *  The callback gets (copy, index, previousCopy) and returns the shape to keep. */
+    @sceneAdd
+    replicate(num:number, transform:(shape:any, index:number, prev:any|undefined) => any):ShapeCollection
+    {
+        const shapes = new ShapeCollection();
+        for (let i = 0; i < num; i++)
+        {
+            const next = transform(this.copy(false), i, (i > 0) ? shapes.shapes[i-1] : undefined);
+            if(next){ shapes.add(next) }
+        }
+        return shapes;
+    }
+
+    /** Place this Shape on a given height by its bounding box, by default on the XY plane.
+     *  Mutates in place and returns this Shape. */
+    @checkInput([[Number, 0]], ['auto'])
+    place(z?:number):this
+    {
+        const bbox = this.bbox();
+        if(!bbox){ return this }
+        this.move(0, 0, z - bbox.min().z);
+        return this;
+    }
+
     //// SHAPE ANNOTATIONS API ////
 
+    /** Generate dimension line(s) for this Shape.
+     *
+     *  Creation is centralised in the Annotator (see DimensionLine.fromShape), which reads the
+     *  Shape's bbox/edges — so this works for any Shape type. Subclasses (Edge/Face/Wire)
+     *  override it only to add type-specific defaults. It used to throw here, which meant
+     *  `box(...).dim()` failed on the brep kernel while working on mesh. */
     @checkInput([['DimensionOptions',null]], ['auto'])
     dimension(dim?:DimensionOptions):IDimensionLine|Array<IDimensionLine> // TODO: unit typing
     {
-        throw new Error(`Shape::dimension(): No implementation of dimension method in Shape of type ${this.type}!`);
+        return hostAnnotator(this, `${this.constructor.name}::dimension()`)
+            .dimensionLine().fromShape(this, dim) as IDimensionLine|Array<IDimensionLine>;
+    }
+
+    /** Alias for dimension().
+     *
+     *  Declared on the class rather than left to the mesh-side prototype patch
+     *  (shapeAnnotations.applyShapeAnnotations), so `dim()` is part of the brep Shape contract —
+     *  typed, listed in the editor completions, and present on subclasses that define their own
+     *  `dimension()` but no alias. Edge/Wire/Face still override both with their own defaults. */
+    @checkInput([['DimensionOptions',null]], ['auto'])
+    dim(dim?:DimensionOptions):IDimensionLine|Array<IDimensionLine>
+    {
+        return this.dimension(dim);
     }
 
     /** add dimension to annotations of this shape */
@@ -4456,11 +4466,26 @@ export class Shape
         this.annotations.forEach(a => a.update());
     }
 
-    @checkInput([['DimensionOptions', null]], ['auto'] )
-    autoDim(options?:DimensionOptions)
+    /** Automatically dimension this Shape.
+     *
+     *  Mirrors ShapeCollection.autoDim() — this is the single-Shape entry point: the Annotator
+     *  works on collections, so the Shape is wrapped in one. The Annotator picks a strategy when
+     *  none is given ('part' for a flat 2D part, 'levels' for anything sectioned at levels).
+     *
+     *  NOTE: no @checkInput here. `settings` is a union (DimensionOptions for 'part',
+     *  DimensionLevelSettings for 'levels') and @checkInput cannot express one — the old
+     *  ['DimensionOptions'] check rejected the very `{ levels: [...] }` form the levels strategy
+     *  needs. ShapeCollection.autoDim() is undecorated for the same reason.
+     *
+     *  @param settings DimensionOptions ('part') or DimensionLevelSettings ('levels')
+     *  @param strategy force a strategy: 'part' or 'levels'
+     */
+    autoDim(settings?:DimensionOptions|DimensionLevelSettings, strategy?:AnnotationAutoDimStrategy):this
     {
-        throw new Error(`Shape::autoDim(): TODO!`);
-        // this._brep._annotator.autoDim(new ShapeCollection(this), options);
+        hostAnnotator(this, `${this.constructor.name}::autoDim()`)
+            .autoDim(new ShapeCollection(this), settings, strategy);
+
+        return this;
     }
 
     //// API to forward to _Obj ////
@@ -4692,9 +4717,9 @@ export class Shape
     }
 
     /** Generate isometric view from Side or corner of ViewCube ('frontlefttop') or PointLike coordinate
-     *      Use includeHidden=true to output with hidden lines
+     *      Use showHidden=true to output with hidden lines
      */
-    _isometry(viewpoint:string|PointLike, includeHidden:boolean=false, transferDimensions:boolean=true):AnyShapeCollection
+    _isometry(viewpoint:string|PointLike, showHidden:boolean=false, transferDimensions:boolean=true):AnyShapeCollection
     {
         const DEFAULT_VIEWPOINT = [-1,-1,1]; 
         
@@ -4705,8 +4730,8 @@ export class Shape
 
         if (typeof viewpoint === 'string')
         {
-            const b = new Solid().makeBox(100,100,100);
-            let viewpointShape = b._getSide(viewpoint as string);
+            const b = new Solid().makeBox(100,100,100).tmp(); // a reference box for the viewpoint side, never in the scene
+            let viewpointShape = b.side(viewpoint as string)?.first();
             if(viewpointShape && viewpointShape.type == 'Vertex')
             {
                 let viewVec = viewpointShape.center().toVector().normalize();
@@ -4754,7 +4779,7 @@ export class Shape
     }
 
     /** Generate isometric view from Side or corner of ViewCube ('frontlefttop') or PointLike coordinate
-     *      Use includeHidden=true to output with hidden lines
+     *      Use showHidden=true to output with hidden lines
      */
     //@addResultShapesToScene
     @sceneAdd

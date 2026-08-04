@@ -111,7 +111,7 @@ export class MakeOperations
         }
         // Then see if the orientated bounding box fits nicely
         // Use volume for more speed
-        if(shape.volume()/shape.obbox().shape().volume() < OBBOX_FIT_PERC)
+        if(shape.volume()/shape.obbox()._shapeRaw().volume() < OBBOX_FIT_PERC) // raw: this is a measurement, not scene geometry
         {
             console.warn(`Make::_determineOperationShapeType: Could not make a good fit with a orientated bounding box: Probably this Shape to irregular!`);
         }

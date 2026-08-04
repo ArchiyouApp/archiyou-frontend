@@ -37,15 +37,17 @@ export class OcLoader
   RUN_TEST = false;
 
   //// IMPORTANT PATHS ////
-  /* 
-     We copy wasm and Emscripten glue files directly from src/wasm to dist/wasm 
-     Relative paths remain the same
-     Also: these paths are variables avoid any prefetching in build systems
+  /*
+     The OC glue + wasm live in ./wasm, next to this file. Everything is resolved relative
+     to THIS module (import.meta.url), never relative to the page or the bundle root, so
+     the loader keeps working in the main thread, in a module Web Worker and in Node alike.
+
+     Only the Node glue path stays a variable: it must not be seen by a browser bundler
+     (it imports 'path'/'url'). The browser paths are written out as literals at their
+     use site so Vite/Rollup can emit the wasm as an asset and the glue as a lazy chunk.
   */
 
-  ocJsModulePath = `./wasm/archiyou-opencascade.js`;
   ocJsNodeModulePath = `./wasm/node.js`;
-  ocWasmModulePath = `./wasm/archiyou-opencascade.wasm`;
 
   //// PROPERTIES ////
 
@@ -104,61 +106,38 @@ export class OcLoader
   }
   
 
-  /** Load OpenCascade module synchronous and run function when loading is done 
-   *  This still uses the standard OC.js method, because alternatives with dynamic imports 
-   *  are not working well in browser
-  */
+  /** Load OpenCascade module synchronous and run function when loading is done */
   _loadOcBrowser(onLoaded)
   {
-    /** Taken from OC.js with some small changes
-     *  This uses a static import for the JS module - which still seems to be the most robust
-     *  Use this method is everything else fails
-     */
-    const initOpenCascade = async () => {
-      return new Promise(async (resolve, reject) => {
-        // Dynamically import to avoid bundling
-        const ocModule = await import(
-          this.ocJsModulePath
-        );
-        
-        const wasmPath = './wasm/archiyou-opencascade.wasm';
-        
-        new ocModule.default({
-          locateFile(path) {
-            if (path.endsWith('.wasm')) {
-              return wasmPath;
-            }
-            return path;
-          },
-        }).then(oc => resolve(oc));
-      });
-    };
-
     this.startLoadAt = performance.now();
-    initOpenCascade({}).then(oc => this._onOcLoaded(oc, onLoaded));     
+    this._loadOcBrowserAsync().then(oc => { if(onLoaded){ onLoaded(oc, this); } });
   }
 
 
-  /** Load OpenCascade module async 
-   *  Uses static import for maximum compatibility
-   *  This can work in Webpack 4 and above, Vite and Node environments
+  /** Load OpenCascade module async in a browser main thread or a module Web Worker
+   *
+   *  Both the glue and the wasm are addressed relative to THIS module:
+   *    - the wasm through `new URL(..., import.meta.url)`: a bundler-recognised form that
+   *      Vite rewrites to the emitted asset URL on build, and that resolves to the real
+   *      file URL when no bundler is involved. Never fetched by us - we only hand the URL
+   *      to Emscripten's locateFile().
+   *    - the glue through a dynamic import with a literal specifier, so Vite/Rollup put it
+   *      in a lazy chunk instead of leaving a runtime URL that nothing emitted.
   */
   async _loadOcBrowserAsync()
   {
-    console.log(`OcLoader::_loadOcBrowserAsync(): Loading OpenCascade WASM module`);
-    // We first try with only wasm as dynamic 
-    const wasmPath = await this._getAbsPath(this.ocWasmModulePath);
-    //const wasmPath = await this._getAbsPath('./wasm/archiyou-opencascade.wasm'); 
-    const ocWasm = (await import(/* webpackIgnore: true */ wasmPath)).default;
-    // const ocJs = ocFullJS; // static import - This works with very old stack like Webpack 4
-    const ocJs = (await import(await this._getAbsPath(this.ocJsModulePath))).default;
+    console.log(`OcLoader::_loadOcBrowserAsync(): Loading OpenCascade WASM module [context: ${this._getContext()}]`);
+
+    const ocWasmUrl = new URL('./wasm/archiyou-opencascade.wasm', import.meta.url).href;
+    const ocJs = (await import('./wasm/archiyou-opencascade.js')).default;
+
+    console.log(`OcLoader::_loadOcBrowserAsync(): wasm at "${ocWasmUrl}"`);
 
     // https://emscripten.org/docs/api_reference/module.html#Module.locateFile
-    const oc = await ocJs({ 
+    const oc = await ocJs({
         locateFile(path)
         {
-          if (path.endsWith('.wasm')) { return ocWasm; }
-          if (path.endsWith('.worker.js') && !!worker) { return worker; }
+          if (path.endsWith('.wasm')) { return ocWasmUrl; }
           return path;
         }
     });
@@ -170,9 +149,9 @@ export class OcLoader
   async _loadOcNodeAsync()
   {
       const modulePath = await this._getAbsPath(this.ocJsNodeModulePath);
-      
+
       console.info(`OcLoader::_loadOcNodeAsync(): Loading OpenCascade module at: ${modulePath}}`);
-      const ocInit = (await import(modulePath)).default;
+      const ocInit = (await import(/* webpackIgnore: true */ /* @vite-ignore */ modulePath)).default;
       const oc = await ocInit();
 
       return this._onOcLoaded(oc);
@@ -208,63 +187,37 @@ export class OcLoader
 
   //// UTILS 
 
+  /** Resolve a path relative to this module to something Node can import.
+   *  Browser/worker contexts don't use this - they resolve against import.meta.url inline
+   *  so that bundlers can see (and emit) what is being referenced.
+  */
   async _getAbsPath(filepath)
   {
-    // Browser environment or Webworker
-    if (this._getContext() === 'browser') 
-    {
-      // import.meta.url does not work in webpack < 5
-      // also anything with import triggers errors in webpack 4 on build time: so we can't even reference import.meta.url!
-      // For now we drop any support for webpack 4
-      const fileURL = (import.meta && import.meta.url) ? import.meta.url : document.currentScript.src;
-      const absPath = new URL(filepath, fileURL).href;
-      console.log(`==== ABS PATH BROWSER: ${absPath}`);
+    // Node.js environment
+    // NOTE: webpackIgnore only works in Webpack 5 to avoid processing imports on buildtime
+    const { fileURLToPath } = await import(/* webpackIgnore: true */ 'url');
+    const path = await import('path');
 
-      return absPath;
-    } 
-    else if(this._getContext() === 'webworker')
+    const fileURL = import.meta.url;
+    let curDir = path.dirname(fileURLToPath(fileURL)); // directory of this file
+
+    // The '/' is actually needed in windows for normal ES imports
+    // But does not work with wasm files
+    if(filepath.includes('.wasm') && curDir[0] === '/')
     {
-        // Since in webpack 4 we can't use import.meta.url
-        // And document.currentScript.src does not work in webworker
-        // We just pass the filepath - which seems to work in webworkers
-        // TODO: test in multiple enviroments
-        console.warn(`==== ABS PATH WEBWORKER: Can't make absolute path, but that might be fine too in webworkers. Returned original path: "${filepath}"`);
-        return filepath.replace('./', '/'); // make absolute
+      curDir = curDir.slice(1);
     }
-    else 
+
+    let absPath = path.join(curDir, filepath);
+
+    // We need to add file:// to get this working on windows
+    const processObj = globalThis.process;
+    if(typeof processObj !== 'undefined' && processObj.platform === 'win32')
     {
-      // Node.js environment
-      // NOTE: webpackIgnore only works in Webpack 5 to avoid processing imports on buildtime
-      const { fileURLToPath } = await import(/* webpackIgnore: true */ 'url');
-      const path = await import('path');
-      
-      // Only placing import.meta.url in the code for webpack 4 causes a error: "Module parse failed: Unexpected token"
-      // Does not work: Object(import.meta).url; 
-      // NOTE: We use a webpack 4 babel-loader to replace import.meta.url
-      const fileURL = import.meta.url; 
-      let curDir = path.dirname(fileURLToPath(fileURL)); // directory of this file
-      
-      // The '/' is actually needed in windows for normal ES imports 
-      // But does not work with wasm files
-      // NOTE: test this
-      if(filepath.includes('.wasm') && curDir[0] === '/')
-      { 
-        curDir = curDir.slice(1); 
-      } 
-      
-      let absPath = path.join(curDir, filepath);
-
-      // We need to add file:// to get this working on windows
-      const processObj = globalThis.process;
-      if(typeof processObj !== 'undefined' && processObj.platform === 'win32')
-      {
-        absPath = 'file://' + absPath; // Add file:// to the path
-      }
-
-      console.log(`==== ABS PATH NODE: ${absPath}`);
-
-      return absPath;
+      absPath = 'file://' + absPath; // Add file:// to the path
     }
+
+    return absPath;
   }
 
   runTest()

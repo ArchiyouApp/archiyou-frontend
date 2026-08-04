@@ -222,3 +222,22 @@ export const config = {
   seedTestUser: !isProduction
     || (process.env.SERVER_SEED_TEST_USER === 'true' && !!process.env.SERVER_TEST_USER_PASSWORD),
 };
+
+/** Any http(s) origin on the loopback host, whatever the port. */
+const LOCALHOST_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+
+/**
+ * Whether a browser Origin may call this API (see plugin.ts).
+ *
+ * The explicit allowlist always wins. On top of it, DEVELOPMENT accepts any
+ * loopback origin regardless of port: Vite silently moves to the next free port
+ * (5174, 5175, …) when 5173 is taken — e.g. a second dev server, or a stale one
+ * still holding it — and the mismatch surfaces in the browser as an opaque
+ * "No 'Access-Control-Allow-Origin' header" on the login preflight, which looks
+ * like the server being down rather than a port change. Production is unaffected:
+ * there it stays strictly FRONTEND_URL + SERVER_CORS_ORIGINS.
+ */
+export function isAllowedOrigin(origin: string): boolean {
+  if (config.corsOrigins.includes(origin)) return true;
+  return !isProduction && LOCALHOST_ORIGIN.test(origin);
+}

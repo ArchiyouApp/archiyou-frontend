@@ -104,7 +104,7 @@ describe('brep Shape scene + style', () =>
         expect(layer.shapes().length).toEqual(1);
 
         // moved() returns a copy — @sceneAdd lands it in the active layer next to the original
-        const moved = box.moved(200);
+        const moved = box.copy().move(200);
         expect(layer.shapes().length).toEqual(2);
         expect(box._node).not.toBeNull();      // operand stays in the scene
         expect(moved._node).not.toBeNull();    // result joined it
@@ -140,8 +140,27 @@ describe('brep Shape scene + style', () =>
         expect(helper._node).toBeNull();
         expect(layer.shapes().length).toEqual(0);
 
-        const derived = helper.moved(50);
+        const derived = helper.copy().move(50);
         expect(derived._suppressScene).toBe(true);
         expect(layer.shapes().length).toEqual(0);
+    })
+})
+
+describe('brep layout helpers (parity with the mesh kernel)', () =>
+{
+    test("row() repeats the Shape along a direction, spaced by bbox", () =>
+    {
+        const b = new brep.Solid().makeBox(100)
+        const r = b.row(3, 10)
+
+        expect(r.length).toEqual(3)
+        // 100 wide + 10 gap => centres at 0, 110, 220
+        expect(r.toArray().map((s: any) => Math.round(s.center().x))).toEqual([0, 110, 220])
+    })
+
+    test("place() drops the Shape onto a height by its bounding box", () =>
+    {
+        expect(Math.round(new brep.Solid().makeBox(100).place().bbox().min().z)).toEqual(0)
+        expect(Math.round(new brep.Solid().makeBox(100).place(50).bbox().min().z)).toEqual(50)
     })
 })

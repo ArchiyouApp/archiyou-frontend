@@ -36,6 +36,9 @@ export const SIDE_TO_AXIS: {[key:string]:string} = {
 
 export const ALIGNMENTS_ADD_TO_SIDES = ['center','start','end'];
 
+/** Relative tolerance (of bbox size) for the side selector: 'on the same side plane' and score ties */
+export const SIDE_SELECTOR_TOLERANCE = 1e-6;
+
 //// EXECUTION AND OUTPUT SETTINGS ////
 
 export const SCRIPT_OUTPUT_CATEGORIES = ['model','metrics','tables','docs'] // see types: ScriptOutputCategory

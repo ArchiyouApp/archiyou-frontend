@@ -451,12 +451,6 @@ export class Solid extends Shape
         }   
     }
 
-    /** Alias for filleted but with making copy  */
-    @checkInput([[Number,SOLID_FILLET_RADIUS], ['AnyShapeOrCollectionOrSelectionString',null]], ['auto','auto'])
-    filleted(radius?:number, edges?:AnyShapeOrCollectionOrSelectionString):Solid
-    {
-        return (this.copy() as Solid).fillet(radius, edges);
-    }
 
     /** Chamfer Solid at given Edges with given size */
     @checkInput([[Number, SOLID_CHAMFER_DISTANCE],['AnyShapeOrCollectionOrSelectionString',null]], ['auto','auto'])
@@ -570,12 +564,6 @@ export class Solid extends Shape
 
     }
 
-    /** Same of chamfer but with a copied Shape */
-    @checkInput([[Number, SOLID_CHAMFER_DISTANCE],['AnyShapeOrCollectionOrSelectionString',null]], ['auto','auto'])
-    chamfered(distance?:number, edges?:AnyShapeOrCollectionOrSelectionString, ):Solid
-    {
-        return (this.copy() as Solid).chamfer(distance, edges);
-    }
 
     /** Alias for chamfer */
     @checkInput([[Number, SOLID_CHAMFER_DISTANCE],'AnyShapeOrCollection'], ['auto','ShapeCollection'])
@@ -584,20 +572,7 @@ export class Solid extends Shape
         return this.chamfer(distance, edges);
     }
 
-    /** Alias for chamfered */
-    @checkInput([[Number, SOLID_CHAMFER_DISTANCE],'AnyShapeOrCollection'], ['auto','ShapeCollection'])
-    beveled(distance?:number, edges?:AnyShapeOrCollection):Solid
-    {
-        return this.chamfered(distance, edges);
-    }
 
-    /** Alias for shelled with same API as thicken in Wire/Edge and Shell */
-    @checkInput([[Number,SOLID_THICKEN_AMOUNT],['ThickenDirection',SOLID_THICKEN_DIRECTION],['AnyShapeOrCollectionOrSelectionString', []] ], ['auto','auto'])
-    thickened(amount?:number, direction?:ThickenDirection, excludeFaces?:AnyShapeOrCollectionOrSelectionString):Solid
-    {   
-        // TODO: implement thicken direction
-        return this.shelled(amount, excludeFaces);
-    }
 
     @checkInput([[Number,SOLID_THICKEN_AMOUNT],['ThickenDirection',SOLID_THICKEN_DIRECTION],['AnyShapeOrCollectionOrSelectionString', []] ], ['auto','auto'])
     thicken(amount:number, direction?:ThickenDirection, excludeFaces?:AnyShapeOrCollectionOrSelectionString):Solid
@@ -632,7 +607,7 @@ export class Solid extends Shape
     /** Export entity and minimal data as string (used for outputting on console and hashing ) */
     toString():string
     {
-        return `<Solid:${this.solidType()} numShells="${this.shells().length}">`;
+        return `<Solid:${this.solidType()} numShells="${this.shells().length}" ${this.nodeString()}>`;
     }
 
 }

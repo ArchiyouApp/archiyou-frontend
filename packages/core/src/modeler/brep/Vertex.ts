@@ -267,18 +267,12 @@ export class Vertex extends Shape
     @checkInput([Number, [ 'PointLike', [0,0,1] ]],[Number, 'Vector'])
     extrude(amount:number, direction?:PointLike):IEdge 
     {
-        let endVertex = this.moved( (direction as Vector).normalize().scaled(amount) ); // direction is auto converted 
+        let endVertex = this.copy(false).move( (direction as Vector).normalize().scaled(amount) ); // direction is auto converted 
         let newEdge = new Edge(this, endVertex); 
         this.replaceShape(newEdge);
         return newEdge;
     }
 
-    /** Extrude a copy of Vertex to create a Edge with certain length along a Direction Vector: default direction: Z-axis */
-    @checkInput([Number, [ 'PointLike', [0,0,1] ]],[Number, 'Vector'])
-    extruded(amount:number, direction?:PointLike):IEdge 
-    {
-        return this.copy().extrude(amount, direction as Vector) as Edge; // auto added to Scene by copy()
-    }
 
     /** Rounds this Vertex (avoids very small values like 2.0e-15 */
     // NOTE: We need to figure out the OC native way to do this
@@ -307,7 +301,7 @@ export class Vertex extends Shape
     /** Export entity and minimal data as string (used for outputting on console and hashing ) */
     toString():string
     {
-        return `<Vertex position="[${this.toArray()}]">`;
+        return `<Vertex position="[${this.toArray()}]" ${this.nodeString()}>`;
     }
 
 }

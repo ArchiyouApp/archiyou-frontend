@@ -1,6 +1,7 @@
 import { Container } from './Container'
 import type { ContainerData, ContainerContent, PageSVGContext } from './types'
-import { Shape, ShapeCollection } from '@archiyou/meshup/src/index'
+import { ShapeCollection } from '@archiyou/meshup/src/index'
+import { isKernelShapeOrCollection, kernelShapeToSVG } from '../modeler/typeguards'
 import type { AnyShapeOrCollection } from '../modeler/types'
 import { stripOuterSVGTags, getPreserveAspectRatio } from './utils'
 
@@ -41,8 +42,8 @@ export class View extends Container
             return this._resolvedShapesSVG
         }
 
-        const svg = (ShapeCollection.isShapeCollection(this._shapes))
-                        ? (this._shapes as ShapeCollection)?.toSVG()
+        const svg = (isKernelShapeOrCollection(this._shapes))
+                        ? kernelShapeToSVG(this._shapes)
                         :  this.resolveShapeNameToSVG(this._shapes as string)
 
         this._resolvedShapesSVG = svg; // set to avoid double use
@@ -90,14 +91,13 @@ export class View extends Container
             throw new Error(`View::resolveShapeNameToSVG(): Variable "${shapesRef}" resolved to ${realShapes} for view "${this.name}". The pipeline function returned it but the value is empty.`);
         }
 
-        if(!Shape.isShape(realShapes) && !ShapeCollection.isShapeCollection(realShapes))
+        if(!isKernelShapeOrCollection(realShapes))
         {
             const got = (realShapes as any)?.constructor?.name || typeof realShapes;
             throw new Error(`View::resolveShapeNameToSVG(): Variable "${shapesRef}" for view "${this.name}" is not a Shape or ShapeCollection (got ${got}). Return a Shape/ShapeCollection from your pipeline, e.g. \`${shapesRef} = myMainBox.iso()\`.`);
         }
 
-        const s = ShapeCollection.isShapeCollection(realShapes) ? realShapes : new ShapeCollection(realShapes as any);
-        return s.toSVG();
+        return kernelShapeToSVG(realShapes);
     }
 
     /** Bind ShapeCollection to View */
@@ -105,9 +105,10 @@ export class View extends Container
     {
         this._forceAll = all;
         // a reference to a ShapeCollection from main script
-        if (ShapeCollection.isShapeCollection(shapes) || Shape.isShape(shapes))
+        if (isKernelShapeOrCollection(shapes))
         {
-            this._shapes = new ShapeCollection(shapes) as ShapeCollection; // auto converted
+            // Keep the shape/collection as the kernel made it — only that kernel can draw it.
+            this._shapes = shapes as ShapeCollection;
         }
         else if(typeof shapes === 'string')
         {

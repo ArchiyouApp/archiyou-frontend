@@ -18,7 +18,7 @@ import { resolve } from 'node:path';
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 
-import { config } from './config';
+import { config, isAllowedOrigin } from './config';
 import { ExecutionManager } from './execution/ExecutionManager';
 import { registerAuthRoutes } from './routes/auth';
 import { registerUserRoutes } from './routes/users';
@@ -34,12 +34,21 @@ import { translationQueue } from './translation/TranslationQueue';
 const EXECUTION_INIT_TIMEOUT_MS = 5000;
 
 export async function serverApiPlugin(fastify: FastifyInstance): Promise<void> {
-  // Explicit origin allowlist (config.corsOrigins = FRONTEND_URL + SERVER_CORS_ORIGINS).
+  // Explicit origin allowlist (config.corsOrigins = FRONTEND_URL + SERVER_CORS_ORIGINS),
+  // plus any loopback origin in development — see isAllowedOrigin.
   // Requests with no Origin header (curl, server-to-server) are allowed through —
   // CORS is a browser mechanism and blocking them would break API consumers.
   await fastify.register(import('@fastify/cors'), {
     origin: (origin, cb) => {
-      if (!origin || config.corsOrigins.includes(origin)) return cb(null, true);
+      if (!origin || isAllowedOrigin(origin)) return cb(null, true);
+      // Log it: a rejected preflight reaches the browser as a bare "no
+      // Access-Control-Allow-Origin header", with nothing naming the origin that
+      // was actually refused. Without this line the server console stays silent
+      // on the one failure people spend an afternoon on.
+      console.warn(
+        `⚠️  CORS: refused origin "${origin}". Allowed: ${config.corsOrigins.join(', ') || '(none)'}. ` +
+        `Add it to SERVER_CORS_ORIGINS (or set FRONTEND_URL) to permit it.`,
+      );
       cb(new Error('Not allowed by CORS'), false);
     },
   });

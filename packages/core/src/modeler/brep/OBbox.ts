@@ -12,6 +12,7 @@ import { getOc } from './index' // OC global getter
 // Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
 // run at class-definition time, before it has finished initialising.
 import { checkInput } from './decorators'
+import { addResultToScene } from '@archiyou/meshup/src/sceneDecorators'
 
 export class OBbox
 {
@@ -22,6 +23,8 @@ export class OBbox
     _ocOBbox:any = null;
 
     position:Point; // center of obbox
+    /** The Shape this OBbox was measured from - lets shape()/box()/rect()/line() land in its scene */
+    _source:AnyShape = null;
 
     /** Create 2D or 3D Bbox from a Shape */
     constructor(shape:AnyShape)
@@ -41,11 +44,20 @@ export class OBbox
     
     create(shape:AnyShape):this
     {
+        this._source = shape; // so shapes made from this OBbox can join the measured Shape's scene
         this._ocOBbox = new this._oc.Bnd_OBB_1();
         this._oc.BRepBndLib.prototype.constructor.AddOBB(
             shape._ocShape, this._ocOBbox, true, false, false); // useTriangulation, isOptimal, theIsShapeToleranceUsed                    
 
         return this;
+    }
+
+    /** Put a Shape this OBbox just built into the measured Shape's scene (no-op when there is
+     *  no source, or the source is standalone / tmp()). Mirrors meshup OBbox._attach(). */
+    _attach<T>(shape:T):T
+    {
+        addResultToScene(this._source, shape);
+        return shape;
     }
 
     /** Set public properties from _ocOBbox */
@@ -365,13 +377,28 @@ export class OBbox
         return this[AXIS_TO_SIDE[axis]]();
     }   
 
-    /** Get Shape from this Orientated Bounding Box */
+    /** Get the real Shape of this Orientated Bounding Box, matching its dimensionality:
+     *      3D => box Solid, 2D => rectangle Face, 1D => line Edge
+     *  A zero-size (point) OBbox has no Shape and returns null.
+     *  The result is added to the scene the measured Shape lives in - see _attach().
+     */
     shape():Edge|Face|Solid|null
     {
-        // TODO: point or line?
-        return (this.is1D()) ? this.line() :
-                            (this.is2D()) ? this.rect() : (this.is3D()) 
-                                ? this.box() : null
+        if(this.isPoint())
+        {
+            console.warn(`OBbox::shape(): OBbox has no size, so there is no Shape to make. Returned null`);
+            return null;
+        }
+
+        return this._attach(this._shapeRaw());
+    }
+
+    /** The Shape of this OBbox without any scene bookkeeping - for measuring inside brep */
+    _shapeRaw():Edge|Face|Solid|null
+    {
+        return (this.is1D()) ? this._lineRaw() :
+                            (this.is2D()) ? this._rectRaw() : (this.is3D())
+                                ? this._boxRaw() : null
     }
 
     /** Alias for shape() */
@@ -382,6 +409,11 @@ export class OBbox
 
     /** Make Line from 1D Bbox */
     line():Edge|null
+    {
+        return this._attach(this._lineRaw());
+    }
+
+    _lineRaw():Edge|null
     {
         if(!this.is1D())
         { 
@@ -394,18 +426,46 @@ export class OBbox
     /** Create 2D Rectangle Face from Bbox */
     rect():Face
     {
-        if(!this.is2D())
-            { 
-                console.warn(`Bbox::rect: Bbox is not 2D, so can't turn into a rectangle Face!`);
-                return null; 
-        }
-        return new Face().fromVertices(this.corners().slice(0,4));
+        return this._attach(this._rectRaw());
     }
 
-    /** returns a Box Shape for this Bbox if not 2D, otherwise null 
-     *  NOTE: Don't automatically add to scene
-    */
+    _rectRaw():Face
+    {
+        if(!this.is2D())
+            {
+                console.warn(`Bbox::rect: Bbox is not 2D, so can't turn into a rectangle Face!`);
+                return null;
+        }
+        if(this._sizesAreZero().filter(isZero => isZero).length !== 1)
+        {
+            console.warn(`OBbox::rect(): OBbox has no two sides with a size, so it can't turn into a rectangle Face! Returned null`);
+            return null;
+        }
+
+        /*  Ring of the 4 corners spanning the two axes that do have a size.
+            NOTE: corners().slice(0,4) is only the ring in the xy plane of the OBbox frame.
+            The flat axis of an OBbox is not necessarily its z axis (OC does not sort them),
+            and on a Shape flat along x or y that ring collapses into a doubled line. */
+        const halfDirs = [
+            this.xDir().scaled(this.width()/2),
+            this.yDir().scaled(this.depth()/2),
+            this.zDir().scaled(this.height()/2),
+        ];
+        const flatAxisIndex = this._sizesAreZero().findIndex(isZero => isZero);
+        const [u,v] = [0,1,2].filter(i => i !== flatAxisIndex).map(i => halfDirs[i]);
+        const center = this.center();
+        const corner = (su:number, sv:number):Point => center.moved(u.scaled(su)).move(v.scaled(sv));
+
+        return new Face().fromVertices([ corner(-1,-1), corner(1,-1), corner(1,1), corner(-1,1) ]);
+    }
+
+    /** returns a Box Shape for this Bbox if not 2D, otherwise null */
     box():Solid|null
+    {
+        return this._attach(this._boxRaw());
+    }
+
+    _boxRaw():Solid|null
     {
         if(!this.is3D())
         { 
@@ -463,10 +523,10 @@ export class OBbox
     {
         if(this.is2D())
         {
-            return this.rect().area();
+            return this._rectRaw().area();
         }
         else {
-            return roundToTolerance(this.box().faces().toArray().reduce( (sum, f) => sum + f.area(), 0));
+            return roundToTolerance(this._boxRaw().faces().toArray().reduce( (sum, f) => sum + f.area(), 0));
         }
     }
 
@@ -474,7 +534,7 @@ export class OBbox
     {
         if(this.is3D())
         {
-                return this.box().volume();
+                return this._boxRaw().volume();
         }
         return null;
     }

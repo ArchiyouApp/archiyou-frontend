@@ -84,7 +84,7 @@ describe('Runner', () =>
         // For debugging: save the GLB output to a file
         console.log('==== GLB Output ====');
         console.log(glbOutput.output);
-        await save('runner.test.glb', glbOutput!.output as ArrayBuffer);
+        await save('./tests/outputs/runner/runner.test.glb', glbOutput!.output as ArrayBuffer);
 
     })
 

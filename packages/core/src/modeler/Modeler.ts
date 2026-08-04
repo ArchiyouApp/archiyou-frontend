@@ -99,6 +99,8 @@ export class Modeler
     declare private _activeLayer: meshup.SceneNode | null
     declare private _activeSketch: any
     declare private _make: Make
+    /** Cached brep view of `classes` — see the getter. */
+    private _brepClasses: KernelClasses | null = null
     
     stats:Record<string,any> = {}; // stats of last operation
 
@@ -168,6 +170,14 @@ export class Modeler
      *  to the scene at the active layer. Returns the same shape for chaining. */
     private _adopt<T>(shape: T): T
     {
+        if (shape === null || shape === undefined)
+        {
+            // A kernel factory returned nothing. Say so here — otherwise this surfaces to the
+            // script author as "Cannot set properties of null (setting '_modeler')".
+            throw new Error(
+                `Modeler: the ${this._mode} kernel could not build that shape (it returned nothing). ` +
+                `Check the arguments — for example, that the points span the plane or volume you expect.`);
+        }
         (shape as any)._modeler = this;
         this.addToScene(shape);
         return shape;
@@ -272,12 +282,44 @@ export class Modeler
     }
 
 
-    /** Get class constructors from the active kernel */
+    /** Kernel classes under ONE set of names, whichever kernel is active.
+     *
+     *  App modules (the Annotator above all) build helper geometry through this — `classes.
+     *  Curve.Line(a, b)`, `new classes.Point(...)` — and must not care which kernel is running.
+     *  The mesh kernel already uses these names; brep names its equivalents differently
+     *  (Edge/Solid) and builds via `new Edge().makeLine()` rather than a static, so brep gets a
+     *  thin adapter. Built once per kernel and cached. */
     get classes(): KernelClasses
     {
         const k = this.kernel();
         if (!k) throw new Error(`Modeler.classes: kernel '${this._mode}' is not loaded. Call load() first.`);
-        return k as KernelClasses;
+
+        if (this._mode !== 'brep') { return k as KernelClasses } // meshup already matches
+
+        if (!this._brepClasses)
+        {
+            const K = k as Brep;
+            // A Curve that behaves like meshup's: same constructor, plus the static factories
+            // the app calls. brep's linear shape is Edge.
+            class BrepCurve extends (K.Edge as any)
+            {
+                static Line(start: any, end: any) { return new K.Edge().makeLine(start, end) }
+                static Arc(start: any, mid: any, end: any) { return new K.Edge().makeArc(start, mid, end) }
+            }
+
+            this._brepClasses = {
+                Point:           K.Point,
+                Vector:          K.Vector,
+                Vertex:          K.Vertex,
+                Shape:           K.Shape,
+                Curve:           BrepCurve,
+                Mesh:            K.Solid,   // brep's volumetric shape
+                ShapeCollection: K.ShapeCollection,
+                Bbox:            K.Bbox,
+            } as unknown as KernelClasses;
+        }
+
+        return this._brepClasses;
     }
 
     scene(): meshup.SceneNode
@@ -440,11 +482,13 @@ export class Modeler
 
     //// CLOSED 2D SHAPES ////
 
-    /** Creates a rectangular Curve (mesh) or planar rectangular Face (brep) */
+    /** Creates a rectangular outline.
+     *  Both kernels return the OUTLINE, not a surface: a Curve on mesh, a Wire on brep. Use
+     *  plane() for the filled version. (Getting this wrong made brep rects answer to the
+     *  surface API instead of the curve API — .segment()/.extend()/.toPolygon() all missed.) */
     rect(width: number = 100, depth: number = 100, center: PointLike = [0, 0, 0]): AnyKernelShape
     {
-        // brep has no separate rect primitive - a Plane of the same size IS the rectangle
-        if (this._mode === 'brep') return this.plane(width, depth, center)
+        if (this._mode === 'brep') return this._adopt(new (this._brep().Wire)().makeRect(width, depth, center as any))
         return this._adopt(meshup.Curve.Rect(width, depth, center) as meshup.Curve)
     }
 
@@ -452,7 +496,14 @@ export class Modeler
     @validate(PointLikeSchema, PointLikeSchema)
     rectBetween(from: PointLike, to: PointLike): AnyKernelShape
     {
-        if (this._mode === 'brep') return this._adopt(new (this._brep().Face)().makeRectBetween(from as any, to as any))
+        // Outline, like rect(). makePlaneBetween (not makeRectBetween) because the latter is
+        // XY-only, while the mesh kernel accepts two points spanning any base plane; the
+        // resulting Face is reduced to its outer Wire.
+        if (this._mode === 'brep')
+        {
+            const face = new (this._brep().Face)().makePlaneBetween(from as any, to as any);
+            return this._adopt(face ? (face as any).outerWire?.() ?? face : face)
+        }
         return this._adopt(meshup.Curve.RectBetween(from, to) as meshup.Curve)
     }
 
@@ -465,10 +516,10 @@ export class Modeler
         return this._adopt(new meshup.Polygon(points) as meshup.Polygon)
     }
 
-    /** Creates a circular Curve (mesh) or circular Face (brep) */
+    /** Creates a circular outline — a Curve on mesh, a circular Edge on brep. */
     circle(radius: number = 50, center: PointLike = [0, 0, 0]): AnyKernelShape
     {
-        if (this._mode === 'brep') return this._adopt(new (this._brep().Face)().makeCircle(radius, center as any))
+        if (this._mode === 'brep') return this._adopt(new (this._brep().Edge)().makeCircle(radius, center as any))
         return this._adopt(meshup.Curve.Circle(radius, center) as meshup.Curve)
     }
 

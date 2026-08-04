@@ -9,7 +9,7 @@ beforeAll(async () => { await brep.init() });
 test("Shell.fromWireframe plane", () =>
 {
     // Simple plane wireframe
-    const edges = new brep.Face().makePlane(100,50).edges().moved(150);
+    const edges = new brep.Face().makePlane(100,50).edges().copy().move(150);
     const s1 = new brep.Shell().fromWireFrame(edges);
     expect(s1.type).toEqual('Shell');
     expect(s1.faces().length).toEqual(1);

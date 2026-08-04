@@ -750,7 +750,7 @@ export class Make
                                     Math.abs(l.center().x - checkedOpening.bbox().max().x) <
                                     studThickness * 0.5
                             );
-                            //closeGridLine.moved(0,0,100).color('red')
+                            //closeGridLine.copy(false).move(0,0,100).color('red')
                             if (closeGridLine)
                             {
                                 const dx = Math.abs(

@@ -308,7 +308,7 @@ import { getOc } from './index' // OC global getter
          })
 
          // gather ungrouped Shapes as one group
-         const nonGroupedShapes = this.removed(allGroupedShapes)
+         const nonGroupedShapes = this.shallowCopy().remove(allGroupedShapes)
          if (nonGroupedShapes.length)
          {
             func(null, nonGroupedShapes)
@@ -498,14 +498,6 @@ import { getOc } from './index' // OC global getter
          return this;
       }
 
-      /** Return a new Collection of given Shapes removed */
-      @checkInput('AnyShapeOrCollection', 'ShapeCollection')
-      removed(shapes:AnyShapeOrCollection): ShapeCollection
-      {
-         const newCollection = this.shallowCopy();
-         newCollection.remove(shapes)
-         return newCollection;
-      }
 
 
       /** Add Shape at beginning of collection */
@@ -516,12 +508,6 @@ import { getOc } from './index' // OC global getter
          return this;
       }
 
-      /** Add Shape at beginning of collection */
-      @checkInput('AnyShape', 'auto')
-      prepended(shape:AnyShape):ShapeCollection
-      {
-         return new ShapeCollection([shape].concat(this.shapes));
-      }
 
       /** Add Shape to right of current ShapeCollection */
       @checkInput('AnyShape', 'auto')
@@ -573,15 +559,6 @@ import { getOc } from './index' // OC global getter
          return this;
       }
 
-      /** Shape API - move a copy of all Shapes in ShapeCollection */
-      @checkInput('PointLike','Vector') // this automatically transforms Types
-      moved(vector:PointLike, ...args):AnyShapeCollection
-      {
-         let newCollection = this.copy();
-         newCollection.shapes.forEach( shape => shape.move(vector as Vector)); // 
-
-         return newCollection;
-      }
 
 
       /**  Shape API - Move center of Collection to a given point */
@@ -731,7 +708,7 @@ import { getOc } from './index' // OC global getter
       scaled(factor?:number, pivot?:PointLike):AnyShapeCollection
       {
          let newCollection = this._copy();
-         newCollection.scale(factor);
+         newCollection.scale(factor, pivot);
          return newCollection;
       }
 
@@ -801,16 +778,6 @@ import { getOc } from './index' // OC global getter
          return newCollection.unique(); // Remove doubles with unique()
       }
 
-      /** Shape API - Mirror Shapes in ShapeCollection with mirror plane defined by planeNormal and origin */
-      @checkInput([['PointLike', [0,0,0]], ['PointLike', 'x']], ['Vector', 'Vector']) // the default mirror plane is the YZ plane with normal +X-axis at [0,0,0]
-      mirrored(origin:PointLike, planeNormal:PointLike):AnyShapeCollection
-      {
-         let newCollection = new ShapeCollection();
-         this.shapes.forEach( shape => {
-            newCollection.add(shape.mirrored(origin, planeNormal));
-         });
-         return newCollection;
-      }
 
       /** Shape API - Mirror Shapes relative to X-plane (x=0) with its collection center as pivot or given offset x-coord */
       @checkInput([[Number,null]], ['auto'])
@@ -907,17 +874,6 @@ import { getOc } from './index' // OC global getter
          return this;
       }
 
-      /** Shape API - create copeis and offset Shapes in Collection  */
-      @checkInput([[Number,null],[String, null],['PointLike', null]], ['auto', 'auto', 'Vector'])
-      offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):AnyShapeCollection
-      {
-         let newCollection = new ShapeCollection();
-         this.shapes.forEach( shape => {
-            newCollection.add((shape as Shape).offsetted(amount, type, onPlaneNormal));
-         });
-
-         return newCollection;
-      }
 
       /** Shape API - Extrude Shapes in ShapeCollection a certain amount in a given direction (default: [0,0,1]) */
       @checkInput([ [Number, SHAPE_EXTRUDE_DEFAULT_AMOUNT], ['PointLike', null ]], [Number, 'auto'])
@@ -930,17 +886,6 @@ import { getOc } from './index' // OC global getter
          return this;
       }
 
-      /** Shape API - Extrude Shapes in ShapeCollection a certain amount in a given direction (default: [0,0,1]) */
-      @checkInput([ [Number, SHAPE_EXTRUDE_DEFAULT_AMOUNT], ['PointLike', null ]], [Number, 'auto'])
-      extruded(amount?:number, direction?:PointLike):AnyShapeCollection
-      {
-         let newCollection = new ShapeCollection();
-         this.shapes.forEach( shape => {
-            newCollection.add(shape.extruded(amount, direction));
-         });
-
-         return newCollection;
-      }
 
       @checkInput([Number, [String, 'center']], [Number, String])
       thicken(amount:number,  direction?:string):ShapeCollection
@@ -952,17 +897,6 @@ import { getOc } from './index' // OC global getter
          return this;
       }
 
-      /** Create a new ShapeCollection with thickened Shapes */
-      @checkInput([Number, [String, 'all']], [Number, String])
-      thickened(amount:number,  direction?:string):ShapeCollection
-      {
-         let newCollection = new ShapeCollection();
-         this.shapes.forEach( shape => 
-         {
-            newCollection.add(shape.thickened(amount, direction));
-         })
-         return newCollection;
-      }
 
       /* !!!! TODO  SHAPE API !!!!
          
@@ -1123,6 +1057,7 @@ import { getOc } from './index' // OC global getter
 
          // link this collection to Bbox so it can link annotations
          combinedBbox.setParent(this);
+         combinedBbox._fromShape(this); // so bbox().box() etc land in the collection's scene
 
          return combinedBbox;
       }
@@ -1698,12 +1633,7 @@ import { getOc } from './index' // OC global getter
             return this;
          }
       }
-      
-      @checkInput('AnyShapeCollection', 'auto')
-      combined(other:ShapeCollection):ShapeCollection
-      {
-         return this.copy().combine(other);
-      }
+
 
       /** Try to combine collection of shapes into a higher order ShapeCollection */
       // TODO: What to do with the old Shapes when this collection is updated?
@@ -1717,13 +1647,6 @@ import { getOc } from './index' // OC global getter
          return this;
       }
 
-      /** Try to combine collection of shapes into a higher order ShapeCollection */
-      upgraded():ShapeCollection
-      {
-         let newCollection = this.upgrade().copy();
-         
-         return newCollection
-      }
 
       /** Try to combine into higher order Shape of same type of Shapes in Collection */
       upgradeShapesByType():this
@@ -2162,28 +2085,35 @@ import { getOc } from './index' // OC global getter
             // To increase chances of succesful union order by volume
             // TODO: introduce a smarter approach
             results.sort((a,b) => b.volume() - a.volume())
-            results = new ShapeCollection(results._unioned(null, true));
+            results = new ShapeCollection(results.copy().union());
          }
 
          return results.checkSingle();
       }
 
-      /** Shape API - Try to union all shapes in Collection and add to Scene */
-      @checkInput([['AnyShapeOrCollection',null ]], 'auto')
-      unioned(other?:AnyShapeOrCollection):ShapeCollection|AnyShape
-      {
-         return this._unioned(other);
-      }
 
       /** Shape API - Try to union all shapes in Collection 
        *   TODO: test and make more robust for a variety of Shapes in a Collection
       */
+      /** Fuse every Shape in this collection into one.
+       *
+       *  NOTE: this used to call `this.added()`, which never existed on ShapeCollection — the
+       *  method threw for as long as it has been here. It now folds the Shapes together with
+       *  the boolean union the Shape class provides. */
       union():this
       {
-         const unionedCollection = new ShapeCollection(this._unioned());
+         if(this.shapes.length === 0){ return this }
+
+         let fused:AnyShape = this.shapes[0];
+         for(let i = 1; i < this.shapes.length; i++)
+         {
+            const next = fused._unioned(this.shapes[i]);
+            if(next){ fused = ShapeCollection.isShapeCollection(next) ? (next as any).first() : next as AnyShape }
+         }
+
          this.removeFromScene(); // Remove current Shapes
          this.empty();
-         this.add(unionedCollection); // Add Shapes to current collection
+         this.add(fused); // Add the fused Shape to current collection
 
          return this;
       }
@@ -2231,6 +2161,92 @@ import { getOc } from './index' // OC global getter
          return this;
       }
 
+      //// MESH-KERNEL API PARITY ////
+
+      /** Fuse the Shapes in this collection into one. Mesh-kernel name for union(). */
+      merge():this
+      {
+         return this.union();
+      }
+
+      /** Repeat the whole collection on a 3D grid. Mesh-kernel parity with row(). */
+      grid(cx:number=2, cy:number=2, cz:number=1, spacing:number=10):ShapeCollection
+      {
+         const bb = this.bbox();
+         if(!bb){ return this }
+         const step = [ bb.width() + spacing, bb.depth() + spacing, bb.height() + spacing ];
+
+         const out = new ShapeCollection();
+         for (let z = 0; z < cz; z++){
+         for (let y = 0; y < cy; y++){
+         for (let x = 0; x < cx; x++)
+         {
+            const first = (x === 0 && y === 0 && z === 0);
+            this.shapes.forEach(sh =>
+            {
+               const shape = first ? sh : sh.copy(false);
+               shape.move(x * step[0], y * step[1], z * step[2]);
+               out.add(shape);
+            })
+         }}}
+         return out;
+      }
+
+      /** The corner points of every Shape in this collection. */
+      points():Array<Point>
+      {
+         return this.shapes.flatMap(s => (s as any).points?.() ?? []);
+      }
+
+      /** Mirror every Shape in this collection in place. Mesh-kernel name (meshup mutates
+       *  too); use `.copy().mirror(...)` for a mirrored duplicate. */
+      mirror(origin:PointLike, planeNormal:PointLike):this
+      {
+         this.forEach(shape => shape.mirror(origin, planeNormal));
+         return this;
+      }
+
+      /** Flatten every Shape in this collection in place. */
+      flatten(axis?:MainAxis):this
+      {
+         this.forEach(shape => shape.flatten(axis));
+         return this;
+      }
+
+      /** Repeat the whole collection `count` times along `direction`, spaced by `spacing`
+       *  between combined bounding boxes. Parity with the mesh kernel's ShapeCollection.row(). */
+      row(count:number, spacing:number=10, direction:PointLike='x'):ShapeCollection
+      {
+         const dirVec = new Vector(direction).normalized();
+         const bb = this.bbox();
+         if(!bb){ return this }
+         const offsetSize = new Vector(bb.width(), bb.depth(), bb.height()).scaled(dirVec).length();
+
+         const out = new ShapeCollection();
+         for (let i = 0; i < count; i++)
+         {
+            const step = dirVec.scaled(i * (offsetSize + spacing));
+            this.shapes.forEach(s =>
+            {
+               const shape = (i === 0) ? s : s.copy(false);
+               shape.move(step);
+               out.add(shape);
+            })
+         }
+         return out;
+      }
+
+      /** Place the whole collection on a given height by its combined bounding box, by
+       *  default on the XY plane — the shapes keep their positions relative to each other.
+       *  Parity with the mesh kernel's ShapeCollection.place(). */
+      place(z:number=0):this
+      {
+         const bb = this.bbox();
+         if(!bb){ return this }
+         this.forEach(shape => shape.move(0, 0, z - bb.min().z));
+         return this;
+      }
+
       /** NOTE: We don't use set/get here, because it doesnt play well with chaining.
        *  Overloaded like meshup — see Shape.name(). */
       name(n:string):this;
@@ -2269,56 +2285,7 @@ import { getOc } from './index' // OC global getter
          this.forEach( shape => shape.show());
          return this;
       }
-      
-      // TODO: .color, .
 
-      //// LAYOUTING ALGORITHMS ////
-
-      /** Flatten all Shapes into new Shapes, align to one plane and return new ShapeCollection 
-       *   If an axis is given all Shapes are flattened along that axis and placed at 0 at that axis
-       *   Otherwise we consider shapes as extrusions and we flatten according to _extrudedFace()
-      */
-      @checkInput([['MainAxis',null], ['Boolean', true]], ['auto','auto'])
-      flattened(axis?:MainAxis, filterDuplicates?:boolean):AnyShapeCollection
-      {
-         let flattened = this.map( s => s._flattened(axis)
-                                          .setName(s.getName())); // NOTE: we take over the name for easy access
-         
-         // move to zero
-         if (isMainAxis(axis))
-         {
-            flattened.forEach(s => s.moveToAxisCoord(axis, 0));
-            
-            // filter out duplicate based on bbox
-            if(filterDuplicates)
-            {
-                  flattened = new ShapeCollection(
-                     Object.values(
-                        flattened.toArray().reduce(
-                           (agg,s) => {
-                              agg[s.bbox().hash()] = s;
-                              return agg;
-                           }, 
-                        {})
-                     )
-                  )   
-            }
-         }
-         else {
-            if(flattened.is2D())
-            {
-               // make sure all 2D faces are on the same depth plane
-               const depthAxis2D = flattened.first().bbox().axisMissingIn2D();
-               
-               if(depthAxis2D)
-               {
-                  flattened.forEach( s => s[`moveTo${depthAxis2D.toUpperCase()}`](0)); // just move to 0 for robustness
-               }
-            }
-         }
-
-         return flattened;
-      }
 
       /** Layout Shapes on XY plane within a given Layout order */
       @checkInput([ ['String','binpack'], ['Boolean', true], ['LayoutOptions', null]], ['String','auto','auto'])
@@ -2333,7 +2300,7 @@ import { getOc } from './index' // OC global getter
             // autoRotate (default)
             workShape = (options?.autoRotate == undefined || options?.autoRotate) ? workShape.rotateToLayFlat() : workShape;
             // flatten if given as option
-            workShape = (options?.flatten) ? workShape.flattened() : workShape;
+            workShape = (options?.flatten) ? workShape._flattened() : workShape;
 
             switch (order)
             {
@@ -2447,7 +2414,7 @@ import { getOc } from './index' // OC global getter
                { 
                   let newWorkShape = workShape._copy(); // IMPORTANT: don't add to scene - flattened leaves this copy around
                   newWorkShape = (autoRotate) ? newWorkShape.rotateToLayFlat() : newWorkShape;
-                  newWorkShape = (flatten) ? newWorkShape.flattened() : newWorkShape;
+                  newWorkShape = (flatten) ? newWorkShape._flattened() : newWorkShape;
                   
                   toShapeCollection.addGroup('cut', newWorkShape);
                   workShape = newWorkShape;
@@ -2611,7 +2578,7 @@ import { getOc } from './index' // OC global getter
 
                // Info per LineEdge
                let edgeInfo = { objId: curShapeEdge.objId, shapeId: curShapeEdge.ocId, subShapeType: 'Edge', indexInShape: curShapeEdge.indexInShape, 
-                              color: new Color(curMeshShape?.style?.line?.color || '#333333').darken(0.5).toInt(), // darken lines a bit
+                              color: new Color(curMeshShape?.style?.stroke?.color || curMeshShape?.style?.color || '#333333').darken(0.5).toInt(), // darken lines a bit
                               edgeGroupLineSegmentsRange: [lineSegmentIndexStart,lineSegmentIndexEnd ] };
 
                // for the first line segment
@@ -2678,7 +2645,7 @@ import { getOc } from './index' // OC global getter
                         shapeId: v.ocId, 
                         subShapeType: 'Vertex', 
                         indexInShape: v.indexInShape, 
-                        color: new Color(curMeshShape?.style?.line?.color || '#333333').darken(0.5).toInt()  })) as any // Get rid of TS error. TODO: Look into it!
+                        color: new Color(curMeshShape?.style?.stroke?.color || curMeshShape?.style?.color || '#333333').darken(0.5).toInt()  })) as any // Get rid of TS error. TODO: Look into it!
             );
 
          })
@@ -2747,7 +2714,23 @@ import { getOc } from './index' // OC global getter
          let shapeEdges = this._get2DXYShapeEdges(options?.all);
          
          if (shapeEdges.length == 0){ return null;}
-         shapeEdges = shapeEdges.map(s => s._mirroredX(0));  // IMPORTANT: SVG has reversed y-axis
+         /*  IMPORTANT: SVG's y-axis points DOWN, so the drawing is flipped in Y — mirrored
+             across the XZ plane (normal [0,1,0]), which is _mirroredY.
+
+             This said _mirroredX, which mirrors across the YZ plane and negates X instead. The
+             viewBox below is built for a Y flip (it starts at -maxY), so the two disagreed and
+             every brep drawing came out rotated 180°. The 3D scene was always right; only the
+             SVG was wrong.
+
+             The mirror is a pure coordinate flip, so each mirrored Edge must keep pointing at
+             the Shape it came from — that link is where its styling is read from (an Edge of a
+             styled Wire carries no style of its own). */
+         shapeEdges = shapeEdges.map(s =>
+         {
+            const flipped = s._mirroredY(0);
+            flipped._parent = s._parent ?? s;
+            return flipped;
+         });
 
          // Edges to SVG paths
          let svgPaths:Array<string> = [];
@@ -2765,11 +2748,30 @@ import { getOc } from './index' // OC global getter
          const svgWorldBbox = `${bboxWorld.minX()-BBOX_ANNOTATION_MARGIN} ${bboxWorld.minY()-BBOX_ANNOTATION_MARGIN} ${bboxWidth} ${bboxHeight}`; // in format 'x y width height' 
          const svgViewBbox = `${bboxWorld.minX()-BBOX_ANNOTATION_MARGIN} ${-bboxWorld.maxY()-BBOX_ANNOTATION_MARGIN} ${bboxWidth} ${bboxHeight}`;  // Mirrored! minY => -maxY
 
+         /*  Ship the same stylesheet the mesh kernel does, so an unstyled drawing looks
+             identical whichever kernel produced it — thin black lines at a weight that scales
+             with the drawing. Without it every path would need its stroke written inline, and
+             SVG's default stroke is `none`, so a drawing with no inline styling is INVISIBLE.
+
+             Kept byte-identical to meshup's ShapeCollection.toSVG(): the divisor is chosen so a
+             drawing fitted to a page lands near 0.25mm — a normal technical line weight —
+             whatever the model's real size. Deliberate styling is emitted by Edge.toSVG() as an
+             inline `style=` (not a presentation attribute) so it overrides these rules. */
+         const drawingSize = Math.max(bboxWidth, bboxHeight) || 1;
+         const strokeWidth = +(drawingSize / 800).toFixed(4);
+         const dash = `${+(strokeWidth * 12).toFixed(4)} ${+(strokeWidth * 8).toFixed(4)}`;
+         const styleBlock = '<style>'
+            + `.line{fill:none;stroke:black;stroke-width:${strokeWidth};`
+            + 'stroke-linecap:round;stroke-linejoin:round}'
+            + `.hidden{stroke:#888;stroke-dasharray:${dash}}`
+            + '</style>';
+
          const svg = `<svg 
                         xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" 
                         viewBox="${svgViewBbox}"
                         _bbox="${svgWorldBbox}" 
-                        _worldUnits="${hostUnits(this)}" stroke="black">
+                        _worldUnits="${hostUnits(this)}">
+                        ${styleBlock}
                         ${svgPaths.join('\n\t')}
                         ${ (withAnnotations) ? this._getDimensionLinesSvgElems() : ''}
                      </svg>`

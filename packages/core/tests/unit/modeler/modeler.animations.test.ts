@@ -163,7 +163,7 @@ describe('Modeler animations', () =>
         new Layouter(colExp).exploded().apply();
         const all = new ShapeCollection(col, colExp);
 
-        await save('test.modeler.animations.exploded.gltf', await all.toGLTF());
+        await save('./tests/outputs/modeler/test.modeler.animations.exploded.gltf', await all.toGLTF());
 
     });
 

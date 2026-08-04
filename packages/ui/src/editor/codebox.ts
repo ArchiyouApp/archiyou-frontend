@@ -17,8 +17,6 @@ import '@awesome.me/webawesome/dist/components/split-panel/split-panel.js';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/checkbox/checkbox.js';
-import '@awesome.me/webawesome/dist/components/select/select.js';
-import '@awesome.me/webawesome/dist/components/option/option.js';
 
 // CodeMirror imports
 import { EditorView, basicSetup } from 'codemirror';
@@ -124,16 +122,10 @@ export class CodeBox extends SignalWatcher(LitElement)
                     ?checked=${autoRun.get()}
                     @change=${this._handleAutoRunChange}
                 >Automatic execute</wa-checkbox>
-                <label class="options-field">
+                <div class="options-field">
                   <span class="options-field-label">Geometry kernel</span>
-                  <wa-select
-                      size="small"
-                      @change=${this._handleKernelChange}
-                      title="Mesh is fast and robust; BREP (OpenCascade) is accurate but slower and loads a large WASM on first use">
-                    <wa-option value="mesh" ?selected=${kernel.get() === 'mesh'}>Mesh</wa-option>
-                    <wa-option value="brep" ?selected=${kernel.get() === 'brep'}>BREP</wa-option>
-                  </wa-select>
-                </label>
+                  ${this._renderKernelToggle()}
+                </div>
               </div>
             ` : ''}
           </div>
@@ -389,13 +381,29 @@ export class CodeBox extends SignalWatcher(LitElement)
     autoRun.set((e.target as HTMLInputElement).checked);
   }
 
-  private _handleKernelChange(e: Event)
+  /** Mesh / BREP segmented control — picks the geometry kernel for the next run.
+   *  Same shape as the Metric/Imperial control in file-info, one size down to suit the
+   *  options menu. Plain buttons rather than a dropdown: one click to switch, and no
+   *  composed `change` event to keep out of the editor's code-sync handler. */
+  private _renderKernelToggle()
   {
-    e.stopPropagation(); // same reason as _handlePerStatementChange
-    // NOTE: wa-select emits `change` (not `wa-change`), and a `.value` set before its
-    // options are slotted is dropped — hence `?selected` on the options above.
-    const value = (e.target as HTMLInputElement).value;
-    if (value === 'mesh' || value === 'brep') { kernel.set(value); }
+    const active = kernel.get();
+    return html`
+      <div class="kernel-seg" role="group">
+        <button
+            class=${`kernel-seg-btn ${active === 'mesh' ? 'active' : ''}`}
+            @click=${() => kernel.set('mesh')}
+            title="Mesh (meshup): fast and robust — the default">
+          Mesh
+        </button>
+        <button
+            class=${`kernel-seg-btn ${active === 'brep' ? 'active' : ''}`}
+            @click=${() => kernel.set('brep')}
+            title="BREP (OpenCascade): exact geometry, slower — loads a large WASM on first use">
+          BREP
+        </button>
+      </div>
+    `;
   }
 
   private _toggleOptions()
@@ -654,18 +662,58 @@ export class CodeBox extends SignalWatcher(LitElement)
       font-size: var(--text-xs, 0.75rem);
     }
 
+    /* ── Geometry-kernel segmented control ──
+       Label on its own line, pill underneath. Mirrors the Metric/Imperial control in
+       file-info.ts, scaled down for this menu. */
+
     .options-field {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.5rem;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.3rem;
+      margin-top: 0.15rem;
+    }
+
+    .options-field-label {
       font-size: var(--text-xs, 0.75rem);
       color: var(--color-text);
     }
 
-    .options-field wa-select {
-      flex: 0 0 auto;
-      min-width: 6.5rem;
+    .kernel-seg {
+      display: inline-flex;
+      align-items: stretch;
+      align-self: flex-start;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-full, 999px);
+      overflow: hidden;
+    }
+
+    .kernel-seg-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 3.1rem;
+      padding: 0.15rem 0.6rem;
+      border: none;
+      background: var(--color-bg);
+      color: var(--color-text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--text-xs, 0.75rem);
+      line-height: 1.5;
+      cursor: pointer;
+    }
+
+    .kernel-seg-btn + .kernel-seg-btn {
+      border-left: 1px solid var(--color-border);
+    }
+
+    .kernel-seg-btn:hover {
+      background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));
+    }
+
+    .kernel-seg-btn.active {
+      background: var(--color-primary);
+      color: var(--color-bg);
     }
 
     .options-menu wa-checkbox::part(label) {

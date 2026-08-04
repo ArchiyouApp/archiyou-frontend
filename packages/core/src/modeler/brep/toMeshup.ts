@@ -50,31 +50,66 @@ function coordsToPoints(coords: Array<number>): Array<meshup.Point>
     return points
 }
 
+/** Unit normal of the triangle a→b→c, or null when it is degenerate. Used only for nodes
+ *  the tessellation left without one — see facesToMesh. */
+function triangleNormal(a: meshup.Point, b: meshup.Point, c: meshup.Point): [number, number, number] | null
+{
+    const ux = b.x - a.x, uy = b.y - a.y, uz = b.z - a.z
+    const vx = c.x - a.x, vy = c.y - a.y, vz = c.z - a.z
+    const nx = uy * vz - uz * vy
+    const ny = uz * vx - ux * vz
+    const nz = ux * vy - uy * vx
+    const len = Math.hypot(nx, ny, nz)
+    return (len > POINT_TOLERANCE) ? [nx / len, ny / len, nz / len] : null
+}
+
 /** Tessellated faces → one meshup Mesh.
  *  Each FaceMesh carries its own node buffer plus 0-based triangle indices into it, so the
- *  triangles are resolved per face and concatenated. */
+ *  triangles are resolved per face and concatenated.
+ *
+ *  The node NORMALS come along, and that matters: meshup's Mesh.fromPolygons() builds every
+ *  polygon vertex with a zero normal, and a zero-normal surface takes no light — it renders
+ *  as flat grey whatever colour it carries, while the (unlit) edge lines still show their
+ *  colour. Carrying OpenCascade's own per-node normals also keeps curved surfaces smooth
+ *  rather than faceted, which is what the tessellation computed them for. */
 function facesToMesh(faces: Array<FaceMesh>): meshup.Mesh | null
 {
-    const triangles: Array<Array<meshup.Point>> = []
+    const csgrs = meshup.getCsgrs() as any
+    const polygons: Array<any> = []
 
     faces.forEach(face =>
     {
         if (!face?.vertices?.length || !face?.triangleIndices?.length) return
         const nodes = coordsToPoints(face.vertices)
+        const normals = face.normals ?? []
+
+        /** The node's own normal, when the tessellation produced a usable one. */
+        const normalAt = (node: number): [number, number, number] | null =>
+        {
+            const [nx, ny, nz] = [normals[node * 3], normals[node * 3 + 1], normals[node * 3 + 2]]
+            if (![nx, ny, nz].every(v => typeof v === 'number' && isFinite(v))) return null
+            const len = Math.hypot(nx, ny, nz)
+            return (len > POINT_TOLERANCE) ? [nx / len, ny / len, nz / len] : null
+        }
 
         for (let i = 0; i + 2 < face.triangleIndices.length; i += 3)
         {
-            const a = nodes[face.triangleIndices[i]]
-            const b = nodes[face.triangleIndices[i + 1]]
-            const c = nodes[face.triangleIndices[i + 2]]
+            const idx = [face.triangleIndices[i], face.triangleIndices[i + 1], face.triangleIndices[i + 2]]
+            const [a, b, c] = idx.map(n => nodes[n])
             if (!a || !b || !c) continue        // guard against a truncated index buffer
-            triangles.push([a, b, c])
+
+            // Fall back to the triangle's own plane for any node OC left without a normal.
+            const flat = triangleNormal(a, b, c)
+            const verts = idx.map((node, n) =>
+                [a, b, c][n].toVertexJs(normalAt(node) ?? flat ?? [0, 0, 1]))
+
+            polygons.push(new csgrs.PolygonJs(verts, {}))
         }
     })
 
-    if (triangles.length === 0) return null
+    if (polygons.length === 0) return null
 
-    return meshup.Mesh.fromPolygons(triangles as any)
+    return meshup.Mesh.from(csgrs.MeshJs.fromPolygons(polygons, {}))
 }
 
 /** Points that are distinct enough to build a curve from: drops consecutive duplicates.

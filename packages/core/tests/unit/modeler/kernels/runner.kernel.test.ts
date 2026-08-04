@@ -6,8 +6,8 @@
  *  for the whole run (no mid-script switching).
  */
 import { describe, it, expect, beforeAll } from 'vitest'
-import { Runner } from '../../../src/runner/Runner'
-import type { RunnerScriptExecutionRequest } from '../../../src/runner/types'
+import { Runner } from '../../../../src/runner/Runner'
+import type { RunnerScriptExecutionRequest } from '../../../../src/runner/types'
 
 function request(code: string, kernel?: 'mesh' | 'brep'): RunnerScriptExecutionRequest
 {

@@ -32,14 +32,25 @@ type SvgPagesMap = Record<string, Array<DocSVGPage>>;
  *
  * USE_PROFILES restricts the output to the SVG grammar (dropping HTML embedding
  * via <foreignObject>) and DOMPurify strips event handlers and javascript: URLs.
- * Everything the document renderer legitimately emits — paths, text, groups,
- * transforms, styles — passes through untouched.
+ *
+ * ADD_ATTR: DOMPurify's SVG profile does NOT include these two, and dropping them
+ * is not cosmetic:
+ *  - `dominant-baseline`: the document renderer positions every <text> with
+ *    `dominant-baseline="hanging"`, i.e. the text hangs DOWN from its container's
+ *    top edge (y=0). Without it the browser falls back to the alphabetic baseline
+ *    and draws the glyphs ABOVE y=0 — outside the container's clip rect (0,0,w,h),
+ *    so every label in a document (titleblock included) rendered with its top
+ *    sliced off. Nothing else in the pipeline touched it, which is why the SVG
+ *    looked correct everywhere except in this viewer.
+ *  - `vector-effect`: carries non-scaling-stroke on projected geometry.
+ * Both are presentational only — no URL or script surface.
  */
 function sanitizeSvg(svg: string): string
 {
   return DOMPurify.sanitize(svg, {
     USE_PROFILES: { svg: true, svgFilters: true },
     ADD_TAGS: ['use'],
+    ADD_ATTR: ['dominant-baseline', 'vector-effect'],
   });
 }
 

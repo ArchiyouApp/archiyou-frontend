@@ -16,7 +16,7 @@
      inkscape:groupmode="layer">
     <rect x="0" y="0" width="297" height="210" fill="white" stroke="none"/>
     <g transform="translate(10,10)">
-      <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="6.3" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">Alpha document</text>
+      <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="6.3" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">Alpha document</text>
     </g>
   </g>
 </svg>

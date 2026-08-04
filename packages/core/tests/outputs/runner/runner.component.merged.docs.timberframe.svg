@@ -23,7 +23,7 @@
      inkscape:groupmode="layer">
     <rect x="0" y="0" width="297" height="210" fill="white" stroke="none" filter="url(#page-shadow)"/>
     <g transform="translate(10,10)">
-      <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="6.3" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">Main page timber project</text>
+      <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="6.3" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">Main page timber project</text>
     </g>
   </g>
   <g id="layer1"
@@ -54,7 +54,7 @@
   </defs>
     <g transform="translate(231.0404,191.8571)">
       <g clip-path="url(#clip1)">
-        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="1.8" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">v0 at 2-8-2026, 00:09:05</text>
+        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="1.8" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">v0 at 4-8-2026, 14:22:04</text>
       </g>
     </g>
     <g transform="translate(231.0404,190.0476)">
@@ -64,12 +64,12 @@
     </g>
     <g transform="translate(231.0404,181.0905)">
       <g clip-path="url(#clip3)">
-        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="1.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">metrics</text>
+        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="1.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">metrics</text>
       </g>
     </g>
     <g transform="translate(231.0404,183.2619)">
       <g clip-path="url(#clip4)">
-        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="2.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">PC:275 EUR Rd:3.08 m2K/W EI:-16 kgCO2eq Mass:43 kg</text>
+        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="2.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">PC:275 EUR Rd:3.08 m2K/W EI:-16 kgCO2eq Mass:43 kg</text>
       </g>
     </g>
     <g transform="translate(231.0404,180.5476)">
@@ -79,12 +79,12 @@
     </g>
     <g transform="translate(231.0404,171.5905)">
       <g clip-path="url(#clip6)">
-        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="1.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">params</text>
+        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="1.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">params</text>
       </g>
     </g>
     <g transform="translate(231.0404,173.7619)">
       <g clip-path="url(#clip7)">
-        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="2.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">no parameters</text>
+        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="2.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">W:3000 H:2500 D:120 WO:no I:hempf DT:no OS:1000 OS:500 OW:600 OH:1000 B:none</text>
       </g>
     </g>
     <g transform="translate(231.0404,171.0476)">
@@ -94,32 +94,32 @@
     </g>
     <g transform="translate(231.0404,163.5833)">
       <g clip-path="url(#clip9)">
-        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="1.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">designer</text>
+        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="1.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">designer</text>
       </g>
     </g>
     <g transform="translate(231.0404,165.0762)">
       <g clip-path="url(#clip10)">
-        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="3.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">traditional</text>
+        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="3.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">traditional</text>
       </g>
     </g>
     <g transform="translate(273.0101,163.5833)">
       <g clip-path="url(#clip11)">
-        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="1.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">design license</text>
+        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="1.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">design license</text>
       </g>
     </g>
     <g transform="translate(273.0101,167.2476)">
       <g clip-path="url(#clip12)">
-        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="2" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">public</text>
+        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="2" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">public</text>
       </g>
     </g>
     <g transform="translate(259.0202,163.5833)">
       <g clip-path="url(#clip13)">
-        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="1.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">manual license</text>
+        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="1.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">manual license</text>
       </g>
     </g>
     <g transform="translate(259.0202,167.2476)">
       <g clip-path="url(#clip14)">
-        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="2" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">CC-BY-NC</text>
+        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="2" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">CC-BY-NC</text>
       </g>
     </g>
     <g transform="translate(231.0404,161.6808)">
@@ -129,14 +129,14 @@
     </g>
     <g transform="translate(231.0404,151.5771)">
       <g clip-path="url(#clip16)">
-        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="7.2" font-weight="bold" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">Framed wall</text>
+        <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="7.2" font-weight="bold" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">Framed wall</text>
       </g>
     </g>
     <g transform="translate(10,10)">
-      <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="9" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">Framed Wall</text>
+      <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="9" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">Framed Wall</text>
     </g>
     <g transform="translate(10,23.3)">
-      <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="4.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">3000x2500x120 - 38x120</text>
+      <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="4.5" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">3000x2500x120 - 38x120</text>
     </g>
     <g transform="translate(46.01,17.6)">
       <g clip-path="url(#clip17)">
@@ -144,7 +144,7 @@
       </g>
     </g>
     <g transform="translate(10,137.3)">
-      <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="5.4" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">Material list</text>
+      <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="5.4" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">Material list</text>
     </g>
     <g transform="translate(10,146.8)">
       <g clip-path="url(#clip18)">
@@ -152,7 +152,7 @@
       </g>
     </g>
     <g transform="translate(126.34,127.8)">
-      <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="5.4" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="hanging">Cut list</text>
+      <text x="0" y="0" font-family="'Outfit', sans-serif" font-size="5.4" font-weight="normal" font-style="normal" fill="#000000" text-anchor="start" dominant-baseline="text-before-edge" alignment-baseline="text-top">Cut list</text>
     </g>
     <g transform="translate(126.34,139.2)">
       <g clip-path="url(#clip19)">

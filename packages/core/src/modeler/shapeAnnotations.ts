@@ -33,6 +33,9 @@ declare module '@archiyou/meshup/src/Shape' {
         dimension(options?: DimensionOptions): any
         /** Alias for dimension(). */
         dim(options?: DimensionOptions): any
+        /** Automatic dimensioning of this shape (Annotator). `dim()` routes here by itself
+         *  for shapes a single bbox dimension cannot describe. */
+        autoDim(options?: DimensionOptions, strategy?: string): any
         /** Attach a free-text label at this shape's center (Annotator). */
         label(value: string, options?: LabelOptions): any
         /** Assign (setter, chainable) or read (getter → BoundMaterial) this shape's material. */
@@ -69,6 +72,8 @@ declare module '@archiyou/meshup/src/ShapeCollection' {
     interface ShapeCollection {
         /** Export the 2D shapes in this collection (+ linked dimension lines) to DXF. */
         toDXF(options?: toDXFOptions): string | null
+        /** Automatic dimensioning of the shapes in this collection (Annotator). */
+        autoDim(options?: any, strategy?: string): any
         /** Total mass (kg) of the materialized shapes in this collection. */
         weight(): number | undefined
         /** Total embodied carbon (kgCO2e) of the materialized shapes in this collection. */
@@ -100,6 +105,14 @@ ShapeProto.dimension = function (this: any, options?: DimensionOptions) {
 /** Alias for dimension() */
 ShapeProto.dim = function (this: any, options?: DimensionOptions) {
     return this.dimension(options)
+}
+
+/** Automatic dimensioning of this shape. `dim()` already routes here for shapes a single
+ *  bbox dimension cannot describe; call it directly to force it (or to pick a strategy). */
+ShapeProto.autoDim = function (this: any, options?: DimensionOptions, strategy?: string) {
+    const annotator = this._ay?.annotator
+    if (!annotator) return null
+    return annotator.autoDim(new meshup.ShapeCollection(this), options, strategy)
 }
 
 /** Attach a free-text label at this shape's center. Rendered by the viewer as an overlay. */
@@ -203,6 +216,14 @@ function linkedAnnotations(modeler: any, shapes: Array<any>): Array<any> {
     const local = Array.isArray(this.annotations) ? this.annotations : []
     const annotations = [...new Set([...linked, ...local])]
     return buildDXF(shapes, annotations, { units: this._modeler?.units?.(), ...options })
+}
+
+/** Automatic dimensioning of this collection — mirrors brep's ShapeCollection.autoDim(). */
+;(meshup.ShapeCollection.prototype as any).autoDim = function (this: any, options?: any, strategy?: string) {
+    const annotator = this._modeler?.modules?.annotator ?? this._shapes?.[0]?._ay?.annotator
+    if (!annotator) return this
+    annotator.autoDim(this, options, strategy)
+    return this
 }
 
 //// COLLECTION / SCENE AGGREGATION ////

@@ -9,6 +9,7 @@ import { save } from '@archiyou/meshup/src/utils';
 
 //// SETTINGS ////
 
+const TEST_OUTPUTS_PATH = './tests/outputs/cadscripts/' // keep generated models out of the package root
 const MAX = undefined; // use for step by step testing - undefined for all
 const ONLY = process.env.CADSCRIPT; // run a single script by filename (without .js)
 
@@ -54,7 +55,7 @@ describe('cadscripts - mesh mode', () =>
             expect(result.status, `${filename}: ${result.errors?.[0]?.message ?? ''}`).toBe('success')
             expect(result.outputs[0].path.resolvedPath).toBe('default/model/gltf');
 
-            save('test.' + filename.replace('.js','.gltf'), result.outputs[0].output as Uint8Array);
+            save(TEST_OUTPUTS_PATH + 'test.' + filename.replace('.js','.gltf'), result.outputs[0].output as Uint8Array);
             
         })
     })

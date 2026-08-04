@@ -446,6 +446,14 @@ export class Runner
         return this._localScopes[this._activeScope.name];
     }
 
+    /** The request currently being executed (params, script, outputs), or undefined
+     *  outside a run. Read by modules that report on the run itself — the document
+     *  titleblock summarises the script's params and version from it. */
+    getActiveExecRequest():RunnerScriptExecutionRequest|undefined
+    {
+        return this._activeExecRequest;
+    }
+
     getScope(name:string):RunnerScriptScope
     {
         if(!this._localScopes[name]){ throw new Error(`Runner:: scope(): Scope '${name}' does not exist`)}
@@ -783,18 +791,51 @@ export class Runner
         return result;
     }
 
+    /** Describe whatever was thrown.
+     *
+     *  Not everything that reaches here is an Error: the OpenCascade WASM throws a raw
+     *  exception POINTER (a number), and kernel bindings sometimes throw plain strings. Those
+     *  have no `.message`, which is how a real geometry failure used to surface to the user as
+     *  the famously unhelpful "ERROR: undefined". */
+    _describeThrown(e:any):string
+    {
+        if (e instanceof Error && e.message){ return e.message }
+        if (typeof e === 'string' && e){ return e }
+
+        if (typeof e === 'number')
+        {
+            // An OpenCascade exception pointer. Ask OC for the real failure text when the
+            // kernel is loaded; the raw number is meaningless on its own.
+            const ocMessage = this._modeler?.kernel?.()?.getOc?.()
+                ?.OCJS?.getStandard_FailureData?.(e)?.GetMessageString?.();
+            return ocMessage
+                ? `geometry kernel error: ${ocMessage}`
+                : `geometry kernel error (OpenCascade exception ${e})`;
+        }
+
+        if (e && typeof e === 'object')
+        {
+            const m = (e as any).message ?? (e as any).error ?? (e as any).text;
+            if (m){ return String(m) }
+            try { return JSON.stringify(e) } catch { /* circular */ }
+        }
+
+        return String(e);
+    }
+
     _handleExecutionError(scope: RunnerScriptScope, request:RunnerScriptExecutionRequest,code:string, e:Error):RunnerScriptExecutionResult
     {
         // NOTE: code can be just a small part of the request.script.code
         // Get context of error by parsing the stack trace
         const extracted = this._extractScriptContextFromErrorStack(e, code);
         const lineInfo = extracted ? `\n- line: ${extracted.line}, column: ${extracted.column}` : '';
+        const description = this._describeThrown(e);
         const errorMessage = `
 **** EXECUTION ERROR ****
-- error: '${e.message}' ${lineInfo}
+- error: '${description}' ${lineInfo}
 - context: 
 ${extracted?.context ?? ''}
-${e.message === '***** CODE ****\nUnexpected end of input' ? code : ''}
+${description === '***** CODE ****\nUnexpected end of input' ? code : ''}
 **** END ERROR ****`; 
 
         // Also add to local console

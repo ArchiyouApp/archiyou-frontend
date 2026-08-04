@@ -487,7 +487,7 @@ export class Beam
                 this._getTopFaceNormal().scale(this._section.height/2))
                 ._toVertex();
         const topEdge = this._getOrientatedSectionFace().edges().sort((e1,e2) => e2.distance(testTopVert) - e1.distance(testTopVert)).first();
-        return topEdge.extruded(this._length, this.direction()) as Face;
+        return topEdge._extruded(this._length, this.direction()) as Face;
     }
 
     /** Get the cutting top Edge given a cutting Face 

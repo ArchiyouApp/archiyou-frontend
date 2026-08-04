@@ -6,7 +6,7 @@
  *  build, they land in the scene at the active layer, and the app-level methods reach through.
  */
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
-import { Modeler } from '../../../src/modeler/Modeler'
+import { Modeler } from '../../../../src/modeler/Modeler'
 
 describe('Modeler — brep mode', () =>
 {
@@ -55,9 +55,11 @@ describe('Modeler — brep mode', () =>
             expect((m.arc([0, 0, 0], [50, 20, 0], [100, 0, 0]) as any).type).toBe('Edge')
         })
 
-        it('circle() and plane() build Faces', () =>
+        it('circle() and rect() build OUTLINES, plane() builds a surface', () =>
         {
-            expect((m.circle(40) as any).type).toBe('Face')
+            // Same split as the mesh kernel: circle/rect give you the curve, plane the surface
+            expect((m.circle(40) as any).type).toBe('Edge')
+            expect((m.rect(100, 50) as any).type).toBe('Wire')
             expect((m.plane(100, 50) as any).type).toBe('Face')
         })
 

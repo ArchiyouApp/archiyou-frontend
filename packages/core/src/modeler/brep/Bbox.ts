@@ -13,7 +13,8 @@ import { Brep, Point, Vector, Shape, Vertex, Edge,
 import { roundTo } from '../../utils' // utils
 import { SIDES, SIDE_TO_AXIS } from './constants'
 
-import { getOc } from './index' 
+import { getOc } from './index'
+import { addResultToScene } from '@archiyou/meshup/src/sceneDecorators'
 
 
 // Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
@@ -30,6 +31,8 @@ export class Bbox
     _brep:Brep;
     _ocBbox:any = null;
     _parent:AnyShapeOrCollection;
+    /** The Shape this Bbox was measured from - lets shape()/box()/rect()/line() land in its scene */
+    _source:AnyShapeOrCollection = null;
 
     position:Point;
     bounds:Array<number> = null; // [xmin,xmax, ymin,ymax, zmin, zmax]
@@ -64,6 +67,24 @@ export class Bbox
     setParent(p:AnyShapeOrCollection)
     {
         this._parent = p
+    }
+
+    //// SCENE ////
+
+    /** Tie this Bbox to the Shape it was measured from, so the Shapes it makes can join that
+     *  Shape's scene. Fluent and internal - set by the bbox() accessors. */
+    _fromShape(shape:AnyShapeOrCollection):this
+    {
+        this._source = shape;
+        return this;
+    }
+
+    /** Put a Shape this Bbox just built into the measured Shape's scene (no-op when there is
+     *  no source, or the source is standalone / tmp()). Mirrors meshup Bbox._attach(). */
+    _attach<T>(shape:T):T
+    {
+        addResultToScene(this._source, shape);
+        return shape;
     }
 
     @checkInput(['PointLike', 'PointLike'], ['Vector', 'Vector'])
@@ -520,18 +541,50 @@ export class Bbox
         return this[AXIS_TO_SIDE[axis]]();
     }   
 
-    /** Get Shape from this Bounding Box */
+    /** Get Shape from this Bounding Box.
+     *  Added to the scene the measured Shape lives in - see _attach(). */
     shape():Vertex|Edge|Face|Solid|null
     {
-        return (this.isPoint()) 
-                    ? this.center()._toVertex() 
-                    : (this.is1D()) ? this.line() :
-                            (this.is2D()) ? this.rect() : (this.is3D()) 
-                                ? this.box() : null
+        return this._attach(this._shapeRaw());
+    }
+
+    /** Alias for shape() */
+    toShape():Vertex|Edge|Face|Solid|null
+    {
+        return this.shape();
     }
 
     /** Make Line from 1D Bbox */
     line():Edge|null
+    {
+        return this._attach(this._lineRaw());
+    }
+
+    /** Create 2D Rectangle Face from Bbox */
+    rect():Face
+    {
+        return this._attach(this._rectRaw());
+    }
+
+    /** returns a Box Shape for this Bbox if not 2D, otherwise null */
+    box():Solid|null
+    {
+        return this._attach(this._boxRaw());
+    }
+
+    //// RAW SHAPES ////
+    // Without any scene bookkeeping - for measuring/derivation inside brep (area, side selection)
+
+    _shapeRaw():Vertex|Edge|Face|Solid|null
+    {
+        return (this.isPoint()) 
+                    ? this.center()._toVertex() 
+                    : (this.is1D()) ? this._lineRaw() :
+                            (this.is2D()) ? this._rectRaw() : (this.is3D()) 
+                                ? this._boxRaw() : null
+    }
+
+    _lineRaw():Edge|null
     {
         if(!this.is1D())
         { 
@@ -541,8 +594,7 @@ export class Bbox
         return new Edge().makeLine(this.min(), this.max());
     }
 
-    /** Create 2D Rectangle Face from Bbox */
-    rect():Face
+    _rectRaw():Face
     {
         if(!this.is2D())
             { 
@@ -552,8 +604,7 @@ export class Bbox
         return new Face().makePlaneBetween(this.min(), this.max()); // Just a simple 2D Plane on XY plane ( normal parallel in Z)
     }
 
-    /** returns a Box Shape for this Bbox if not 2D, otherwise null */
-    box():Solid|null
+    _boxRaw():Solid|null
     {
         let boxShape = new Solid().makeBoxBetween(this.min(), this.max());
         return boxShape;
@@ -663,10 +714,10 @@ export class Bbox
     {
         if(this.is2D())
         {
-            return this.rect().area();
+            return this._rectRaw().area();
         }
         else {
-            return roundTo(this.box().faces().toArray().reduce( (sum, f) => sum + f.area(), 0), 3);
+            return roundTo(this._boxRaw().faces().toArray().reduce( (sum, f) => sum + f.area(), 0), 3);
         }
     }
 
@@ -741,7 +792,7 @@ export class Bbox
         {
             // We need to check along what axis this Bbox has a size
             // 1D Bbox size along x axis means Bbox has a side along y (front/back) and z (top/bottom)
-            const bboxLine = this.line();
+            const bboxLine = this._lineRaw();
 
             sideShape = (axis !== this.sizeAxis1D()) 
                     ? bboxLine
@@ -750,18 +801,18 @@ export class Bbox
 
         if(this.is2D())
         {
-            const bboxRect = this.rect(); // a Face plane 
+            const bboxRect = this._rectRaw(); // a Face plane 
             sideShape = (axis.replace('-', '') === this.axisMissingIn2D()) 
                         ? bboxRect
                         : bboxRect.directionMinMaxSelector(bboxRect.edges(), axisWithDir).specific() as Vertex|Edge|Face; // one of the edge sides
         }
         else {
             // 3D
-            const bboxSolid = this.box();
+            const bboxSolid = this._boxRaw();
             sideShape = bboxSolid.directionMinMaxSelector(bboxSolid.faces(), axisWithDir).specific() as Vertex|Edge|Face;
         }   
 
-        sideShape._parent = this._parent ?? this.shape(); // set parent shape so for example knows what the main bbox shape is
+        sideShape._parent = this._parent ?? this._shapeRaw(); // set parent shape so for example knows what the main bbox shape is
         return sideShape;
     }
 

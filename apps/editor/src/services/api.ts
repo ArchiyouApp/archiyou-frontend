@@ -8,6 +8,7 @@
  */
 
 import { authService } from './auth-service.js';
+import { netFetch } from './network.js';
 
 const BASE_URL = (import.meta.env.SERVER_API_BASE_URL as string | undefined) ?? '';
 
@@ -30,7 +31,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, {
+  // netFetch: a server that is down / unreachable (or a refused CORS preflight)
+  // throws a NetworkError carrying a readable message, instead of `TypeError:
+  // Failed to fetch` reaching the UI.
+  const response = await netFetch(`${BASE_URL}${path}`, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,

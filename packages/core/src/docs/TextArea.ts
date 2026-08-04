@@ -93,7 +93,10 @@ export class TextArea extends Container
             `font-size="${fmt(fontSizeMm)}"`,
             `fill="${escapeXml(fill)}"`,
             `text-anchor="${textAnchor}"`,
-            `dominant-baseline="hanging"`,
+            // Both attributes on purpose — see Text.ts: browsers read dominant-baseline,
+            // svg2pdf (PDF export) reads alignment-baseline.
+            `dominant-baseline="text-before-edge"`,
+            `alignment-baseline="text-top"`,
         ].join(' ');
 
         return `<text ${attrs}>${tspans}</text>`;

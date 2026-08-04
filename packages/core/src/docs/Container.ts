@@ -310,7 +310,7 @@ export class Container
         const captionHeightMm = pointsToMm(convertTextHeightUnitsToFontPoints(`${DOC_CONTAINER_CAPTION_TEXT_HEIGHT}mm`));
         const captionYMm      = hMm + captionHeightMm * DOC_CONTAINER_CAPTION_TEXT_PADDING_FACTOR;
         const captionSVG = this._caption
-            ? `<text x="${fmt(wMm / 2)}" y="${fmt(captionYMm)}" font-family="${SVG_TEXT_FONT_FAMILY}" font-size="${fmt(captionHeightMm)}" fill="black" text-anchor="middle" dominant-baseline="hanging">${escapeXml(this._caption)}</text>`
+            ? `<text x="${fmt(wMm / 2)}" y="${fmt(captionYMm)}" font-family="${SVG_TEXT_FONT_FAMILY}" font-size="${fmt(captionHeightMm)}" fill="black" text-anchor="middle" dominant-baseline="text-before-edge" alignment-baseline="text-top">${escapeXml(this._caption)}</text>`
             : '';
 
         const html = [

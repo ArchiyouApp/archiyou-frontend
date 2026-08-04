@@ -28,6 +28,7 @@ import type  { MainAxis, ModelUnits, AnyShape, AnyShapeCollection, AnyShapeOrCol
  * which is what `linkedTo` actually holds in mesh mode).
  */
 import type { Vector, Point, PointLike, Curve } from '@archiyou/meshup/src/index'
+import type { ArchiyouModules } from '../types'
 import type { DimensionLineData, DimensionOptions, AnnotationType } from './types'
 import { BaseAnnotation } from './AnnotatorBaseAnnotation'
 
@@ -71,9 +72,13 @@ export class DimensionLine extends BaseAnnotation
     _hasCustomOffsetVec:boolean = false;
     _offsetComponents:[number, number, number] | null = null;
 
-    constructor(start:PointLike=null, end:PointLike=null, options?:DimensionOptions)
+    /** @param modules - archiyou modules; needed up front because init() already resolves
+     *   kernel classes (setOptions → this.classes) before the caller can setArchiyou() */
+    constructor(start:PointLike=null, end:PointLike=null, options?:DimensionOptions, modules?:ArchiyouModules)
     {
         super('dimensionLine');
+
+        if(modules){ this.setArchiyou(modules); }
 
         if(start && end)
         {
@@ -97,8 +102,8 @@ export class DimensionLine extends BaseAnnotation
     {
         if(!start && !end){ throw new Error(`DimensionLine::init(): Please supply start and end Point!`); }
 
-        this.targetStart = start as Point; // auto converted
-        this.targetEnd = end as Point;
+        this.targetStart = this._toPoint(start);
+        this.targetEnd = this._toPoint(end);
 
         this._initialized = true;
         this.setOptions(options)
@@ -108,6 +113,16 @@ export class DimensionLine extends BaseAnnotation
         this.value = this._getDynamicValue();
 
         return this;
+    }
+
+    /** Normalize any PointLike target to a real Point.
+     *  autoDim() hands us Vertices (Shapes, not Points) — the dimension math below needs
+     *  Point methods (equals/copy/setComponent), which a Vertex does not have. */
+    _toPoint(p:PointLike):Point
+    {
+        return (typeof (p as any)?.toPoint === 'function')
+                    ? (p as any).toPoint() as Point
+                    : new this.classes.Point(p as any) as Point;
     }
 
     /** Generate a dimension line from this Edge */
@@ -131,10 +146,12 @@ export class DimensionLine extends BaseAnnotation
     /** Centralized dimension creation for any Shape or SmartShape.
      *  Single source of truth — brep Shape.dim() and SmartShape.dim() both route here.
      *  Switches on shape.type:
-     *    - 'Edge' (brep)                  → single dimension line
+     *    - 'Edge' (brep)                  → single dimension line if open; a closed Edge
+     *                                       (circle/ellipse) routes to autoDim / bbox dims
      *    - 'Curve' (mesh)                 → single line if open; bbox dims if isCuboid;
      *                                       otherwise route to Annotator.autoDim()
-     *    - 'Wire' / 'Face'                → dimension every visible edge
+     *    - 'Wire' / 'Face' (brep)         → part dimensions via autoDim when closed and flat on
+     *                                       XY; otherwise one dimension per visible edge
      *    - 'Mesh' (mesh)                  → bbox dims if isCuboid; otherwise autoDim
      *    - 'Solid' / 'Shell'              → bounding-box dimensions
      *    - 'Vertex'                       → error
@@ -155,7 +172,19 @@ export class DimensionLine extends BaseAnnotation
         switch (t)
         {
             case 'Edge':
+            {
+                /*  BREP's 1D shape. A CLOSED Edge (circle, ellipse) has no distinct start and
+                    end: dimensioning it as a single line built a zero-length Line and threw
+                    ("Start and End point are the same"). Route it the way the mesh kernel
+                    routes a closed Curve. */
+                if (DimensionLine.isClosedProfile(shape))
+                {
+                    return DimensionLine.isFlatOnXY(shape)
+                                ? this._dispatchAutoDim(shape as AnyShape, opts)
+                                : this._dimensionBoxFromShape(shape as AnyShape);
+                }
                 return this.fromEdge(shape as Curve, opts);
+            }
 
             case 'Curve':
             {
@@ -178,7 +207,21 @@ export class DimensionLine extends BaseAnnotation
             case 'Wire':
             case 'Face':
             {
-                const edges = new this.classes.ShapeCollection((shape as any).edges().visible()).toArray() as Array<Curve>;
+                /*  BREP's closed 2D profiles follow the same rule as the mesh kernel's
+                    Curve/Polygon: a closed profile lying flat on XY gets real PART dimensions.
+                    For a plain rectangle those collapse to the two bbox dims — it used to come
+                    back with one dimension line per edge, so four for a rectangle, two of them
+                    duplicate values. Open or tilted profiles keep the per-edge behaviour: that
+                    is all autoDimPart() can handle. */
+                if (DimensionLine.isClosedProfile(shape) && DimensionLine.isFlatOnXY(shape))
+                {
+                    return this._dispatchAutoDim(shape as AnyShape, opts);
+                }
+
+                // Skip closed edges: a circle inside the profile is a loop, not a length.
+                const edges = new this.classes.ShapeCollection((shape as any).edges().visible())
+                                    .toArray()
+                                    .filter(e => !DimensionLine.isClosedProfile(e)) as Array<Curve>;
                 if (edges.length === 0) return this;
                 this.fromEdge(edges[0], opts);
                 const rest = edges.slice(1).map(e => ann.dimensionLine().fromEdge(e, opts));
@@ -187,6 +230,18 @@ export class DimensionLine extends BaseAnnotation
 
             case 'Vertex':
                 throw new Error(`DimensionLine::fromShape(): cannot dimension a single Vertex`);
+
+            case 'Polygon':
+            {
+                // Mesh-kernel Polygon: a plain rectangle gets axis-aligned bbox dims,
+                // anything more complex (L-shapes, holes, angled edges) routes to autoDim().
+                const polygon = shape as any;
+                if (polygon.hasHoles?.() !== true && polygon.toCurve?.()?.isCuboid?.())
+                {
+                    return this._dimensionBoxFromShape(shape as AnyShape);
+                }
+                return this._dispatchAutoDim(shape as AnyShape, opts);
+            }
 
             case 'Mesh':
             {
@@ -207,6 +262,30 @@ export class DimensionLine extends BaseAnnotation
                 return this._dimensionBoxFromShape(shape as AnyShape);
             }
         }
+    }
+
+    /** Is this a closed profile (a loop rather than a strip)?
+     *  A Face always is; a Wire answers closed(), a meshup Curve isClosed(), and a BREP Edge
+     *  is closed when it is a circle/ellipse — its start and end vertex coincide.
+     *
+     *  Static because the Annotator needs the same test when skipping edges it cannot turn
+     *  into a single dimension line (see autoDimPart, level 3). */
+    static isClosedProfile(shape:any):boolean
+    {
+        const s = shape as any;
+        if(typeof s?.closed === 'function'){ return s.closed() === true }        // BREP Wire
+        if(typeof s?.isClosed === 'function'){ return s.isClosed() === true }    // meshup Curve
+        if(s?.type === 'Face'){ return true }
+        return s?.start?.()?.equals?.(s?.end?.()) === true;                      // BREP Edge
+    }
+
+    /** Does this Shape lie flat on the XY plane? That is what Annotator.autoDimPart() needs —
+     *  it dimensions in X and Y and throws for anything tilted (use layflat() first). */
+    static isFlatOnXY(shape:any):boolean
+    {
+        const s = shape as any;
+        if(typeof s?.is2DXY === 'function'){ return s.is2DXY() === true }        // BREP
+        return s?.is2D?.() === true && s?.bbox?.()?.is2D() === true;             // meshup
     }
 
     /** Run Annotator.dimensionBox(shape) and return the new lines, dropping the

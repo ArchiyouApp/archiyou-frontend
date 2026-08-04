@@ -11,6 +11,7 @@
  */
 
 import { Color } from '@archiyou/meshup/src/Color'
+import { SHAPE_DEFAULT_STYLE } from '@archiyou/meshup/src/constants'
 // import { DxfBlock, point3d } from '@tarikjabiri/dxf'
 
 // types
@@ -50,7 +51,7 @@ type IDimensionLine = DimensionLine
 // run at class-definition time, before it has finished initialising.
 import { sceneAdd, sceneCarry } from '@archiyou/meshup/src/sceneDecorators'
 import { checkInput } from './decorators'
-import { hostUnits } from './host'
+import { hostUnits, hostAnnotator } from './host'
 
 export class Edge extends Shape
 {
@@ -618,13 +619,6 @@ export class Edge extends Shape
         return this._toWire()._thickened(amount, direction, onPlaneNormal);
     }
 
-    /** Thicken Edge to create a Face */
-    @checkInput([[Number,EDGE_DEFAULT_THICKEN],['ThickenDirection', 'center'], ['PointLike', null]], ['auto', 'auto', 'Vector'])
-    @sceneAdd
-    thickened(amount?:number, direction?:string,  onPlaneNormal?:PointLike):IFace
-    {
-        return this._thickened(amount, direction, onPlaneNormal);
-    }
 
     @checkInput([[Number,EDGE_DEFAULT_THICKEN],['ThickenDirection', 'center'], ['PointLike', null]], ['auto', 'auto', 'Vector'])
     thicken(amount:number, direction?:ThickenDirection, onPlaneNormal?:PointLike):IFace
@@ -641,7 +635,7 @@ export class Edge extends Shape
         let vector = v as Vector;
         vector = vector || this.normal();
         vector = (flip) ? vector.reverse() : vector;
-        let edgeOffset = (this.moved(vector.scale(amount)) as Edge);
+        let edgeOffset = (this.copy(false).move(vector.scale(amount)) as Edge);
 
         return new Face().fromVertices([this.start(), this.end(), edgeOffset.end(), edgeOffset.start()]);
     }
@@ -697,17 +691,6 @@ export class Edge extends Shape
         
     }
 
-    /** Offset Edge a given amount into normal direction or reversed with '-amount' and return new Edge */
-    @checkInput([ [Number,EDGE_DEFAULT_OFFSET], [String, null],['PointLike', null]], [Number, 'auto','Vector'])
-    @sceneAdd
-    offsetted(amount?:number, type?:string, onPlaneNormal?:PointLike):Edge|Wire
-    {
-        let offsetShape = this._offsetted(amount,type,onPlaneNormal);
-        // Open Shapes sometimes become bigger (after -amount): Check and corrent
-        const growth = offsetShape.bbox().area() - this.bbox().area();
-        if( (amount > 0 && growth < 0) || (amount < 0 && growth > 0) ){ offsetShape = this._offsetted(-amount, type, onPlaneNormal);}
-        return offsetShape;
-    }
 
     /** Offset Edge a given amount into normal direction or reversed with '-amount' */
     @checkInput([ [Number,EDGE_DEFAULT_OFFSET], [String, null], ['PointLike', null]], [Number, 'auto','Vector'])
@@ -897,13 +880,6 @@ export class Edge extends Shape
         return (this._copy() as Edge).extend(amount, direction);
     }
 
-    /** Extend Edge into a certain direction (start or end) and return a copy */
-    @checkInput([[Number,EDGE_DEFAULT_POPULATE_NUM],['LinearShapeTail', EDGE_DEFAULT_EXTEND_DIRECTION]], [Number,'auto'])
-    @sceneAdd
-    extended(amount?:number, direction?:LinearShapeTail):Edge 
-    {
-        return this._extended(amount, direction);
-    }
 
     /** Extend Edge to nearest point that is shared by other Shape (if any!)
      *  @param other
@@ -996,12 +972,6 @@ export class Edge extends Shape
         return newShape;
     }
 
-    @checkInput(['AnyShapeOrCollection', [Boolean, WIRE_LOFTED_SOLID ]], ['ShapeCollection', 'auto'])
-    @sceneAdd
-    lofted(sections:AnyShapeOrCollection, solid?:boolean):IShell|Solid
-    {
-        return this._toWire()._lofted(sections,solid);
-    }
 
     /* Move current Edge so it connects to another Edge or Wire with given from,to = start | end  */
     @checkInput(['LinearShape', [String, EDGE_DEFAULT_ALIGNTO_FROM], [String, EDGE_DEFAULT_ALIGNTO_TO]], ['Wire', String, String])
@@ -1027,6 +997,85 @@ export class Edge extends Shape
             console.error(`Edge::getParamAt(): Could not find param for Edge of type "${this.edgeType()}". This is probably a OpenCascade bug. Returned start parameter`);
             return this.paramStart();
         }
+    }
+
+    /** Find the point on this Edge where the line from the given point to that point is
+     *  perpendicular to the Edge (the foot of the perpendicular).
+     *
+     *  By default the *nearest* such point is returned. Some points have no perpendicular foot at
+     *  all — beyond the end of a Line, or straight out from the corner of a rectangle — and then
+     *  the closest point on the Edge is returned instead.
+     *
+     *  Pass `all = true` to get every perpendicular foot instead (a circle seen from outside has
+     *  two, a spline can have many), sorted by distance ascending. That list contains only genuine
+     *  perpendicular feet and may be empty.
+     *
+     *  @param point - the point to drop the perpendicular from
+     *  @param all - return every perpendicular foot instead of only the nearest one
+     */
+    @checkInput([['PointLike',null],[Boolean, false]], ['Point', Boolean])
+    perpendicularPointTo(point:PointLike, all?:boolean):Point|Array<Point>|null
+    {
+        const at = point as Point; // auto converted
+        const feet = this._perpendicularFeet(at);
+
+        if(all){ return feet; }
+        if(feet.length){ return feet[0]; }
+
+        // Nothing on this Edge is perpendicular to the given point: return the closest point on it
+        const param = this.getParamAt(at);
+        return (param === null) ? null : this.pointAtParam(this._clampParam(param));
+    }
+
+    /** All perpendicular feet from a Point onto this Edge, sorted by distance ascending */
+    _perpendicularFeet(at:Point):Array<Point>
+    {
+        // OC docs: https://dev.opencascade.org/doc/refman/html/class_geom_a_p_i___project_point_on_curve.html
+        let ocProjector = null;
+        try {
+            const [uMin,uMax] = this.getParamMinMax();
+            // NOTE: a Handle_Geom_Curve is the Edge's *basis* geometry, without the placement that
+            // the TopoDS Edge carries — so take the point into that local frame and bring the feet
+            // back out again. Point.project() skips this and patches moved circles up afterwards
+            const ocTrsf = this._ocShape.Location_1().Transformation();
+            const ocLocalPoint = at._toOcPoint().Transformed(ocTrsf.Inverted());
+            // NOTE: the _3 overload limits the projection to this Edge's own parameter range. The _2
+            // overload used by Point.project() reports feet on the whole basis curve, which for a
+            // trimmed Edge (an Arc) includes points that are not on the Edge at all
+            ocProjector = new this._oc.GeomAPI_ProjectPointOnCurve_3(ocLocalPoint, this._toOcCurveHandle(), uMin, uMax);
+
+            return Array.from({ length: ocProjector.NbPoints() },
+                        (_,i) => new Point()._fromOcPoint(ocProjector.Point(i+1).Transformed(ocTrsf)).rounded() ) // OC indices are 1-based
+                    .sort( (a,b) => a.distance(at) - b.distance(at)); // distance ascending
+        }
+        catch (e)
+        {
+            console.error(`Edge::perpendicularPointTo(): Could not project onto Edge of type "${this.edgeType()}". This is probably a OpenCascade bug. Returned no points`);
+            return [];
+        }
+        finally
+        {
+            ocProjector?.delete(); // clear OC instance
+        }
+    }
+
+    /** Bring a basis-curve parameter onto this Edge. Periodic curves (a Circle) hand back parameters
+     *  a whole turn away from the Edge's own range, so shift those back before clamping. */
+    _clampParam(param:number):number
+    {
+        const [uMin,uMax] = this.getParamMinMax();
+        const ocCurve = this._toOcCurve();
+        let u = param;
+
+        if(ocCurve.IsPeriodic())
+        {
+            const period = ocCurve.Period();
+            u = uMin + (((u - uMin) % period) + period) % period;
+            // a parameter just past the end of an Arc is closer to its end than to its start
+            if(u > uMax && (u - uMax) > (uMin + period - u)){ u -= period; }
+        }
+
+        return Math.min(Math.max(u, uMin), uMax);
     }
 
     /** Generate a Collection of a given number of Vertices equally spaced over this Edge including the start and end of the Edge */
@@ -1217,23 +1266,27 @@ export class Edge extends Shape
     //// SHAPE ANNOTATIONS API ////
 
     @checkInput([['DimensionOptions',null]], ['auto'])
-    dimension(options?:DimensionOptions):IDimensionLine
+    dimension(options?:DimensionOptions):IDimensionLine|Array<IDimensionLine>
     {
         // For Edges it is always unclear where to offset dimension to
         // For now we set offset away from origin. See Annotator
         if(!options){ options = { units: null }}
-        options.units = options?.units || this._brep.units(); // make sure we have units
+        options.units = options?.units || hostUnits(this); // make sure we have units
 
         // centralized creation in the Annotator (see DimensionLine.fromShape)
-        const dimLine = this._brep._annotator.dimensionLine().fromShape(this, options) as IDimensionLine;
-        (dimLine as any).link(this._parent); // set parent
+        const dimLines = hostAnnotator(this, 'Edge::dimension()')
+            .dimensionLine().fromShape(this, options) as IDimensionLine|Array<IDimensionLine>;
 
-        return dimLine
+        // A CLOSED Edge (circle, ellipse) cannot be one dimension line: fromShape() hands back
+        // the several lines that describe it instead. Link them all to the parent Shape.
+        (Array.isArray(dimLines) ? dimLines : [dimLines]).forEach(d => (d as any)?.link(this._parent));
+
+        return dimLines
     }
 
     /** Alias for dimension() */
     @checkInput([['DimensionOptions',null]], ['auto'])
-    dim(options?:DimensionOptions):IDimensionLine
+    dim(options?:DimensionOptions):IDimensionLine|Array<IDimensionLine>
     {
         return this.dimension(options);
     }
@@ -1252,7 +1305,7 @@ export class Edge extends Shape
     {
         if (!this.isEmpty())
         {
-            return `<Edge:${this.edgeType()} start="[${this.start().toArray()}]" end="[${this.end().toArray()}]">`;
+            return `<Edge:${this.edgeType()} start="[${this.start().toArray()}]" end="[${this.end().toArray()}]" ${this.nodeString()}>`;
         }
         else {
             return `Edge:EMPTY<>`;
@@ -1306,27 +1359,59 @@ export class Edge extends Shape
         const modelUnits = hostUnits(this);
 
         /*  Line styling comes from the meshup Style model: stroke.{color,opacity,width,dash}.
-            Values fall back to the shape's top-level color, then to the SVG defaults below. */
+
+            ONLY EXPLICIT styling is written inline. Anything the author did not set is left to
+            the CSS classes below (`line`, `silhouette`, `dashed`, …), which is exactly what the
+            mesh kernel does — it emits bare `<path class="line silhouette"/>` and lets the
+            document stylesheet decide. Baking the kernel defaults in instead meant every brep
+            drawing came out in the default colour at a fixed width, so the same document looked
+            different depending on which kernel drew it. */
         const STYLE_TO_ATTR = [
-            { prop: 'color', attr: 'stroke', transform : (val) => (val) ? new Color(val).toHex() : this.TO_SVG_LINE_COLOR_DEFAULT },
+            { prop: 'color', attr: 'stroke', transform : (val) => (val) ? new Color(val).toHex() : null },
             { prop: 'dash', attr: 'stroke-dasharray', transform : (val:Array<number>) =>
                 (Array.isArray(val) && val.length)
                     ? val.map(d => convertValueFromToUnit(d, 'mm', modelUnits)).join(' ')
                     : null },
-            { prop: 'width', attr: 'stroke-width' , transform : (val) => convertValueFromToUnit(val ?? this.TO_SVG_LINE_WIDTH_DEFAULT, 'mm', modelUnits) },
-            { prop: 'opacity', attr: 'stroke-opacity' , transform : (val) => val ?? this.TO_SVG_OPACTIY_DEFAULT },
+            { prop: 'width', attr: 'stroke-width' , transform : (val) => (val != null) ? convertValueFromToUnit(val, 'mm', modelUnits) : null },
+            { prop: 'opacity', attr: 'stroke-opacity' , transform : (val) => val ?? null },
         ]
 
         let svgAttrs = {};
 
-        // Effective style: the Edge's own, else the parent Shape it was selected from. Both
-        // cascade through their SceneNode, so a color set on a layer reaches here.
-        const style = this._getObjStyle() ?? (this._parent as Shape)?._getObjStyle?.() ?? {};
+        /*  Explicit style only — explicitData(), NOT toData(): the latter fills in the kernel
+            defaults, which is what put a colour and width on every line.
+
+            An Edge exported as part of a bigger Shape (a Wire's edges, a Face's outline)
+            carries no style of its own — the author styled the PARENT. So the parent's explicit
+            style is the base and the Edge's own wins over it. NOTE: `??` cannot be used to pick
+            between them; explicitData() returns `{}` when nothing was set, and `{}` is truthy. */
+        const own = (this._effectiveStyle().explicitData() ?? {}) as Record<string,any>;
+        const inherited = ((this._parent as Shape)?._effectiveStyle?.().explicitData() ?? {}) as Record<string,any>;
+
+        const merged = {
+            ...inherited,
+            ...own,
+            stroke: { ...(inherited.stroke ?? {}), ...(own.stroke ?? {}) },
+        } as Record<string,any>;
+
+        /*  Drop anything still at the kernel default. meshup's Style marks a whole sub-object
+            explicit when any part of it is set, so `.dashed([4,4])` also reports the default
+            colour and width as "explicit" — writing those inline would put the kernel's red on
+            a line the author never coloured. */
+        const isDefault = (prop:string, val:any) =>
+        {
+            const def = (SHAPE_DEFAULT_STYLE.stroke as Record<string,any>)?.[prop]
+                        ?? (SHAPE_DEFAULT_STYLE as Record<string,any>)?.[prop];
+            return JSON.stringify(val) === JSON.stringify(def);
+        }
+
+        const style = { ...merged, stroke: { ...merged.stroke } } as Record<string,any>;
+        Object.keys(style.stroke).forEach(k => { if(isDefault(k, style.stroke[k])){ delete style.stroke[k] } });
+        if(isDefault('color', style.color)){ delete style.color }
         const stroke = (style.stroke ?? {}) as Record<string,any>;
 
         STYLE_TO_ATTR.forEach( t =>
         {
-            // NOTE: always execute (even if val is nullish) so we can set defaults
             const val = stroke[t.prop] ?? ((t.prop === 'color') ? style.color : null) ?? null;
             const svgValue = t.transform(val as any);
             if(svgValue)
@@ -1334,15 +1419,15 @@ export class Edge extends Shape
                 svgAttrs[t.attr] = svgValue
             }
         })
-        let svgAttrArr = [];
-        for(const [a,v] of Object.entries(svgAttrs))
-        {
-            svgAttrArr.push(`${a}="${v}"`)
-        }
+        /*  Emit deliberate styling as an INLINE STYLE, not as presentation attributes.
+            The drawing ships a stylesheet (see ShapeCollection.toSVG) and CSS rules beat
+            presentation attributes — `stroke="blue"` would lose to `.line{stroke:black}`,
+            silently ignoring what the author asked for. An inline style wins. */
+        const declarations = Object.entries(svgAttrs)
+            .map(([attr, value]) => `${attr}:${value}`)
+            .join(';');
 
-        const svgAttrStr = svgAttrArr.join(' ');
-
-        return svgAttrStr;
+        return declarations ? `style="${declarations}"` : '';
     }
 
     /** Based on attributes or tests add classes to Svg that help us select and style these SVG elements later */
@@ -1355,7 +1440,9 @@ export class Edge extends Shape
         
         const CLASSES_AFTER_TESTS = {
             'line' : (edge) => true, // add for basic geom type styling
-            'dashed' : (edge) => Array.isArray(edge._getObjStyle()?.stroke?.dash),
+            'dashed' : (edge) => ((edge._effectiveStyle()?.explicitData()?.stroke?.dash?.length
+                                    ?? edge._parent?._effectiveStyle?.().explicitData()?.stroke?.dash?.length
+                                    ?? 0) > 0),
         }
 
         let classes:Array<string> = [];
@@ -1422,5 +1509,37 @@ export class Edge extends Shape
 
     
 
+
+    //// MESH-KERNEL API PARITY ////
+
+    /** Fill this Edge (a closed circle, say) into a surface — mesh-kernel name. */
+    @sceneAdd
+    toPolygon():AnyShape
+    {
+        return (this.toWire() as any).toFace();
+    }
+
+    /** An Edge is one atomic segment — returned as a collection of itself, so
+     *  `curve.segments()` behaves the same whichever linear Shape you have. */
+    @sceneCarry
+    segments():ShapeCollection
+    {
+        return new ShapeCollection(this);
+    }
+
+    /** The only segment of this Edge is the Edge itself (any index returns it). */
+    segment(_fromIndex?:number, _toIndex?:number):Edge
+    {
+        return this;
+    }
+
+    /** Join another linear Shape onto this Edge, forming a Wire. Mesh-kernel name. */
+    @checkInput('LinearShape', 'auto')
+    connect(other:LinearShape):IWire
+    {
+        const joined = new Wire().fromEdges(new ShapeCollection([this, ...(other as any).edges().toArray()]));
+        this.replaceShape(joined);
+        return joined as IWire;
+    }
 
 }

@@ -61,6 +61,21 @@ export interface toProjectionSVGOptions extends toSVGOptions
     samples?: number
     /** Facet-boundary edges below this angle are dropped. Default 10 (20 for thumbnails). */
     featureAngle?: number
+    /** Which hidden-line-removal algorithm the kernel should run.
+     *
+     *  - `'raycast'` (default) — samples visibility along each edge. Endpoints
+     *    are approximate and an occluder narrower than the sample spacing is
+     *    missed.
+     *  - `'exact'` — computes occlusion analytically. Correct endpoints, finds
+     *    occluders of any size, and ignores `samples`.
+     *  - `'clip'` / `'painter'` — per shape, no merge into a single solid.
+     *    Need convex, non-interpenetrating shapes. `'painter'` emits opaque
+     *    fills, so it is unsuitable for DXF export.
+     */
+    strategy?: 'raycast' | 'exact' | 'clip' | 'painter'
+    /** Downgrade to `'raycast'` with a warning when a per-shape strategy does
+     *  not apply, instead of throwing. Default false. */
+    fallback?: boolean
 }
 
 export type ThumbnailDegradeStep = 'hidden' | 'precision' | 'cull'
@@ -357,11 +372,14 @@ export function projectMeshes(meshCollection: any, options?: toProjectionSVGOpti
     const hiddenLines = o.hidden !== false
 
     const view = o.view ?? 'iso'
+    // Which hidden-line algorithm to run. Undefined means the kernel default
+    // ('raycast'), so nothing changes for a caller that does not ask.
+    const viewOpts = { strategy: o.strategy, fallback: o.fallback }
     if (!o.cam && view !== 'iso')
     {
-        return meshCollection._elevation(view, hiddenLines, false, samples, featureAngle)
+        return meshCollection._elevation(view, hiddenLines, false, samples, featureAngle, viewOpts)
     }
-    return meshCollection._iso(o.cam ?? DEFAULT_CAM, hiddenLines, false, samples, featureAngle)
+    return meshCollection._iso(o.cam ?? DEFAULT_CAM, hiddenLines, false, samples, featureAngle, viewOpts)
 }
 
 /** Projection + serialization in one step. Null when there are no meshes / nothing visible. */

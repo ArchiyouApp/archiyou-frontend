@@ -10,13 +10,19 @@
  * which is for application-like scripts: this one is a test fixture, and it is
  * only meaningful next to the cases it drives.
  *
- * Two things come out of this: a wall-clock table per geometry per strategy,
- * and one SVG per combination written to ./svgs/ at the repo root so the
- * drawings can be compared side by side.
+ * Three things come out of this, all at the repo root:
+ *   - a wall-clock table per geometry per strategy;
+ *   - ./svgs/   one SVG per combination — the drawing as it would be used;
+ *   - ./gltfs/  one glTF per combination holding the source model with its
+ *               projection set down beside it. An SVG shows what was drawn; the
+ *               glTF shows it against the geometry it came from, which is what
+ *               you need to judge whether a missing edge should have been there.
  *
  * Timing note: each case is projected once per strategy after a warm-up pass,
  * and the geometry is rebuilt per strategy so no projection benefits from a
- * cache the previous one filled.
+ * cache the previous one filled. Building that geometry is deliberately outside
+ * the timed region — it is identical work for all four strategies and is not
+ * hidden-line removal.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -24,6 +30,7 @@ import path from 'node:path'
 import { describe, it, expect, beforeAll } from 'vitest'
 
 import { Modeler } from '../../src/modeler/Modeler'
+import { ShapeCollection as SmartShapeCollection } from '@archiyou/meshup/src/index'
 import type { RunnerScriptExecutionRequest } from '../../src/runner/types'
 import { Runner } from '../../src/runner/Runner'
 
@@ -81,6 +88,8 @@ grid.iso().move(-1000,1000)
 
 /** Repo root, two levels up from packages/core. */
 const SVG_DIR = path.resolve('../../svgs')
+/** GLTF debug scenes: the model with its projection placed beside it. */
+const GLTF_DIR = path.resolve('../../gltfs')
 
 /** `$NUM` in the script — how many slabs the stack case gets. */
 const STACK_COUNT = 5
@@ -166,6 +175,7 @@ describe('isotest: HLR strategy performance', () =>
     {
         modeler = await new Modeler().load()
         fs.mkdirSync(SVG_DIR, { recursive: true })
+        fs.mkdirSync(GLTF_DIR, { recursive: true })
     })
 
     it('runs the isotest script end to end', async () =>
@@ -192,13 +202,21 @@ describe('isotest: HLR strategy performance', () =>
             {
                 // Warm-up, so the first strategy measured is not the one that
                 // pays for lazily-built kernel state.
-                try { project(modeler, c, strategy) } catch { /* measured below */ }
+                try { c.build(modeler)._iso(c.cam, false, false, c.samples, c.featureAngle, { strategy }) }
+                catch { /* measured below */ }
 
                 let measurement: Measurement
                 try
                 {
+                    // Build OUTSIDE the timed region. Constructing the geometry
+                    // is the same work for every strategy and has nothing to do
+                    // with hidden-line removal; including it flattered all four
+                    // equally and inflated the absolute numbers.
+                    const model = c.build(modeler)
+
                     const t0 = performance.now()
-                    const projected = project(modeler, c, strategy)
+                    const projected = model._iso(
+                        c.cam, false, false, c.samples, c.featureAngle, { strategy })
                     const ms = performance.now() - t0
 
                     measurement = {
@@ -208,6 +226,15 @@ describe('isotest: HLR strategy performance', () =>
                     fs.writeFileSync(
                         path.join(SVG_DIR, `${c.name}.${strategy}.svg`),
                         projected.toSVG(),
+                    )
+                    // A 3D scene holding the source model with its projection
+                    // set down beside it. An SVG shows what the projection
+                    // drew; this shows it against the geometry it came from,
+                    // which is what you need to judge whether an edge that is
+                    // missing should have been there.
+                    fs.writeFileSync(
+                        path.join(GLTF_DIR, `${c.name}.${strategy}.gltf`),
+                        await buildDebugScene(model, projected),
                     )
                 }
                 catch (e: any)
@@ -246,7 +273,8 @@ describe('isotest: HLR strategy performance', () =>
                 + STRATEGIES.map(s => pad(cell(results[c.name]?.[s]), 19)).join(''))
         }
         lines.push('='.repeat(96))
-        lines.push(`SVGs written to ${SVG_DIR}`)
+        lines.push(`SVGs  written to ${SVG_DIR}`)
+        lines.push(`glTFs written to ${GLTF_DIR}  (model + projection side by side)`)
 
         const report = lines.join('\n')
         console.info(report)
@@ -255,12 +283,31 @@ describe('isotest: HLR strategy performance', () =>
     })
 })
 
-function project(modeler: Modeler, c: Case, strategy: Strategy): any
+/**
+ * A glTF scene with `model` and `projected` side by side.
+ *
+ * The projection comes back flattened onto XY and recentred on the origin, so
+ * left alone it would sit inside the model it describes. It is moved clear of
+ * the model's bounding box, with a gap proportional to the model, so the two
+ * read as a pair at any scale.
+ */
+async function buildDebugScene(model: any, projected: any): Promise<string>
 {
-    const shapes = c.build(modeler)
-    // _iso is the undecorated projection: it does not add to the scenegraph,
-    // so repeated measurements do not grow the scene and skew later ones.
-    return shapes._iso(c.cam, false, false, c.samples, c.featureAngle, { strategy })
+    const modelBox = model.bbox()
+    const isoBox = projected.bbox()
+    if (!modelBox || !isoBox)
+    {
+        return await model.toGLTF()
+    }
+
+    const gap = Math.max(modelBox.width(), 1) * 0.25
+    // Butt the projection's left edge up against the model's right edge.
+    const shift = modelBox.max().x + gap - isoBox.min().x
+
+    const scene = new SmartShapeCollection()
+    model.toArray().forEach((s: any) => scene.add(s))
+    projected.move(shift, 0, 0).toArray().forEach((s: any) => scene.add(s))
+    return await scene.toGLTF()
 }
 
 function shortReason(e: any): string

@@ -10,13 +10,13 @@
  * which is for application-like scripts: this one is a test fixture, and it is
  * only meaningful next to the cases it drives.
  *
- * Three things come out of this, all at the repo root:
+ * Three things come out of this, under tests/outputs/isotest/:
  *   - a wall-clock table per geometry per strategy;
- *   - ./svgs/   one SVG per combination — the drawing as it would be used;
- *   - ./gltfs/  one glTF per combination holding the source model with its
- *               projection set down beside it. An SVG shows what was drawn; the
- *               glTF shows it against the geometry it came from, which is what
- *               you need to judge whether a missing edge should have been there.
+ *   - svgs/   one SVG per combination — the drawing as it would be used;
+ *   - gltfs/  one glTF per combination holding the source model with its
+ *             projection set down beside it. An SVG shows what was drawn; the
+ *             glTF shows it against the geometry it came from, which is what
+ *             you need to judge whether a missing edge should have been there.
  *
  * Timing note: each case is projected once per strategy after a warm-up pass,
  * and the geometry is rebuilt per strategy so no projection benefits from a
@@ -86,10 +86,13 @@ grid.iso().move(-1000,1000)
 //  grid.isoTest().move(-1000,2000));
 `
 
-/** Repo root, two levels up from packages/core. */
-const SVG_DIR = path.resolve('../../svgs')
-/** GLTF debug scenes: the model with its projection placed beside it. */
-const GLTF_DIR = path.resolve('../../gltfs')
+// Generated output lives next to the test that makes it, under the package's
+// existing tests/outputs tree — not in the repo root.
+const OUTPUT_DIR = path.resolve('./tests/outputs/isotest')
+/** The drawings themselves, as they would be used. */
+const SVG_DIR = path.join(OUTPUT_DIR, 'svgs')
+/** Debug scenes: the model with its projection placed beside it. */
+const GLTF_DIR = path.join(OUTPUT_DIR, 'gltfs')
 
 /** `$NUM` in the script — how many slabs the stack case gets. */
 const STACK_COUNT = 5
@@ -273,8 +276,9 @@ describe('isotest: HLR strategy performance', () =>
                 + STRATEGIES.map(s => pad(cell(results[c.name]?.[s]), 19)).join(''))
         }
         lines.push('='.repeat(96))
-        lines.push(`SVGs  written to ${SVG_DIR}`)
-        lines.push(`glTFs written to ${GLTF_DIR}  (model + projection side by side)`)
+        lines.push(`output: ${OUTPUT_DIR}`)
+        lines.push('  svgs/   the drawings')
+        lines.push('  gltfs/  model + projection side by side, for debugging')
 
         const report = lines.join('\n')
         console.info(report)

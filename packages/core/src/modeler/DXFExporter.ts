@@ -6,21 +6,25 @@
  *  Scope:
  *    - Emits DXF R2000 (AC1015) so we can use true-colour (group 420) styling and
  *      real ALIGNED DIMENSION entities (which reference an anonymous *D block).
- *    - Native geometry entities: LINE, LWPOLYLINE, CIRCLE, ARC, SPLINE
- *      (compound/unclassifiable curves fall back to a tessellated LWPOLYLINE).
+ *    - Native geometry entities: LINE, LWPOLYLINE (with bulges), CIRCLE, ARC, ELLIPSE,
+ *      SPLINE (spans the kernel cannot describe fall back to chords).
  *    - Aligned dimensions are written both as a DIMENSION entity (CAD-editable)
  *      AND as a baked *D block (lines + arrow SOLIDs + MTEXT) so every viewer
  *      renders them even without regenerating.
  *
- *  This file is dependency-free and pure-TS (no WASM, no meshup edits). Geometry
- *  is consumed through meshup Curve's public accessors (subtype(), points(),
- *  tessellate(), bbox(), isClosed(), degree(), knots(), weights(), spans()).
+ *  This file is dependency-free and pure-TS (no WASM, no meshup edits). Geometry comes
+ *  from meshup Curve's exportSpans(), which reports what each exact span is along with
+ *  the circle or ellipse it lies on. Deliberately not subtype(): that names the whole
+ *  curve and has no name for "lines and arcs mixed", so it answers "Spline" for a filleted
+ *  rectangle — which is how this exporter used to emit malformed SPLINE entities built
+ *  from the arcs' chords.
  *
  *  See buildDXF() for the top-level assembly used by ShapeCollection.toDXF(),
  *  SceneNode.toDXF() and Modeler.toDXF() (all via shapeAnnotations.ts).
  */
 
 import type * as meshup from '@archiyou/meshup/src/index'
+import type { SpanParams, SpanPoint } from '@archiyou/meshup/src/types'
 import type { ModelUnits } from './types'
 import type { AnyShape } from './types'
 
@@ -58,20 +62,6 @@ function hexToRgb(hex: string | undefined | null): RGB | null
     return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
 }
 
-/** Circumcircle of three 2D points; null when collinear. Mirrors meshup's helper. */
-function circumcircle2D(a: [number, number], b: [number, number], c: [number, number])
-    : { cx: number; cy: number; r: number } | null
-{
-    const [ax, ay] = a, [bx, by] = b, [cx, cy] = c
-    const D = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
-    if (Math.abs(D) < 1e-10) return null
-    const a2 = ax * ax + ay * ay
-    const b2 = bx * bx + by * by
-    const c2 = cx * cx + cy * cy
-    const ux = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / D
-    const uy = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / D
-    return { cx: ux, cy: uy, r: Math.hypot(ax - ux, ay - uy) }
-}
 
 //// DXF DOCUMENT ////
 
@@ -152,14 +142,46 @@ export class DXFDocument
         )
     }
 
-    addLWPolyline(pts: Vec3[], closed: boolean, layer = '0'): void
+    /** A lightweight polyline, optionally with per-vertex bulges.
+     *
+     *  `bulges[i]` is `tan(theta / 4)` for the arc leaving vertex `i` — the DXF way of
+     *  storing line and arc runs in one entity, and what a filleted outline should be
+     *  written as. Group 42 is emitted only where a bulge is non-zero, and the spec's
+     *  order within a vertex (10, 20, [40], [41], [42]) is what readers expect. */
+    addLWPolyline(pts: Vec3[], closed: boolean, layer = '0', bulges?: number[]): void
     {
         if (pts.length < 2) return
         let s = this._entityHeader('LWPOLYLINE', layer, 'AcDbPolyline')
             + this._pair(90, pts.length)
             + this._pair(70, closed ? 1 : 0)
-        pts.forEach(p => { s += this._pair(10, fmt(p.x)) + this._pair(20, fmt(p.y)) })
+        pts.forEach((p, i) =>
+        {
+            s += this._pair(10, fmt(p.x)) + this._pair(20, fmt(p.y))
+            const b = bulges?.[i]
+            if (b !== undefined && b !== 0 && Number.isFinite(b)) { s += this._pair(42, fmt(b)) }
+        })
         this._entities.push(s)
+    }
+
+    /** An exact ellipse or elliptical arc.
+     *
+     *  `majorAxis` is the centre-to-major-axis-endpoint vector (groups 11/21/31) and
+     *  `ratio` the minor/major ratio (40); the parameters (41/42) are eccentric anomalies
+     *  running counter-clockwise from start to end, with `0 .. 2*PI` meaning a full
+     *  ellipse. */
+    addEllipse(c: Vec3, majorAxis: Vec3, ratio: number, startParam: number, endParam: number,
+        layer = '0'): void
+    {
+        this._entities.push(
+            this._entityHeader('ELLIPSE', layer, 'AcDbEllipse')
+            + this._pair(10, fmt(c.x)) + this._pair(20, fmt(c.y)) + this._pair(30, fmt(c.z ?? 0))
+            + this._pair(11, fmt(majorAxis.x)) + this._pair(21, fmt(majorAxis.y))
+            + this._pair(31, fmt(majorAxis.z ?? 0))
+            + this._pair(210, 0) + this._pair(220, 0) + this._pair(230, 1)
+            + this._pair(40, fmt(ratio))
+            + this._pair(41, fmt(startParam))
+            + this._pair(42, fmt(endParam)),
+        )
     }
 
     addCircle(c: Vec3, r: number, layer = '0'): void
@@ -186,9 +208,19 @@ export class DXFDocument
 
     addSpline(degree: number, ctrlPts: Vec3[], knots: number[], weights: number[] | null, closed: boolean, layer = '0'): void
     {
-        if (ctrlPts.length === 0 || knots.length === 0)
+        // A clamped B-spline of degree d over n control points has exactly n + d + 1 knots.
+        // This used to be assumed rather than checked, and the assumption was wrong for any
+        // curve with a fillet in it: subtype() called it "Spline", the kernel had no spline
+        // data to give, and what reached the file was 71=2, 72=2, 73=8 — two knots where
+        // eleven were needed, over control points that were really the arcs' chords.
+        // Readers reject that outright, so a polyline through the same points is strictly
+        // better than emitting it.
+        if (ctrlPts.length === 0 || knots.length !== ctrlPts.length + degree + 1
+            || ctrlPts.length <= degree)
         {
-            // Degenerate — fall back to a polyline through control points.
+            console.warn(`DXFExporter: refusing to write a SPLINE with ${knots.length} knots for `
+                + `${ctrlPts.length} control points at degree ${degree} `
+                + `(expected ${ctrlPts.length + degree + 1}); writing a polyline instead.`)
             this.addLWPolyline(ctrlPts, closed, layer)
             return
         }
@@ -456,102 +488,161 @@ export class DXFDocument
 
 const toVec = (p: { x: number; y: number; z?: number }): Vec3 => ({ x: p.x, y: p.y, z: (p as any).z ?? 0 })
 
-/** Write a single meshup Curve as native DXF geometry on `layer`. */
+/** Write a single meshup Curve as native DXF geometry on `layer`.
+ *
+ *  Driven by `exportSpans()`, which reports what each exact span *is* and the parameters
+ *  of the circle or ellipse it lies on. The previous version dispatched on `subtype()`,
+ *  which names the whole curve and has no name for "lines and arcs mixed" — it answered
+ *  "Spline" for a filleted rectangle, and the exporter dutifully asked for spline data the
+ *  kernel could not provide.
+ */
 export function writeCurveToDXF(doc: DXFDocument, curve: meshup.Curve, layer: string): void
 {
     const c = curve as any
-    const subtype: string = c.subtype?.() ?? 'Polyline'
+    const spans: SpanParams[] = typeof c.exportSpans === 'function' ? c.exportSpans() : []
+    const closed: boolean = c.isClosed?.() ?? false
 
-    switch (subtype)
+    if (spans.length === 0)
     {
-        case 'Line':
+        const pts = (c.tessellate() as Vec3[]).map(toVec)
+        doc.addLWPolyline(pts, closed, layer)
+        return
+    }
+
+    // A closed run of arcs on one circle, covering a full turn.
+    const circle = asCircle(spans, closed)
+    if (circle)
+    {
+        doc.addCircle(pt(circle.center), circle.radius, layer)
+        return
+    }
+
+    // A lone span is always better as its own entity: LINE, ARC, ELLIPSE or SPLINE says
+    // more than a one-segment polyline, and readers can edit it as the shape it is.
+    if (spans.length === 1)
+    {
+        writeSpanToDXF(doc, spans[0], closed, layer)
+        return
+    }
+
+    // Everything is straight: one polyline, no bulges needed.
+    if (spans.every(s => s.kind === 'line'))
+    {
+        doc.addLWPolyline(vertexRun(spans, closed), closed, layer)
+        return
+    }
+
+    // Lines and arcs together — a fillet, a slot, a rounded outline. LWPOLYLINE stores
+    // exactly this with a bulge per vertex, and it is what CAD tools write for the shape.
+    // Writing it as a SPLINE was the single worst thing this exporter did: the entity was
+    // malformed *and* the corners were replaced by their chords.
+    if (spans.every(s => s.kind === 'line' || s.kind === 'arc'))
+    {
+        const bulges = spans.map(s => (s.kind === 'arc' ? s.bulge : 0))
+        if (!closed) { bulges.push(0) }   // the trailing vertex closes no segment
+        doc.addLWPolyline(vertexRun(spans, closed), closed, layer, bulges)
+        return
+    }
+
+    // Otherwise emit each span as its own entity.
+    spans.forEach(span => writeSpanToDXF(doc, span, closed, layer))
+}
+
+/** One exact span as its own DXF entity. */
+function writeSpanToDXF(doc: DXFDocument, span: SpanParams, closed: boolean, layer: string): void
+{
+    switch (span.kind)
+    {
+        case 'line':
+            doc.addLine(pt(span.start), pt(span.end), layer)
+            break
+
+        case 'arc':
         {
-            const pts = c.points() as Vec3[]
-            if (pts.length >= 2) doc.addLine(toVec(pts[0]), toVec(pts[pts.length - 1]), layer)
+            // Exact centre and radius. This used to be re-derived from three points of a
+            // tessellation via a circumcircle, so the radius written to the file carried
+            // the chord error of a polyline the curve never needed to build.
+            const a0 = Math.atan2(span.start[1] - span.center[1], span.start[0] - span.center[0])
+            const a1 = Math.atan2(span.end[1] - span.center[1], span.end[0] - span.center[0])
+            // DXF arcs always run counter-clockwise from start to end, so a clockwise span
+            // is written by swapping its ends rather than by negating anything.
+            const [s, e] = span.ccw ? [a0, a1] : [a1, a0]
+            doc.addArc(pt(span.center), span.radius, degOf(s), degOf(e), layer)
             break
         }
-        case 'Rect':
-        case 'Polyline':
+
+        case 'conic':
         {
-            const pts = (c.points() as Vec3[]).map(toVec)
-            doc.addLWPolyline(pts, c.isClosed?.() ?? false, layer)
+            const el = span.ellipse
+            if (!el) { doc.addLine(pt(span.start), pt(span.end), layer); break }
+            // DXF wants the major axis as a vector and the parameters counter-clockwise,
+            // which is exactly how spanParams reports them.
+            doc.addEllipse(pt(el.center), pt(el.majorAxis), el.ratio,
+                el.startParam, el.endParam, layer)
             break
         }
-        case 'Circle':
+
+        case 'spline':
+            doc.addSpline(span.degree, span.controlPoints.map(pt), span.knots,
+                span.rational ? span.weights : null, closed, layer)
+            break
+
+        case 'quadratic':
+        case 'cubic':
         {
-            const bb = c.bbox?.()
-            if (bb)
-            {
-                const min = bb.min(), max = bb.max()
-                const center = { x: (min.x + max.x) / 2, y: (min.y + max.y) / 2, z: 0 }
-                const r = (max.x - min.x) / 2
-                doc.addCircle(center, r, layer)
-            }
+            // A Bezier is a clamped spline whose knots sit entirely at its ends.
+            const cps = span.kind === 'cubic'
+                ? [span.start, span.control1, span.control2, span.end]
+                : [span.start, span.control, span.end]
+            const degree = cps.length - 1
+            const knots = [...Array(degree + 1).fill(0), ...Array(degree + 1).fill(1)]
+            doc.addSpline(degree, cps.map(pt), knots, null, false, layer)
             break
         }
-        case 'Arc':
-        {
-            writeArc(doc, c, layer)
-            break
-        }
-        case 'Spline':
-        {
-            const degree = (c.degree?.() ?? 3) as number
-            const ctrl = (c.controlPoints() as Vec3[]).map(toVec)
-            const knots = (c.knots?.() ? Array.from(c.knots() as ArrayLike<number>) : []) as number[]
-            const weights = c.weights?.() ? Array.from(c.weights() as ArrayLike<number>) as number[] : null
-            doc.addSpline(degree, ctrl, knots, weights, c.isClosed?.() ?? false, layer)
-            break
-        }
-        case 'Compound':
+
         default:
-        {
-            // Try to write each span natively; fall back to tessellation.
-            const spans = c.spans?.()?.toArray?.() as meshup.Curve[] | undefined
-            if (spans && spans.length > 0 && spans[0] !== curve)
-            {
-                spans.forEach(span => writeCurveToDXF(doc, span, layer))
-            }
-            else
-            {
-                const pts = (c.tessellate() as Vec3[]).map(toVec)
-                doc.addLWPolyline(pts, c.isClosed?.() ?? false, layer)
-            }
+            // Kernel-flagged as undescribable; a chord is all that is left.
+            doc.addLine(pt(span.start), pt(span.end), layer)
             break
-        }
     }
 }
 
-/** Emit an ARC entity from an open arc Curve (center/radius/angles in model XY).
- *  Start/mid/end are taken from the tessellated polyline — the curve's own
- *  control points can be a full-circle parameterization over a sub-domain, so
- *  controlPoints[0] is not reliably the arc's start point. Any three distinct
- *  on-curve points define the same circle, so tessellation samples are robust. */
-function writeArc(doc: DXFDocument, c: any, layer: string): void
-{
-    const tess = (c.tessellate() as Vec3[]).map(toVec)
-    if (tess.length < 3)
-    {
-        if (tess.length === 2) doc.addLine(tess[0], tess[1], layer)
-        return
-    }
-    const start = tess[0]
-    const end = tess[tess.length - 1]
-    const mid = tess[Math.floor(tess.length / 2)]
+/** A span-list point as a DXF vector. */
+const pt = (p: readonly [number, number, number]): Vec3 => ({ x: p[0], y: p[1], z: p[2] })
 
-    const circ = circumcircle2D([start.x, start.y], [mid.x, mid.y], [end.x, end.y])
-    if (!circ)
+/** The vertices of a connected span run: each span's start, plus the final end when open. */
+function vertexRun(spans: SpanParams[], closed: boolean): Vec3[]
+{
+    const out = spans.map(s => pt(s.start))
+    if (!closed) { out.push(pt(spans[spans.length - 1].end)) }
+    return out
+}
+
+/** The circle these spans describe, or null if they describe anything else.
+ *
+ *  Every span must be an arc about one common centre and radius, and together they must
+ *  close a full turn. Checked from the spans because `subtype()` calls *any* closed
+ *  arcs-only contour a "Circle" — a two-arc lens included, which was being written as a
+ *  CIRCLE of its bounding box. */
+function asCircle(spans: SpanParams[], closed: boolean): { center: SpanPoint, radius: number } | null
+{
+    if (!closed || spans.length === 0) return null
+    const first = spans[0]
+    if (first.kind !== 'arc') return null
+
+    let total = 0
+    for (const s of spans)
     {
-        doc.addLine(start, end, layer) // degenerate (collinear)
-        return
+        if (s.kind !== 'arc') return null
+        if (Math.abs(s.radius - first.radius) > first.radius * 1e-9) return null
+        const d = Math.hypot(s.center[0] - first.center[0], s.center[1] - first.center[1],
+            s.center[2] - first.center[2])
+        if (d > first.radius * 1e-9) return null
+        total += s.sweep
     }
-    // DXF ARC goes CCW from startAngle to endAngle. Determine orientation from the
-    // cross product of (start→mid) and (mid→end): >0 means CCW.
-    const cross = (mid.x - start.x) * (end.y - mid.y) - (mid.y - start.y) * (end.x - mid.x)
-    let aStart = Math.atan2(start.y - circ.cy, start.x - circ.cx)
-    let aEnd = Math.atan2(end.y - circ.cy, end.x - circ.cx)
-    if (cross < 0) [aStart, aEnd] = [aEnd, aStart] // ensure CCW sweep matches geometry
-    doc.addArc({ x: circ.cx, y: circ.cy, z: 0 }, circ.r, degOf(aStart), degOf(aEnd), layer)
+    return Math.abs(Math.abs(total) - Math.PI * 2) < 1e-9
+        ? { center: first.center, radius: first.radius }
+        : null
 }
 
 //// TOP-LEVEL ASSEMBLY ////

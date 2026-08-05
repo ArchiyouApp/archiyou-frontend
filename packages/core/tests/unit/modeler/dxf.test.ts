@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 
 import { Modeler } from '../../../src/modeler/Modeler'
+import { DXFDocument, writeCurveToDXF } from '../../../src/modeler/DXFExporter'
 import { Annotator } from '../../../src/annotator/Annotator'
 import type { ArchiyouModules } from '../../../src/types'
 
@@ -172,7 +173,7 @@ describe('Modeler DXF export', () =>
         //
         // The right entity is a LWPOLYLINE with bulges, which stores line and arc runs
         // exactly and is what every CAD tool writes for this shape.
-        it.fails('writes a filleted rect as a LWPOLYLINE with bulges, not a SPLINE', () =>
+        it('writes a filleted rect as a LWPOLYLINE with bulges, not a SPLINE', () =>
         {
             const r = modeler.rect(100, 50) as any
             r.fillet(10)
@@ -183,14 +184,17 @@ describe('Modeler DXF export', () =>
             // tan(90°/4) for each quarter-circle corner.
             const bs = bulges(dxf)
             expect(bs.length).toBe(4)
-            bs.forEach(b => expect(Math.abs(b)).toBeCloseTo(Math.SQRT2 - 1, 9))
+            // 6 decimals is the writer's own precision (fmt rounds there).
+            bs.forEach(b => expect(Math.abs(b)).toBeCloseTo(Math.SQRT2 - 1, 6))
         })
 
         // Whatever else it emits, a SPLINE must at least be structurally valid: for a
         // clamped B-spline, knots (72) == control points (73) + degree (71) + 1.
-        // A filleted rect currently yields 71=2, 72=2, 73=8 — 2 knots where 11 are needed.
-        it.fails('emits only structurally valid SPLINE entities', () =>
+        // A filleted rect used to yield 71=2, 72=2, 73=8 — 2 knots where 11 are needed —
+        // and now writes no SPLINE at all, so a real spline is what exercises this.
+        it('emits only structurally valid SPLINE entities', () =>
         {
+            modeler.spline([0, 0, 0], [50, 50, 0], [100, -50, 0], [150, 0, 0])
             const r = modeler.rect(100, 50) as any
             r.fillet(10)
             const dxf = modeler.toDXF() as string
@@ -214,7 +218,7 @@ describe('Modeler DXF export', () =>
         //
         // There is no modeler.ellipse(); a non-uniform scale of a circle is the supported
         // route and yields exact rational conics (see meshup exactness.test.ts).
-        it.fails('writes an ellipse as an ELLIPSE entity', () =>
+        it('writes an ellipse as an ELLIPSE entity', () =>
         {
             const e = modeler.circle(50) as any
             e.scale([2, 1, 1])                       // radii 100 x 50
@@ -230,16 +234,39 @@ describe('Modeler DXF export', () =>
         })
 
         // `subtype()` calls any closed arcs-only contour "Circle", and the exporter then
-        // takes the radius from the bbox width. A lens (two arcs bulging opposite ways)
-        // satisfies that test but is not a circle, and is written as one.
-        it.fails('does not write a two-arc lens as a CIRCLE', () =>
+        // took the radius from the bbox width. A lens (two arcs about different centres)
+        // satisfies that test but is not a circle, and was written as one.
+        //
+        // Driven through writeCurveToDXF directly: a Modeler boolean returns the lens
+        // without putting it in the scene, so modeler.toDXF() would export the two source
+        // circles and prove nothing about the lens.
+        it('does not write a two-arc lens as a CIRCLE', () =>
         {
-            const a = modeler.circle(50) as any
-            const b = modeler.circle(50, [60, 0, 0]) as any
-            a.intersection(b)
+            const lens = (modeler.circle(50) as any)
+                .intersection(modeler.circle(50, [60, 0, 0]) as any)
+            expect(lens.subtype()).toBe('Circle')            // guard the premise
+            // Four arc spans, alternating between the two source centres — which is
+            // precisely why they cannot be one circle.
+            const centres = lens.exportSpans().map((s: any) => s.center[0])
+            expect(new Set(centres).size).toBe(2)
 
-            const dxf = modeler.toDXF() as string
+            const doc = new DXFDocument('mm')
+            writeCurveToDXF(doc, lens, '0')
+            const dxf = doc.stringify()
             expect(countEntity(dxf, 'CIRCLE')).toBe(0)
+            // A bulged polyline holds every arc exactly.
+            expect(countEntity(dxf, 'LWPOLYLINE')).toBe(1)
+            expect(bulges(dxf).length).toBe(lens.segmentCount())
+        })
+
+        it('still writes a real circle as CIRCLE when driven the same way', () =>
+        {
+            const doc = new DXFDocument('mm')
+            writeCurveToDXF(doc, modeler.circle(50) as any, '0')
+            const dxf = doc.stringify()
+            expect(countEntity(dxf, 'CIRCLE')).toBe(1)
+            const [body] = entities(dxf, 'CIRCLE')
+            expect(group(body, 40)[0]).toBeCloseTo(50, 6) // exact radius, not from a bbox
         })
     })
 })

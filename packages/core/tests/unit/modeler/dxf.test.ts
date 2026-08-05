@@ -116,4 +116,130 @@ describe('Modeler DXF export', () =>
         expect(countEntity(dxf, 'CIRCLE')).toBe(1)
         expect(countEntity(dxf, 'LWPOLYLINE')).toBeGreaterThanOrEqual(1)
     })
+
+    /**
+     * Guard rails for exact-curve export. The exporter dispatches on `subtype()`, which
+     * answers a coarser question than the exporter is asking — see each case below.
+     * Flip `it.fails` to `it` in the stage that fixes it.
+     */
+    describe('exact curve geometry (pinned defects)', () =>
+    {
+        /**
+         * Group code/value pairs of every entity of the given type.
+         *
+         * Deliberately not a regex over lines: a DXF group *value* can be "0" (the x and y
+         * of an extrusion vector, for one), so scanning for `^0\n` splits entities apart
+         * mid-body. Likewise a coordinate of 42 would read as a bulge. DXF is strictly
+         * alternating code/value lines, so pair them up first and only then look for
+         * entity boundaries.
+         */
+        const entities = (dxf: string, type: string): Array<Array<[number, string]>> =>
+        {
+            const lines = dxf.split('\n')
+            const out: Array<Array<[number, string]>> = []
+            let cur: Array<[number, string]> | null = null
+            for (let i = 0; i + 1 < lines.length; i += 2)
+            {
+                const code = Number(lines[i])
+                const value = lines[i + 1]
+                if (code === 0)
+                {
+                    if (cur) { out.push(cur); cur = null }
+                    if (value === type) cur = []
+                    continue
+                }
+                cur?.push([code, value])
+            }
+            if (cur) out.push(cur)
+            return out
+        }
+
+        /** All values for one group code within an entity body. */
+        const group = (body: Array<[number, string]>, code: number): number[] =>
+            body.filter(([c]) => c === code).map(([, v]) => Number(v))
+
+        /** Non-zero group-42 (bulge) values across every LWPOLYLINE. */
+        const bulges = (dxf: string): number[] =>
+            entities(dxf, 'LWPOLYLINE').flatMap(b => group(b, 42)).filter(b => b !== 0)
+
+        // A filleted rect is 4 lines + 4 arcs. `subtype()` has no name for that, so it
+        // falls through to "Spline" — the same string a real NURBS gets. The exporter
+        // takes it at its word and asks for spline data, but the kernel has none to give:
+        // controlPoints() returns span endpoints (i.e. the arcs as chords), knots() is
+        // empty and the TS wrapper substitutes [0,1]. What lands in the file is a SPLINE
+        // claiming 2 knots for N control points at degree 2 — a clamped B-spline needs
+        // N+3 — built from chords. The corners are gone and the entity is malformed.
+        //
+        // The right entity is a LWPOLYLINE with bulges, which stores line and arc runs
+        // exactly and is what every CAD tool writes for this shape.
+        it.fails('writes a filleted rect as a LWPOLYLINE with bulges, not a SPLINE', () =>
+        {
+            const r = modeler.rect(100, 50) as any
+            r.fillet(10)
+
+            const dxf = modeler.toDXF() as string
+            expect(countEntity(dxf, 'SPLINE')).toBe(0)
+            expect(countEntity(dxf, 'LWPOLYLINE')).toBe(1)
+            // tan(90°/4) for each quarter-circle corner.
+            const bs = bulges(dxf)
+            expect(bs.length).toBe(4)
+            bs.forEach(b => expect(Math.abs(b)).toBeCloseTo(Math.SQRT2 - 1, 9))
+        })
+
+        // Whatever else it emits, a SPLINE must at least be structurally valid: for a
+        // clamped B-spline, knots (72) == control points (73) + degree (71) + 1.
+        // A filleted rect currently yields 71=2, 72=2, 73=8 — 2 knots where 11 are needed.
+        it.fails('emits only structurally valid SPLINE entities', () =>
+        {
+            const r = modeler.rect(100, 50) as any
+            r.fillet(10)
+            const dxf = modeler.toDXF() as string
+
+            const splines = entities(dxf, 'SPLINE')
+            expect(splines.length).toBeGreaterThan(0) // else this rail proves nothing
+            for (const body of splines)
+            {
+                const [degree] = group(body, 71)
+                const [knotCount] = group(body, 72)
+                const [ctrlCount] = group(body, 73)
+                expect(knotCount).toBe(ctrlCount + degree + 1)
+                expect(group(body, 40).length).toBe(knotCount) // declared count matches reality
+            }
+        })
+
+        // DXF has a native ELLIPSE entity (centre, major-axis vector, minor/major ratio,
+        // start/end parameter). The exporter has no 'Ellipse' case, so the four conic
+        // spans each fall to the tessellating default: one chorded LWPOLYLINE per span,
+        // four disjoint polylines where the file should hold a single exact ellipse.
+        //
+        // There is no modeler.ellipse(); a non-uniform scale of a circle is the supported
+        // route and yields exact rational conics (see meshup exactness.test.ts).
+        it.fails('writes an ellipse as an ELLIPSE entity', () =>
+        {
+            const e = modeler.circle(50) as any
+            e.scale([2, 1, 1])                       // radii 100 x 50
+            expect(e.subtype()).toBe('Ellipse')      // guard the premise
+
+            const dxf = modeler.toDXF() as string
+            expect(countEntity(dxf, 'ELLIPSE')).toBe(1)
+            expect(countEntity(dxf, 'LWPOLYLINE')).toBe(0)
+
+            const [body] = entities(dxf, 'ELLIPSE')
+            expect(group(body, 11)[0]).toBeCloseTo(100, 9) // major-axis endpoint, x
+            expect(group(body, 40)[0]).toBeCloseTo(0.5, 9) // minor/major ratio
+        })
+
+        // `subtype()` calls any closed arcs-only contour "Circle", and the exporter then
+        // takes the radius from the bbox width. A lens (two arcs bulging opposite ways)
+        // satisfies that test but is not a circle, and is written as one.
+        it.fails('does not write a two-arc lens as a CIRCLE', () =>
+        {
+            const a = modeler.circle(50) as any
+            const b = modeler.circle(50, [60, 0, 0]) as any
+            a.intersection(b)
+
+            const dxf = modeler.toDXF() as string
+            expect(countEntity(dxf, 'CIRCLE')).toBe(0)
+        })
+    })
 })

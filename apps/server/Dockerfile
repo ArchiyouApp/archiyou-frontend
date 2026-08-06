@@ -10,7 +10,8 @@ RUN corepack enable
 
 WORKDIR /server
 
-COPY --chown=node:node . .
+# NOTE: the entire monorepo is mounted in docker-compose.yml, so the server runs from the checkout, not from the copy baked into the image. This allows code updates without rebuilding the image. The only writable path is data/, which is a named volume (see docker-compose.yml).
+#COPY --chown=node:node . .
 RUN pnpm install --frozen-lockfile
 
 RUN mkdir -p /server/data && chown -R node:node /server/data

@@ -71,36 +71,3 @@ next.archiyou.com {
 	}
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# API on its own hostname, for non-browser/API consumers and clients already
-# pointed here. Browser calls from the editor go through /api above.
-# ─────────────────────────────────────────────────────────────────────────────
-api.archiyou.com {
-	reverse_proxy api:4100
-	encode zstd gzip
-
-	header {
-		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		Referrer-Policy "strict-origin-when-cross-origin"
-	}
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Optional: a separately built configurator app as a static site. Mount its dist
-# to /srv/configurator (see docker-compose.prod.yml). This vhost previously had
-# no security headers at all.
-# ─────────────────────────────────────────────────────────────────────────────
-configure.archiyou.com {
-	root * /srv/configurator
-	file_server
-	try_files {path} /index.html
-	encode zstd gzip
-
-	header {
-		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		X-Content-Type-Options "nosniff"
-		Referrer-Policy "strict-origin-when-cross-origin"
-	}
-}

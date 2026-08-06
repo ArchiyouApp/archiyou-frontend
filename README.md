@@ -169,15 +169,11 @@ the *development* stack: server + Redis only.)
 # 1. build the editor for a same-origin deployment
 SERVER_API_BASE_URL=/api pnpm --filter @archiyou/editor build
 
-# 2. install dependencies IN THE CHECKOUT — the api container runs from the
-#    mounted repo and has no node_modules of its own (see below)
-pnpm install --frozen-lockfile
-
-# 3. configure the deployment
+# 2. configure the deployment
 cp .env.example .env
 #    set SERVER_JWT_SECRET (openssl rand -base64 48), FRONTEND_URL, REDIS_PASW
 
-# 4. point the hostnames in Caddyfile at your domain, then:
+# 3. point the hostnames in Caddyfile at your domain, then:
 pnpm docker:prod          # == docker compose up -d
 ```
 
@@ -196,15 +192,25 @@ comes from the bind-mounted checkout, so a deploy is
 `git pull && docker compose restart api`, and `docker compose build` is
 needed only when the base image itself changes.
 
-Two things follow from that, and both bite silently if missed:
+Dependencies come from the mount too, so `apps/server/docker-entrypoint.sh`
+installs them on boot when needed — you never run `pnpm` on the host. It
+installs when `node_modules/.pnpm` is absent (first deploy) or when
+`pnpm-lock.yaml` is newer than the stamp it drops at
+`node_modules/.archiyou-install-stamp` (a `git pull` changed dependencies).
+Otherwise it is a no-op and startup is immediate. Installing inside the image
+also means `better-sqlite3` — a native module — is compiled against the exact
+Node that loads it.
 
-- **`pnpm install` must have been run in the checkout**, or the containers have
-  no dependencies at all. The entrypoint checks for `node_modules/.pnpm` and
-  exits with an explicit message rather than a deep pnpm/tsx stack.
-- **`better-sqlite3` is native**, compiled by that host install and loaded
-  inside `node:22-bookworm-slim`. If the host's Node major or libc differs,
-  rebuild it in the image instead:
-  `docker compose run --rm --entrypoint pnpm api install --frozen-lockfile`
+That install writes into the mounted checkout as uid 1000 (`USER node`), so the
+checkout must be writable by it: `sudo chown -R 1000:1000 <checkout>` on the
+host. If you'd rather not, install once by hand and the entrypoint stays quiet:
+
+```bash
+docker compose run --rm --user 0 --entrypoint pnpm api install --frozen-lockfile
+```
+
+Note this installs the **whole workspace** — editor, Vite, the WASM packages —
+not just the server's dependencies, because the mount is the whole monorepo.
 
 The mount is the repo **root**, not `apps/server`: `apps/server` is a workspace
 package whose `node_modules` are symlinks into `../../node_modules/.pnpm`, and

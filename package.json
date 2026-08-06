@@ -17,6 +17,8 @@
     "dev:editor": "turbo dev --filter=@archiyou/editor",
     "dev:server": "turbo dev --filter=@archiyou/server",
     "test": "turbo test",
+    "docker:prod": "docker compose up -d",
+    "docker:prod:down": "docker compose down",
     "build:wasm": "turbo build:wasm",
     "build:meshup": "pnpm --filter @archiyou/meshup build",
     "watch:meshup": "pnpm --filter @archiyou/meshup build -- --watch",

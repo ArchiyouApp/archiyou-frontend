@@ -95,20 +95,46 @@ jobs:
             caddy:2 caddy validate --config /etc/caddy/Caddyfile
 
       - name: Validate compose files
-        working-directory: apps/server
         run: |
           # `config` renders and schema-checks; the mount source only has to exist.
-          mkdir -p configurator-app/dist ../editor/dist
+          mkdir -p apps/editor/dist
+          # Prod stack, at the repo root (build context `.`).
           docker compose -f docker-compose.yml config >/dev/null
-          docker compose -f docker-compose.prod.yml config >/dev/null
+          # Dev stack, one level down (build context `../..`) — --project-directory
+          # so `env_file: .env` and ${VAR} interpolation resolve as they do in situ.
+          docker compose -f apps/server/docker-compose.yml \
+            --project-directory apps/server config >/dev/null
+
+      # Guards the move of the prod compose file to the repo root: every relative
+      # path in it must resolve INSIDE the repo. `context: ../..` left over from
+      # apps/server/ silently resolves to the parent of the checkout, and the
+      # build then fails on a missing Dockerfile.
+      - name: Prod compose paths must stay inside the repo
+        run: |
+          docker compose -f docker-compose.yml config \
+            | python3 -c '
+          import sys, yaml, os
+          cfg = yaml.safe_load(sys.stdin)
+          root = os.path.realpath(".")
+          bad = []
+          for name, svc in cfg.get("services", {}).items():
+              ctx = (svc.get("build") or {}).get("context")
+              if ctx:
+                  bad += [(name, "build.context", ctx)] * (not os.path.realpath(ctx).startswith(root))
+              for v in svc.get("volumes", []):
+                  if v.get("type") == "bind":
+                      src = v["source"]
+                      bad += [(name, "bind", src)] * (not os.path.realpath(src).startswith(root))
+          for svc, kind, p in bad:
+              print(f"::error::{svc}: {kind} {p} resolves outside the repo")
+          sys.exit(1 if bad else 0)'
 
       # The worker executes unsandboxed user scripts, so a compromise there must
       # not yield the token-signing key or the mail credentials. Checked against
       # the rendered config, not the YAML source.
       - name: Worker must not receive app secrets
-        working-directory: apps/server
         run: |
           pip install --quiet pyyaml
-          mkdir -p configurator-app/dist ../editor/dist
-          docker compose -f docker-compose.prod.yml config \
-            | python3 scripts/check-worker-env.py
+          mkdir -p apps/editor/dist
+          docker compose -f docker-compose.yml config \
+            | python3 apps/server/scripts/check-worker-env.py

@@ -152,26 +152,52 @@ Turning `strict` on for core is the last step, not the first.
 
 | File | Purpose |
 | --- | --- |
-| `apps/server/.env.example` | every server variable, with security notes |
+| `.env.example` | every server variable, with security notes |
 | `apps/editor/.env.example` | the single editor build-time variable |
 
 ## Deploying
 
-`apps/server/` contains a complete single-host deployment: Caddy (automatic
-HTTPS) in front of the API, the execution worker, Redis, and the built editor
-served as static files.
+The repo-root `docker-compose.yml` is a complete single-host deployment: Caddy
+(automatic HTTPS) in front of the API, the execution worker, Redis, and the built
+editor served as static files. It lives at the root rather than in `apps/server/`
+because it deploys the whole monorepo — it builds from the root context and
+mounts `apps/editor/dist` and `plugins/`. (`apps/server/docker-compose.yml` is
+the *development* stack: server + Redis only.)
 
 ```bash
 # 1. build the editor for a same-origin deployment
 SERVER_API_BASE_URL=/api pnpm --filter @archiyou/editor build
 
-# 2. configure the server
-cp apps/server/.env.example apps/server/.env
+# 2. configure the deployment
+cp .env.example .env
 #    set SERVER_JWT_SECRET (openssl rand -base64 48), FRONTEND_URL, REDIS_PASW
 
-# 3. point the hostnames in apps/server/Caddyfile at your domain, then:
-pnpm --filter @archiyou/server docker:prod
+# 3. point the hostnames in Caddyfile at your domain, then:
+pnpm docker:prod          # == docker compose up -d
 ```
+
+### What runs from where
+
+| Runs from | Mounted into | Rebuild needed? |
+| --- | --- | --- |
+| `apps/editor/dist` | caddy `/srv/app` | no — rebuild the SPA, reload |
+| `plugins/` | caddy `/srv/plugins` | no |
+| `Caddyfile` | caddy `/etc/caddy` | no — `docker compose restart caddy` |
+| `apps/server/` | api `/repo/apps/server` | no |
+| everything else | *baked into the image* | yes |
+
+So a server code deploy is `git pull && docker compose restart api`, and
+`docker compose build` is only for dependency changes. The image still holds a
+full source copy, so it stays runnable on its own — the mount shadows it.
+
+Both `env_file:` and `${REDIS_PASW}` interpolation resolve relative to the
+compose file, so the `.env` belongs at the **repo root**. A missing one is quiet,
+not loud: `${REDIS_PASW}` becomes an empty string and Redis starts with
+`--requirepass ""`.
+
+The compose project is pinned to `name: archiyou`, so the `server_data` and
+`redis_data` volumes keep the same names regardless of what the checkout
+directory is called. Don't remove it — a rename orphans the SQLite database.
 
 One host serves the editor and proxies `/api/*` to the server, so there is no
 cross-origin traffic and CORS never applies. Database migrations run
@@ -201,17 +227,17 @@ file is fully checkpointed and self-contained. Every snapshot is opened and
 `MANIFEST.json` records what it contained, which migration the database matches,
 and the row counts.
 
-Configure the `SERVER_BACKUP_*` block in `apps/server/.env` (see
-[`.env.example`](apps/server/.env.example)), then **verify before scheduling**:
+Configure the `SERVER_BACKUP_*` block in the root `.env` (see
+[`.env.example`](.env.example)), then **verify before scheduling**:
 
 ```bash
-cd apps/server
+# from the repo root
 # what would be included, and where it would go
-docker compose -f docker-compose.prod.yml exec api pnpm admin:backup --list
+docker compose exec api pnpm admin:backup --list
 # validates credentials, endpoint and checksum settings — writes nothing
-docker compose -f docker-compose.prod.yml exec api pnpm admin:backup --dry
+docker compose exec api pnpm admin:backup --dry
 # the real thing
-docker compose -f docker-compose.prod.yml exec api pnpm admin:backup
+docker compose exec api pnpm admin:backup
 ```
 
 Then schedule it from the **host** crontab (`crontab -e` as the user who owns the
@@ -219,14 +245,14 @@ deploy):
 
 ```cron
 MAILTO=you@example.com
-17 3 * * * cd /opt/archiyou/apps/server && /usr/bin/docker compose -f docker-compose.prod.yml exec -T api pnpm admin:backup >> /var/log/archiyou-backup.log 2>&1
+17 3 * * * cd /opt/archiyou && /usr/bin/docker compose exec -T api pnpm admin:backup >> /var/log/archiyou-backup.log 2>&1
 ```
 
 Four things reliably go wrong here:
 
 - **`-T` is mandatory.** Cron has no TTY, and `exec` without it fails with
   "the input device is not a TTY".
-- **`cd` into `apps/server` first.** Compose resolves `.env` and relative paths
+- **`cd` into the repo root first.** Compose resolves `.env` and relative paths
   from the compose file's directory; cron's working directory is `$HOME`.
 - **Use an absolute `/usr/bin/docker`.** Cron's `PATH` is minimal.
 - **A target must be visible inside the `api` container.** `exec` runs in the
@@ -272,18 +298,22 @@ cat restore/MANIFEST.json     # which targets it holds; `migrations` must match 
 sqlite3 restore/db/archiyou.db "PRAGMA integrity_check;"
 sqlite3 restore/db/archiyou.db "select count(*) from users; select count(*) from script_versions;"
 
-# 3. stop the stack so nothing holds the database file
-docker compose -f docker-compose.prod.yml down
+# 3. stop the stack so nothing holds the database file (from the repo root)
+docker compose down
 
-# 4. write each target back to its declared path inside the volume
-docker run --rm -v server_data:/data -v "$PWD/restore:/restore:ro" alpine sh -c '
+# 4. write each target back to its declared path inside the volume.
+#    The volume is `archiyou_server_data`, not `server_data` — compose prefixes
+#    it with the project name (`name: archiyou`). Naming it wrong here does not
+#    error; docker just creates an empty volume and the restore silently no-ops.
+#    Confirm with: docker volume ls | grep server_data
+docker run --rm -v archiyou_server_data:/data -v "$PWD/restore:/restore:ro" alpine sh -c '
   cp /restore/db/archiyou.db /data/archiyou.db &&
   rm -f /data/archiyou.db-wal /data/archiyou.db-shm &&
   rm -rf /data/thumbnails && cp -a /restore/thumbnails /data/thumbnails &&
   chown -R 1000:1000 /data'
 
 # 5. back up
-docker compose -f docker-compose.prod.yml up -d
+docker compose up -d
 ```
 
 Step 4's `rm -f *-wal *-shm` is not optional: the restored file is already

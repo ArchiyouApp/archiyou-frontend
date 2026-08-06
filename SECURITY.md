@@ -34,7 +34,7 @@ Server-side execution is therefore **disabled by default**. `POST
 must appear in `SERVER_EXECUTION_AUTHORS`, which ships empty. Only add authors
 whose code you are willing to run on that machine.
 
-If you enable it, keep the hardening in `docker-compose.prod.yml`: the worker runs
+If you enable it, keep the hardening in the root `docker-compose.yml`: the worker runs
 as a non-root user with all capabilities dropped, gets `cpus`/`mem_limit`/
 `pids_limit`, and is deliberately given a minimal environment that excludes
 `SERVER_JWT_SECRET` and the Mailgun key.
@@ -88,8 +88,9 @@ if you do not need arbitrary hosts.
       The server refuses to boot in production without it.
 - [ ] `SERVER_EXECUTION_AUTHORS` left empty unless you truly need server-side
       execution.
-- [ ] `REDIS_PASW` set — without it, `docker-compose.prod.yml` starts Redis with
-      no password.
+- [ ] `REDIS_PASW` set **in the repo-root `.env`** — that is where compose reads
+      it from, and without it the root `docker-compose.yml` starts Redis with
+      `--requirepass ""`, i.e. no password. Compose only warns; it does not fail.
 - [ ] `SERVER_SEED_TEST_USER` **not** set in production, so the `test` account is
       never created.
 - [ ] `FRONTEND_URL` set to your real origin; it drives the CORS allowlist and the

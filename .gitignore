@@ -1,7 +1,11 @@
 node_modules
 dist
+# allow dist for editor app for now 
+!/apps/editor/dist
+
 *.db*
 /tmp
+caddy/
 
 # Build caches
 .turbo
@@ -25,3 +29,6 @@ target/
 *.svg
 *.glb
 *.gltf
+
+.claude/
+

@@ -22,7 +22,7 @@
 #
 # Replace app.archiyou.com with your own domain.
 # ─────────────────────────────────────────────────────────────────────────────
-app.archiyou.com {
+next.archiyou.com {
 	encode zstd gzip
 
 	# --- API (prefix stripped) ---

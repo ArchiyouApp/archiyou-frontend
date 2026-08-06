@@ -181,6 +181,119 @@ database and the execution result cache.
 Work through the checklist at the end of [SECURITY.md](SECURITY.md) before
 exposing an instance to the internet.
 
+### Backups
+
+`pnpm admin:backup` uploads one timestamped `tar.gz` to any S3-compatible bucket
+(AWS, Hetzner, Cloudflare R2, Backblaze B2, DigitalOcean Spaces, MinIO).
+
+**What is in it** is the `backupTargets` list in `apps/server/src/config.ts` —
+the SQLite database and the thumbnail SVGs today. That list is the authoritative
+answer, and **anything not on it is treated as regenerable and will be lost on
+host failure**. When a new kind of durable asset appears, add a line there; the
+script needs no other change. `SERVER_BACKUP_EXTRA_PATHS=name:path,…` adds one
+without touching code. Deliberately excluded: `data/cache` (regenerable execution
+results) and the SQLite `-wal`/`-shm` sidecars.
+
+The database is snapshotted with SQLite's online backup API, so this is safe to
+run against a live server and needs **no manual WAL checkpoint** — the archived
+file is fully checkpointed and self-contained. Every snapshot is opened and
+`PRAGMA integrity_check`ed before it is uploaded, and the archive's
+`MANIFEST.json` records what it contained, which migration the database matches,
+and the row counts.
+
+Configure the `SERVER_BACKUP_*` block in `apps/server/.env` (see
+[`.env.example`](apps/server/.env.example)), then **verify before scheduling**:
+
+```bash
+cd apps/server
+# what would be included, and where it would go
+docker compose -f docker-compose.prod.yml exec api pnpm admin:backup --list
+# validates credentials, endpoint and checksum settings — writes nothing
+docker compose -f docker-compose.prod.yml exec api pnpm admin:backup --dry
+# the real thing
+docker compose -f docker-compose.prod.yml exec api pnpm admin:backup
+```
+
+Then schedule it from the **host** crontab (`crontab -e` as the user who owns the
+deploy):
+
+```cron
+MAILTO=you@example.com
+17 3 * * * cd /opt/archiyou/apps/server && /usr/bin/docker compose -f docker-compose.prod.yml exec -T api pnpm admin:backup >> /var/log/archiyou-backup.log 2>&1
+```
+
+Four things reliably go wrong here:
+
+- **`-T` is mandatory.** Cron has no TTY, and `exec` without it fails with
+  "the input device is not a TTY".
+- **`cd` into `apps/server` first.** Compose resolves `.env` and relative paths
+  from the compose file's directory; cron's working directory is `$HOME`.
+- **Use an absolute `/usr/bin/docker`.** Cron's `PATH` is minimal.
+- **A target must be visible inside the `api` container.** `exec` runs in the
+  already-running container, which has `env_file: .env` and the `server_data`
+  volume — so `SERVER_BACKUP_*` and `data/` are already there. A new asset path
+  *outside* that volume must also be mounted into the `api` service, or the
+  script cannot see it.
+
+If the stack may be down at that hour, use `run --rm -T api pnpm admin:backup`
+instead — same env and volume, in a throwaway container.
+
+Exit codes matter, because they are what reaches `MAILTO`:
+
+| Code | Meaning |
+|---|---|
+| `0` | Uploaded, and any pruning completed. |
+| `1` | **Backup failed — no new archive exists.** This is the one that should wake you. |
+| `2` | Misconfigured (missing bucket/credentials, unusable targets). Nothing was attempted. |
+| `3` | The archive is safe; only pruning failed. Look at it Monday. |
+
+**Retention.** After a *successful* upload, archives older than
+`SERVER_BACKUP_KEEP_DAYS` (default 30) are deleted. The pruner only ever touches
+keys matching its own exact `archiyou-YYYYMMDD-HHmmss.tar.gz` pattern under its
+own prefix, always keeps the newest `SERVER_BACKUP_MIN_KEEP` regardless of age,
+never empties the prefix, and never deletes more than
+`SERVER_BACKUP_MAX_DELETE` in one run. Instances sharing a bucket must use
+different `SERVER_BACKUP_S3_PREFIX` values or they will prune each other.
+
+Note the same credentials upload *and* delete, so a compromised server can erase
+its own history. If your provider supports lifecycle rules, the stronger setup is
+`SERVER_BACKUP_PRUNE=false` plus a bucket lifecycle rule and a write-only key.
+
+#### Restoring
+
+```bash
+# 1. fetch and inspect — this touches nothing
+aws s3 --endpoint-url "$ENDPOINT" cp "s3://$BUCKET/$PREFIX/archiyou-20260806-031500.tar.gz" .
+tar tzf archiyou-20260806-031500.tar.gz
+mkdir restore && tar xzf archiyou-20260806-031500.tar.gz -C restore --strip-components=1
+
+# 2. VERIFY BEFORE TOUCHING PRODUCTION
+cat restore/MANIFEST.json     # which targets it holds; `migrations` must match this code
+sqlite3 restore/db/archiyou.db "PRAGMA integrity_check;"
+sqlite3 restore/db/archiyou.db "select count(*) from users; select count(*) from script_versions;"
+
+# 3. stop the stack so nothing holds the database file
+docker compose -f docker-compose.prod.yml down
+
+# 4. write each target back to its declared path inside the volume
+docker run --rm -v server_data:/data -v "$PWD/restore:/restore:ro" alpine sh -c '
+  cp /restore/db/archiyou.db /data/archiyou.db &&
+  rm -f /data/archiyou.db-wal /data/archiyou.db-shm &&
+  rm -rf /data/thumbnails && cp -a /restore/thumbnails /data/thumbnails &&
+  chown -R 1000:1000 /data'
+
+# 5. back up
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Step 4's `rm -f *-wal *-shm` is not optional: the restored file is already
+checkpointed, and leaving the *previous* database's WAL beside it is how a
+restore turns into a second incident. `1000:1000` is the `node` user the
+container runs as — a root-owned database file breaks the API on boot.
+
+Run steps 1–2 against a scratch directory once a quarter. An untested restore is
+not a backup.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and small focused pull

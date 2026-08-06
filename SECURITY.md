@@ -95,6 +95,18 @@ if you do not need arbitrary hosts.
 - [ ] `FRONTEND_URL` set to your real origin; it drives the CORS allowlist and the
       links in outgoing email.
 - [ ] `SERVER_PROXY_ALLOWLIST` considered.
-- [ ] Off-box backups of the SQLite file. Checkpoint the WAL first
-      (`PRAGMA wal_checkpoint(TRUNCATE);`) — copying only the `.db` while a `-wal`
-      exists loses recent writes.
+- [ ] Off-box backups configured (`SERVER_BACKUP_S3_*`) and the cron line from
+      [README → Backups](README.md#backups) installed. `pnpm admin:backup` takes a
+      consistent snapshot with SQLite's online backup API, so no manual WAL
+      checkpoint is needed — but do **not** roll your own by copying `archiyou.db`
+      while a `-wal` sits next to it: that silently loses every write still in the
+      WAL, which is routinely megabytes.
+- [ ] Everything durable is actually on the list. `backupTargets` in
+      `apps/server/src/config.ts` decides what is archived; anything absent is
+      treated as regenerable and will be lost with the host.
+- [ ] The restore procedure run once, against a scratch copy. An untested restore
+      is not a backup.
+- [ ] Backup credentials scoped as tightly as your provider allows. The script
+      deletes old archives with the same key it uploads with, so a compromised
+      server can erase its own history; prefer `SERVER_BACKUP_PRUNE=false` plus a
+      bucket lifecycle rule and a write-only key where that is available.

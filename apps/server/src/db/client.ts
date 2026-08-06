@@ -11,9 +11,11 @@ import { dirname, resolve } from 'node:path';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 
+import { config } from '../config';
+
 import * as schema from './schema';
 
-export const DATABASE_FILE = resolve(process.env.SERVER_DATABASE_FILE ?? './data/archiyou.db');
+export const DATABASE_FILE = resolve(config.databaseFile);
 
 // Ensure the parent directory exists before better-sqlite3 opens the file.
 const dir = dirname(DATABASE_FILE);

@@ -69,9 +69,14 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      # server files are mounted in the container for easy update.
-      # SERVER_DATABASE_FILE=./data/archiyou.db resolves relative to it.
-      - ./apps/server:/repo/apps/server
+      # The image ships no code (see apps/server/Dockerfile): the whole monorepo
+      # checkout is mounted, so a deploy is `git pull` + `docker compose restart`.
+      # It must be the repo ROOT, not just apps/server — apps/server is a workspace
+      # package whose node_modules are symlinks into ../../node_modules/.pnpm, and
+      # pnpm needs the root package.json + pnpm-workspace.yaml + lockfile.
+      # The container WORKDIR is /archiyou/apps/server, so
+      # SERVER_DATABASE_FILE=./data/archiyou.db resolves to apps/server/data.
+      - ./:/archiyou
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -88,11 +93,15 @@ services:
   #   - non-root (USER node in the Dockerfile), all capabilities dropped
   #   - cpu/memory/pid ceilings, because the in-process execution timeout cannot
   #     interrupt a tight synchronous loop (see ExecutionWorker.executeWithTimeout)
+  # Disabled for now — uncomment to enable server-side execution.
   #worker:
   #  build:
   #    context: .
   #    dockerfile: apps/server/Dockerfile
   #  container_name: archiyou-worker
+  #  # Runs from WORKDIR /archiyou/apps/server, so this is @archiyou/server's
+  #  # `worker` script. From the workspace root the same line fails with
+  #  # ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL ("Command \"worker\" not found").
   #  command: pnpm worker
   #  environment:
   #    - NODE_ENV=production
@@ -101,6 +110,11 @@ services:
   #    - SERVER_REDIS_PASSWORD=${REDIS_PASW}
   #    - SERVER_EXECUTION_TIMEOUT_MS=${SERVER_EXECUTION_TIMEOUT_MS:-30000}
   #    - WORKER_ID=worker
+  #  volumes:
+  #    # Same code mount as api. Read-only: the worker runs untrusted user
+  #    # scripts and has no reason to write to the checkout — it takes jobs from
+  #    # Redis and returns results there, never touching the SQLite DB.
+  #    - ./:/archiyou:ro
   #  depends_on:
   #    redis:
   #      condition: service_healthy

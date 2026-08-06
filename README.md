@@ -158,8 +158,9 @@ Turning `strict` on for core is the last step, not the first.
 ## Deploying
 
 The repo-root `docker-compose.yml` is a complete single-host deployment: Caddy
-(automatic HTTPS) in front of the API, the execution worker, Redis, and the built
-editor served as static files. It lives at the root rather than in `apps/server/`
+(automatic HTTPS) in front of the API, Redis, and the built editor served as
+static files. The BullMQ execution worker is defined there too but commented
+out — uncomment the `worker` service to enable server-side execution. It lives at the root rather than in `apps/server/`
 because it deploys the whole monorepo — it builds from the root context and
 mounts `apps/editor/dist` and `plugins/`. (`apps/server/docker-compose.yml` is
 the *development* stack: server + Redis only.)
@@ -168,11 +169,15 @@ the *development* stack: server + Redis only.)
 # 1. build the editor for a same-origin deployment
 SERVER_API_BASE_URL=/api pnpm --filter @archiyou/editor build
 
-# 2. configure the deployment
+# 2. install dependencies IN THE CHECKOUT — the api container runs from the
+#    mounted repo and has no node_modules of its own (see below)
+pnpm install --frozen-lockfile
+
+# 3. configure the deployment
 cp .env.example .env
 #    set SERVER_JWT_SECRET (openssl rand -base64 48), FRONTEND_URL, REDIS_PASW
 
-# 3. point the hostnames in Caddyfile at your domain, then:
+# 4. point the hostnames in Caddyfile at your domain, then:
 pnpm docker:prod          # == docker compose up -d
 ```
 
@@ -183,26 +188,53 @@ pnpm docker:prod          # == docker compose up -d
 | `apps/editor/dist` | caddy `/srv/app` | no — rebuild the SPA, reload |
 | `plugins/` | caddy `/srv/plugins` | no |
 | `Caddyfile` | caddy `/etc/caddy` | no — `docker compose restart caddy` |
-| `apps/server/` | api `/repo/apps/server` | no |
-| everything else | *baked into the image* | yes |
+| the whole checkout | api `/archiyou` | no |
 
-So a server code deploy is `git pull && docker compose restart api`, and
-`docker compose build` is only for dependency changes. The image still holds a
-full source copy, so it stays runnable on its own — the mount shadows it.
+The `apps/server/Dockerfile` image contains **no application code and no
+`node_modules`** — just Node, pnpm and a build toolchain. Everything it runs
+comes from the bind-mounted checkout, so a deploy is
+`git pull && docker compose restart api`, and `docker compose build` is
+needed only when the base image itself changes.
+
+Two things follow from that, and both bite silently if missed:
+
+- **`pnpm install` must have been run in the checkout**, or the containers have
+  no dependencies at all. The entrypoint checks for `node_modules/.pnpm` and
+  exits with an explicit message rather than a deep pnpm/tsx stack.
+- **`better-sqlite3` is native**, compiled by that host install and loaded
+  inside `node:22-bookworm-slim`. If the host's Node major or libc differs,
+  rebuild it in the image instead:
+  `docker compose run --rm --entrypoint pnpm api install --frozen-lockfile`
+
+The mount is the repo **root**, not `apps/server`: `apps/server` is a workspace
+package whose `node_modules` are symlinks into `../../node_modules/.pnpm`, and
+pnpm needs the root `package.json`, `pnpm-workspace.yaml` and lockfile. The
+containers' `WORKDIR` is `/archiyou/apps/server`, which is what makes `pnpm
+start` / `pnpm worker` resolve (from the workspace root they fail with
+`ERR_PNPM_NO_SCRIPT_OR_SERVER` and `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL`) and
+what makes `SERVER_DATABASE_FILE=./data/archiyou.db` land in `apps/server/data`.
+That directory is written by uid 1000 (`USER node`): `chown -R 1000:1000
+apps/server/data` on the host if the checkout is owned by someone else.
 
 Both `env_file:` and `${REDIS_PASW}` interpolation resolve relative to the
 compose file, so the `.env` belongs at the **repo root**. A missing one is quiet,
 not loud: `${REDIS_PASW}` becomes an empty string and Redis starts with
 `--requirepass ""`.
 
-The compose project is pinned to `name: archiyou`, so the `server_data` and
-`redis_data` volumes keep the same names regardless of what the checkout
-directory is called. Don't remove it — a rename orphans the SQLite database.
+The compose project is pinned to `name: archiyou`, so the `redis_data` volume
+keeps the same name regardless of what the checkout directory is called. Don't
+remove the pin — a rename orphans the queue's persisted state.
+
+**The SQLite database is a plain host directory now, not a Docker volume**: it
+lives at `apps/server/data/` in the checkout, via the code mount. Back that
+directory up (see below) and never `git clean -x` it. The `server_data` volume
+is still declared in `docker-compose.yml` but nothing mounts it — the
+volume-based restore recipe further down applies only to deployments that
+predate the bind mount.
 
 One host serves the editor and proxies `/api/*` to the server, so there is no
 cross-origin traffic and CORS never applies. Database migrations run
-automatically on boot. Persist the `server_data` volume — it holds the SQLite
-database and the execution result cache.
+automatically on boot.
 
 Work through the checklist at the end of [SECURITY.md](SECURITY.md) before
 exposing an instance to the internet.

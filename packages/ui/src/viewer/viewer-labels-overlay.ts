@@ -239,6 +239,9 @@ export class ViewerLabelsOverlay extends LitElement
 
       --ay-dim-bg: var(--color-bg, #fff);
       --ay-dim-color: var(--color-text, #1e293b);
+      /* Dimension values read smaller than shape labels — they sit on the
+         drawing itself, so keep them unobtrusive. */
+      --ay-dim-font-size: 0.625rem;
 
       /* Leader line — its own style, matches the label border color */
       --ay-leader-color: var(--ay-label-border-color);
@@ -278,6 +281,7 @@ export class ViewerLabelsOverlay extends LitElement
 
     /* Dimension value text — background matches the viewer, no shadow */
     .ay-label--dimension {
+      font-size: var(--ay-dim-font-size);
       color: var(--ay-dim-color);
       background: var(--ay-dim-bg);
       border: none;
@@ -316,6 +320,10 @@ export class ViewerLabelsOverlay extends LitElement
     }
     .ay-label--editing:focus {
       border-color: var(--ay-label-color);
+    }
+    /* Editing a dimension keeps the (smaller) dimension text size */
+    .ay-label--dimension.ay-label--editing {
+      font-size: var(--ay-dim-font-size);
     }
 
     /* Leader line from the anchor to the label box */

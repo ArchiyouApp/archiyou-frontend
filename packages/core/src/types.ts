@@ -18,6 +18,7 @@ import type { ParamOperation, ScriptParamData, ManagedBehavioursData } from "./e
 import type { Console } from "./console/Console";
 import type { Runner } from "./runner/Runner";
 import type { MaterialManager } from "./materials/MaterialManager";
+import type { ModuleRegistry } from "./modules/ModuleRegistry";
 import type { SceneNodeData } from "./modeler/types";
 
 
@@ -31,6 +32,10 @@ export interface ArchiyouModules
     interactor: Interactor,
     runner: Runner,
     materials: MaterialManager
+    /** Optional, separately-distributed script modules (see src/modules/). Lets
+     *  one module reach another, and the built-ins reach modules. Undefined in
+     *  contexts that build an ArchiyouModules without a Runner. */
+    modules?: ModuleRegistry,
     // modeling kernels
     oc?: any, // OpenCascade (BREP)
     meshup?: any, // Meshup (mesh/curve)

@@ -29,6 +29,7 @@ import type { RunnerActiveScope,
 
 
 import { RunnerComponentImporter } from './RunnerComponentImporter'; // helper for importing components in scope
+import { extractTopLevelComponentCalls, extractFirstArg, type ComponentCall } from './componentRefs'; // $component() reference parsing (shared with the editor)
 import { Importer as AssetImporter } from '../importer/Importer'; // $import: fetch+parse remote assets
 import type { AssetPayload } from '../importer/Importer';
 
@@ -57,6 +58,7 @@ import { Interactor } from '../interaction/Interactor';
 import { Calc } from '../calc/Calc';
 import { Docs } from '../docs/Docs';
 import { MaterialManager } from '../materials/MaterialManager';
+import { ModuleRegistry } from '../modules/ModuleRegistry'; // optional, entitlement-gated script modules
 
 // Settings
 import { MODELER_METHODS_INTO_GLOBAL, SCRIPT_OUTPUT_GLTF_OPTIONS_DEFAULT } from '../constants'; 
@@ -76,7 +78,19 @@ export class Runner
 
     private _linkedComponentScripts: Array<Script> = [];
     private _componentScripts: Record<string, Script> = {}; // prefetched component scripts by name=url=path
+    /** Where to look up a $component('./name') that nothing linked in — the author's
+     *  shared library. Set per run from the request (componentLibraryUrl + the script's
+     *  author); null in the editor, where local scripts are linked instead. */
+    private _componentLibrary: { url: string; author: string } | null = null;
+    /** In-flight/settled shared-library lookups by local component name. A script that
+     *  uses the same component four times (and the double prefetch on execute) must not
+     *  cause four fetches — and a miss must be remembered as a miss. */
+    private _sharedComponentFetches: Record<string, Promise<Script|null>> = {};
     private _importAssets: Record<string, AssetPayload> = {}; // prefetched $import() assets by url (raw bytes)
+    /** Optional script modules (see src/modules/). Persistent like _interactor:
+     *  it caches loaded module instances so editor re-runs don't re-fetch a
+     *  bundle. Empty and inert unless the request carries a module catalog. */
+    private _moduleRegistry: ModuleRegistry = new ModuleRegistry();
     private _pipelines:Array<Pipeline> = []; // keep track of defined pipelines
     _pipelineExports:Array<any> = []; // HACK: if we want to dump some outputs - for example in pipelines (see calc.gsheets pipeline)
 
@@ -118,8 +132,6 @@ export class Runner
      * */
     createScope(name:string='default'):this
     {
-        const BASIC_SCOPE = { console: console };
-
         // Capture the scope we are nesting inside before buildLocalExecScopeState() swaps
         // globalThis.console for the new scope's Console.
         const parentScope = (name !== 'default') ? this._localScopes[this._activeScope?.name] : undefined;
@@ -127,6 +139,10 @@ export class Runner
         const state = this.buildLocalExecScopeState();
         state._scope = name; // set name of the scope inside scope
         state._main = (name === 'default'); // is this the main scope
+
+        // Fallback only: _addModulesToScopeState() already points this at the scope's own
+        // Console. Kept so a scope built without that step still has a usable console.
+        state.console ??= console;
 
         state._archiyou.console.setParent(parentScope?._archiyou?.console);
 
@@ -153,7 +169,25 @@ export class Runner
 
         */
 
-        const scope = new Proxy({ ...BASIC_SCOPE, ...state }, 
+        /*  The Proxy MUST wrap `state` itself, never a copy of it.
+
+            This used to be `new Proxy({ ...BASIC_SCOPE, ...state }, ...)`, which made the
+            scope a shallow *snapshot* of the state taken at build time. Everything assigned
+            to the scope afterwards — most importantly `scope.$PARAMS` and `scope._paramManager`
+            in _executionStartRunInScope(), plus every variable the user's script declares —
+            landed only on that copy. Meanwhile the in-scope helpers built by
+            buildLocalExecScopeState() ($import, $module, print, …) close over `state`, so
+            they could never see any of it: `state.$PARAMS` was permanently undefined.
+
+            That was silent rather than loud: anything reading $PARAMS through a closure — the
+            optimizer module does, via getActiveScope() — saw an empty param set and reported
+            "nothing to optimize" on a script that plainly had params. Sharing one object means
+            a closure over `state` and a read through the scope always agree.
+        */
+        // Indexed as a loose bag inside the traps: a scope holds whatever the user's script
+        // declares, and Proxy keys are `string | symbol`. `scope` stays RunnerScriptScope-typed
+        // below — this cast only widens the target for the trap bodies.
+        const scope = new Proxy(state as Record<string|symbol, any>,
         {
             has: () => true, // Allows access to any variable (avoids ReferenceError) - this enabled users to omit var/let/const
             get: (target, key) => target[key], // Retrieves values from scope
@@ -249,6 +283,10 @@ export class Runner
             docs: new Docs(), // TODO: settings with proxy
             materials: new MaterialManager(),
             runner: this,
+            // Shared across scopes, not rebuilt per run: it caches loaded module
+            // instances, which may hold expensive resources. Per-run cleanup is
+            // the module's own reset(), called from linkToArchiyou().
+            modules: this._moduleRegistry,
         } as ArchiyouModules
 
         archiyou.modeler.setArchiyou(archiyou);
@@ -308,17 +346,35 @@ export class Runner
             doc: state._archiyou.docs, // alias - backwards compatibility
             calc: state._archiyou.calc,
             materials: state._archiyou.materials,
-            exporter: state._archiyou.exporter,
             make: state._archiyou.modeler.make, // Make lives on Modeler, not directly on ArchiyouModules
             interactor: state._archiyou.interactor,
-            // add services too
-            services: state._archiyou.services,
-        });       
+        });
+
+        // Optional, separately-distributed script modules (see src/modules/).
+        // Resolved earlier by _prepareModules() during execute(), because loading
+        // a bundle is async and this is not. Nothing is added when the run has no
+        // entitled modules, which is the case for every default build.
+        this._addScriptModulesToScopeState(state);
 
         // setup logging
         this._addLoggingToScopeState(state);
-        
+
         return state; // update remains the same
+    }
+
+    /** Bind resolved script modules into the scope and hand each the engine
+     *  back-reference, the same way initLocalArchiyou() wires the built-ins. */
+    _addScriptModulesToScopeState(state:Record<string,any>):Record<string,any>
+    {
+        const globals = this._moduleRegistry.globals();
+        const names = Object.keys(globals);
+        if(names.length === 0) return state;
+
+        console.info(`Runner::_addScriptModulesToScopeState(): Adding script module(s): ${names.join(', ')}`);
+        Object.assign(state, globals);
+        this._moduleRegistry.linkToArchiyou(state._archiyou);
+
+        return state;
     }
 
     _addLoggingToScopeState(state:Record<string,any>):Record<string,any>
@@ -329,8 +385,10 @@ export class Runner
 
         globalThis.console = state.console;
 
-        state.print = (m:string) => state.console.user(m);
-        state.log = (m:string) => state.console.info(m);
+        // like console.log(): any value, any number of arguments - Objects are printed
+        // as data ({ width: 10, height: 100 }), not as '[object Object]'
+        state.print = (...messages:Array<any>) => state.console.user(...messages);
+        state.log = (...messages:Array<any>) => state.console.info(...messages);
         
         return state;
     }
@@ -383,6 +441,29 @@ export class Runner
             this.pipeline(name, func);
         }
 
+        // Declare a script module (see docs/modules.md). Returns the module, so
+        // both forms work:
+        //
+        //     $module('cloudcalc')                  // declare; use the global
+        //     cc = $module('cloudcalc')             // declare and alias
+        //
+        // Synchronous, like $import: the module was resolved by _prepareModules()
+        // before the run. Throws HERE if it is unavailable, which is the point —
+        // the script stops at its declaration rather than partway through
+        // building a model it cannot finish.
+        //
+        // NOTE: deliberately not folded into $import(), which means "fetch a
+        // remote asset by URL". One name for two unrelated jobs would make every
+        // failure ambiguous: a bad URL and a missing module would report alike.
+        state.$module = (name:string) =>
+        {
+            if(typeof name !== 'string' || !name.trim())
+            {
+                throw new Error(`$module(): needs a module name, e.g. $module('cloudcalc')`);
+            }
+            return this._moduleRegistry.resolve(name.trim());
+        };
+
         // Shortcut to create a new interaction Handle.
         // Use .start(target) for initial placement, .at(target) for every-run push.
         state.$handle = () => state._archiyou.interactor.addHandle();
@@ -405,6 +486,7 @@ export class Runner
                 console: state._archiyou.console,
             });
         };
+
     }
 
     //// PIPELINES ////
@@ -511,6 +593,10 @@ export class Runner
         // Pre-fetch remote assets referenced by $import('url') so the in-scope
         // $import() can resolve them synchronously (no await in user scripts).
         await this._prefetchImportAssets(request);
+
+        // Same reasoning for script modules: a gated bundle is fetched here so
+        // that building the scope stays synchronous.
+        await this._prepareModules(request);
 
         console.info(`==== Runner::execute() - prefetched components: ${Object.keys(this._componentScripts).length } ====`);
         Object.entries(this._componentScripts).forEach(([name, script]) => {
@@ -961,6 +1047,7 @@ ${description === '***** CODE ****\nUnexpected end of input' ? code : ''}
 
         await this._prefetchComponentScripts(request); // idempotent; needed when called via executeUrl()
         await this._prefetchImportAssets(request);      // idempotent; $import() assets for the direct path
+        await this._prepareModules(request);            // idempotent; script modules for the direct path
 
         const executeStartTime = performance.now();
 
@@ -1259,11 +1346,23 @@ ${contextLines.join('\n')}
             See Runner._prepareComponentScript(name) for actual fetching logic
 
         */
-        let scriptCode = (typeof request === 'string') 
-                            ? request 
+        let scriptCode = (typeof request === 'string')
+                            ? request
                             : (Script.isScript(request))
-                                ? request.code 
+                                ? request.code
                                 : request?.script?.code;
+
+        // Capture the fallback library for this run. Only a top-level execution request
+        // carries it; the recursive calls below pass a Script, which must keep resolving
+        // against the SAME author (a component's own components live in that author's
+        // workspace too, not in the visitor's).
+        // NOTE: _sharedComponentFetches is deliberately NOT cleared here. execute() prefetches
+        // twice (see the executeUrl() path), and a configurator re-runs on every param change —
+        // all of which would otherwise refetch the same unchanged components over the network.
+        if(level === 0)
+        {
+            this._componentLibrary = this._getComponentLibraryFromRequest(request);
+        }
 
         if(!scriptCode)
         {
@@ -1325,6 +1424,42 @@ ${contextLines.join('\n')}
         console.log(`Runner::_prefetchComponentScripts(): Fetched ${Object.keys(this._componentScripts).length} component scripts: ${Object.keys(this._componentScripts).join(', ')}`);
 
         return { scripts: this._componentScripts, missing }; // return all fetched component scripts
+    }
+
+    //// SCRIPT MODULES ////
+
+    /** Public accessor, so apps and tests can inspect or configure the registry
+     *  without reaching into a private field. */
+    get modules():ModuleRegistry { return this._moduleRegistry; }
+
+    /** Resolve the script modules this run may use.
+     *
+     *  Same two-phase trick as _prefetchImportAssets(): the async work (fetching a
+     *  gated bundle, and any module's own init()) happens out here, so the scope —
+     *  which is built synchronously — can just read the result. Never throws;
+     *  a module that cannot be resolved becomes a stub that explains itself when
+     *  the script touches it. */
+    async _prepareModules(request:string|Script|RunnerScriptExecutionRequest):Promise<void>
+    {
+        const code = (typeof request === 'string')
+                        ? request
+                        : (Script.isScript(request))
+                            ? request.code
+                            : request?.script?.code;
+
+        const catalog = (typeof request === 'object' && request !== null && 'modules' in request)
+                            ? (request as RunnerScriptExecutionRequest).modules
+                            : undefined;
+
+        if(!code || !catalog?.length) return;
+
+        const req = request as RunnerScriptExecutionRequest;
+        this._moduleRegistry.setOptions({
+            moduleApiUrl: req.moduleApiUrl ?? '',
+            authToken: req.authToken,
+        });
+
+        await this._moduleRegistry.prepare(code, catalog);
     }
 
     //// $import ASSETS ////
@@ -1452,6 +1587,11 @@ ${contextLines.join('\n')}
                 console.info(`$component('${path}')::_prepareComponentScript(): Resolved against linked component '${linked.name}'.`);
                 return linked;
             }
+            // Nothing linked: a published configurator, where the visitor holds no copy of
+            // the author's workspace. Fall back to the author's shared library.
+            const shared = await this._getSharedComponentScript(localName);
+            if (shared) return shared;
+
             console.warn(`$component('${path}')::_prepareComponentScript(): No linked component matched local name '${localName}'.`);
             return null;
         }
@@ -1481,11 +1621,84 @@ ${contextLines.join('\n')}
                 console.info(`$component('${path}')::_prepareComponentScript(): Resolved bare name against linked component '${linked.name}'.`);
                 return linked;
             }
-            return null;
+            return await this._getSharedComponentScript(localName); // same fallback as './name'
         }
         else {
             return null;
         }
+    }
+
+    //// COMPONENTS FROM THE AUTHOR'S SHARED LIBRARY ////
+
+    /** The shared-library fallback for this run, or null when the request cannot describe
+     *  one. Needs both halves: where the backend is (componentLibraryUrl, possibly '' for
+     *  a root-relative same-origin call) and whose workspace to look in (the script's
+     *  author). A Script/string request carries neither, so those never get a fallback. */
+    _getComponentLibraryFromRequest(request:string|Script|RunnerScriptExecutionRequest):{ url:string; author:string }|null
+    {
+        if(typeof request !== 'object' || request === null || Script.isScript(request)) return null;
+
+        const req = request as RunnerScriptExecutionRequest;
+        const url = req.componentLibraryUrl;
+        if(typeof url !== 'string') return null; // not '!url' — '' is a valid (same-origin) base
+
+        const author = (req.script as any)?.author;
+        if(!author || typeof author !== 'string') return null;
+
+        return { url, author };
+    }
+
+    /** Fetch a component the author shared, by its local name — how a published
+     *  configurator resolves $component('./timberwall') for a visitor who has no copy of
+     *  the author's workspace. Publishing shares the referenced components automatically
+     *  (see the editor's component-sharing service), which grants read access WITHOUT
+     *  making them configurators of their own.
+     *
+     *  Resolves to the LATEST shared version, so re-sharing a component updates every
+     *  configurator that uses it. Returns null (never throws) on any failure — an
+     *  unresolvable component is reported by the caller as a missing component. */
+    async _getSharedComponentScript(localName:string):Promise<Script|null>
+    {
+        const lib = this._componentLibrary;
+        if(!lib) return null;
+
+        const cacheKey = `${lib.author}/${localName}`;
+        if(this._sharedComponentFetches[cacheKey]) return this._sharedComponentFetches[cacheKey];
+
+        const url = `${lib.url}/scripts/shared/${encodeURIComponent(lib.author)}/${encodeURIComponent(localName)}`;
+
+        const fetching = (async ():Promise<Script|null> =>
+        {
+            try
+            {
+                console.info(`$component('./${localName}')::_getSharedComponentScript(): Fetching from the author's shared library at '${url}'...`);
+                const res = await fetch(url);
+                if(!res.ok)
+                {
+                    // 404 = never shared; 403 = shared but restricted with onlyUsers.
+                    console.error(`$component('./${localName}')::_getSharedComponentScript(): '${lib.author}/${localName}' is not readable (HTTP ${res.status}). The author must share it for this configurator to work.`);
+                    return null;
+                }
+                const body = await res.json();
+                const data = body?.data ?? body; // library GETs wrap in { success, data }
+                const script = Script.fromData(data);
+                if(!script)
+                {
+                    console.error(`$component('./${localName}')::_getSharedComponentScript(): Invalid script data returned by '${url}'.`);
+                    return null;
+                }
+                console.info(`$component('./${localName}')::_getSharedComponentScript(): Resolved to shared '${lib.author}/${script.name}:${script.version ?? 'latest'}'.`);
+                return script;
+            }
+            catch(e)
+            {
+                console.error(`$component('./${localName}')::_getSharedComponentScript(): Failed to fetch '${url}': ${(e as Error)?.message ?? e}`);
+                return null;
+            }
+        })();
+
+        this._sharedComponentFetches[cacheKey] = fetching;
+        return fetching;
     }
 
     /** Get component from cache in componentScripts 
@@ -2452,134 +2665,18 @@ ${contextLines.join('\n')}
         return longest;
     }
 
-    _extractTopLevelComponentCalls(code: string): Array<{ full: string; content: string }> 
+    /** Thin delegates to runner/componentRefs.ts — the editor needs the same parsing
+     *  without constructing a Runner (which would load the kernel), so the
+     *  implementation lives there. Kept as methods because existing call sites and
+     *  tests use them. */
+    _extractTopLevelComponentCalls(code: string): Array<ComponentCall>
     {
-        const results: Array<{ full: string; content: string }> = [];
-        const pattern = /\$component\s*\(/g;
-        let match;
-
-        while ((match = pattern.exec(code)) !== null) 
-        {
-            const startIndex = match.index;
-            const contentStart = match.index + match[0].length;
-            
-            // Check if this $component is nested inside another one
-            // by counting unbalanced parentheses before this match
-            let isNested = false;
-            let depth = 0;
-            let inString: string | null = null;
-            let escaped = false;
-
-            for (let i = 0; i < startIndex; i++) 
-            {
-                const char = code[i];
-
-                if (escaped) { escaped = false; continue; }
-                if (char === '\\') { escaped = true; continue; }
-
-                // Track string boundaries
-                if ((char === '"' || char === "'" || char === '`') && !inString) {
-                    inString = char;
-                } else if (char === inString) {
-                    inString = null;
-                }
-
-                // Count parentheses outside strings
-                if (!inString) {
-                    if (char === '(') depth++;
-                    if (char === ')') depth--;
-                }
-            }
-
-            // If depth > 0, we're inside another function call (nested)
-            if (depth > 0) {
-                isNested = true;
-            }
-
-            // Skip nested $component calls
-            if (isNested) {
-                continue;
-            }
-
-            // Now find the matching closing parenthesis for this top-level $component
-            depth = 1;
-            let i = contentStart;
-            inString = null;
-            escaped = false;
-
-            while (i < code.length && depth > 0) 
-            {
-                const char = code[i];
-
-                if (escaped) { escaped = false; i++; continue; }
-                if (char === '\\') { escaped = true; i++; continue; }
-
-                // Track string boundaries
-                if ((char === '"' || char === "'" || char === '`') && !inString) {
-                    inString = char;
-                } else if (char === inString) {
-                    inString = null;
-                }
-
-                // Count parentheses outside strings
-                if (!inString) {
-                    if (char === '(') depth++;
-                    if (char === ')') depth--;
-                }
-
-                i++;
-            }
-
-            if (depth === 0)
-            {
-                const fullMatch = code.slice(startIndex, i);
-                const argsText = code.slice(contentStart, i - 1); // raw, between ( and )
-                let content = this._extractFirstArg(argsText).trim();
-
-               // Remove surrounding quotes if present
-                if ((content.startsWith('"') && content.endsWith('"')) ||
-                    (content.startsWith("'") && content.endsWith("'")) ||
-                    (content.startsWith('`') && content.endsWith('`')))
-                {
-                    content = content.slice(1, -1);
-                }
-
-                results.push({ full: fullMatch, content: content });
-            }
-        }
-
-        return results;
+        return extractTopLevelComponentCalls(code);
     }
 
-    /** Return text up to the first top-level comma, ignoring commas inside
-     *  strings, parens, brackets and braces. Used to isolate the path arg
-     *  of $component('./name', { opts }, …). */
     _extractFirstArg(argsText: string): string
     {
-        let depth = 0;
-        let inString: string | null = null;
-        let escaped = false;
-
-        for (let i = 0; i < argsText.length; i++)
-        {
-            const char = argsText[i];
-
-            if (escaped) { escaped = false; continue; }
-            if (char === '\\') { escaped = true; continue; }
-
-            if ((char === '"' || char === "'" || char === '`') && !inString) {
-                inString = char;
-            } else if (char === inString) {
-                inString = null;
-            }
-
-            if (inString) continue;
-
-            if (char === '(' || char === '[' || char === '{') depth++;
-            else if (char === ')' || char === ']' || char === '}') depth--;
-            else if (char === ',' && depth === 0) return argsText.slice(0, i);
-        }
-        return argsText;
+        return extractFirstArg(argsText);
     }
 
 }

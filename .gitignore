@@ -32,3 +32,13 @@ target/
 
 .claude/
 
+# Private script-module overlay — module repos cloned in here become pnpm workspace
+# packages. Their contents must NEVER be committed to this repo; the
+# `private-modules-boundary` CI job enforces that.
+#
+# Only the dev guide is tracked. Ignoring the CONTENTS rather than the directory is
+# what lets that one file live here — and it is why module repos are cloned into
+# subdirectories (`modules/fem`), since git refuses to clone into a non-empty dir.
+/modules/*
+!/modules/README.md
+

@@ -17,6 +17,7 @@
   "dependencies": {
     "@archiyou/core": "workspace:*",
     "@archiyou/editor": "workspace:*",
+    "@archiyou/module-sdk": "workspace:*",
     "@archiyou/types": "workspace:*",
     "@lit-labs/signals": "^0.2.0",
     "@lit/localize": "^0.12.2",

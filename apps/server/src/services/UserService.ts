@@ -36,7 +36,19 @@ export function toPublicUser(u: UserRow): PublicUser {
     // Was hardcoded `true` before verification existed, so the client could never
     // tell. Now reflects the column, which the editor uses to show its banner.
     emailVerified: u.emailVerifiedAt !== null,
+    // Which gated script modules this account may use. The editor needs it to
+    // mark modules locked/unlocked; it is NOT the authority — every bundle fetch
+    // and server-module call is re-checked against the database.
+    modules: normalizeModuleIds(u.modules),
   };
+}
+
+/** Tolerate a legacy or hand-edited row: the column is JSON, so it can hold
+ *  anything if someone writes it directly. Anything that is not a list of
+ *  non-empty strings degrades to "no modules" rather than crashing a login. */
+export function normalizeModuleIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((m): m is string => typeof m === 'string' && m.length > 0);
 }
 
 export class UserService {
@@ -105,6 +117,8 @@ export class UserService {
       // Unverified until the emailed link is followed. The account is usable
       // immediately — only publishing and sharing require verification.
       emailVerifiedAt: null,
+      // New accounts have no gated modules; grants are made with `pnpm admin:modules`.
+      modules: [],
     };
     db.insert(users).values(row).run();
     return row;
@@ -136,6 +150,46 @@ export class UserService {
       .set({ emailVerifiedAt: new Date() })
       .where(and(eq(users.id, userId), sql`${users.emailVerifiedAt} IS NULL`))
       .run();
+  }
+
+  /** Module ids this account may use. Returns [] for an unknown handle, so a
+   *  stale token can never widen access. */
+  getModules(username: string): string[] {
+    const user = this.findByUsername(username);
+    return user ? normalizeModuleIds(user.modules) : [];
+  }
+
+  /** Is this account entitled to one specific module? The single question every
+   *  gated route asks. */
+  hasModule(username: string | null | undefined, moduleId: string): boolean {
+    if (!username) return false;
+    return this.getModules(username).includes(moduleId);
+  }
+
+  /** Replace the entitlement list. Deduplicated and sorted so the stored value is
+   *  stable and diffable. Returns the stored list, or null for an unknown handle. */
+  setModules(username: string, moduleIds: string[]): string[] | null {
+    const user = this.findByUsername(username);
+    if (!user) return null;
+    const next = [...new Set(normalizeModuleIds(moduleIds))].sort();
+    db.update(users).set({ modules: next }).where(eq(users.id, user.id)).run();
+    return next;
+  }
+
+  /** Grant modules, keeping existing ones. Returns the new list, or null for an
+   *  unknown handle. */
+  grantModules(username: string, moduleIds: string[]): string[] | null {
+    const current = this.findByUsername(username);
+    if (!current) return null;
+    return this.setModules(username, [...normalizeModuleIds(current.modules), ...moduleIds]);
+  }
+
+  /** Revoke modules. Returns the new list, or null for an unknown handle. */
+  revokeModules(username: string, moduleIds: string[]): string[] | null {
+    const current = this.findByUsername(username);
+    if (!current) return null;
+    const drop = new Set(moduleIds);
+    return this.setModules(username, normalizeModuleIds(current.modules).filter((m) => !drop.has(m)));
   }
 
   /** Ensure the .env test user exists (idempotent — runs on boot). */

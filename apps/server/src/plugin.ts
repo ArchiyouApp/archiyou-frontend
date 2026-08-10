@@ -26,6 +26,8 @@ import { registerScriptRoutes } from './routes/scripts';
 import { registerLibraryRoutes } from './routes/library';
 import { registerExecuteRoutes } from './routes/execute';
 import { registerProxyRoutes } from './routes/proxy';
+import { registerModuleRoutes } from './routes/modules';
+import { moduleHost } from './modules/ModuleHost';
 import { ValidationError } from './validate';
 import { UserError } from './services/UserService';
 import { ScriptStoreError } from './services/ScriptStore';
@@ -143,6 +145,16 @@ export async function serverApiPlugin(fastify: FastifyInstance): Promise<void> {
   await translationQueue.init();
   fastify.addHook('onClose', async () => { await translationQueue.close(); });
 
+  // Scan installed script modules now rather than on the first request, so a
+  // malformed manifest is reported when the deployment happens — not hours later
+  // in a user's console. No-op when SERVER_MODULES_DIR is unset (the default).
+  moduleHost.load();
+  if (config.modules.dev) {
+    // Editing a module should not require restarting the backend.
+    moduleHost.watch();
+    fastify.addHook('onClose', async () => { moduleHost.close(); });
+  }
+
   fastify.get('/health', async () => ({ status: 'healthy', timestamp: new Date().toISOString() }));
 
   // Must be set BEFORE registering route sub-plugins: encapsulated child contexts
@@ -155,9 +167,13 @@ export async function serverApiPlugin(fastify: FastifyInstance): Promise<void> {
   await fastify.register(registerLibraryRoutes);  // /scripts/{published,shared}/* (public)
   await fastify.register(registerExecuteRoutes);  // /scripts/published/execute/*
   await fastify.register(registerProxyRoutes);    // /proxy?url= (asset proxy for $import)
+  await fastify.register(registerModuleRoutes);   // /modules/* (gated script modules; inert without SERVER_MODULES_DIR)
 }
 
-function setupErrorHandling(fastify: FastifyInstance): void {
+/** Exported so route tests can build an app that maps errors the way production
+ *  does — otherwise a ValidationError surfaces as a default 500 in tests and the
+ *  route's real 422 goes unverified. */
+export function setupErrorHandling(fastify: FastifyInstance): void {
   fastify.setErrorHandler(async (error, request, reply) => {
     if (error instanceof ValidationError) {
       return reply.code(422).send({ success: false, error: error.message, issues: error.issues });

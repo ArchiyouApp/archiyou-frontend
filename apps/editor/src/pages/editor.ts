@@ -51,14 +51,18 @@ export class PageEditor extends SignalWatcher(LitElement)
   CONST_AUTORUN_DELAY = 1000;    // ms to wait after code changes before auto-running
   CONST_AUTORUN_MIN_SIZE = 20;   // minimum code length to trigger auto-run
 
+  /** Toolbar order, top to bottom. Profiling sits last — see TOOLBAR_BOTTOM_IDS. */
   readonly TOOLS: ToolDef[] = [
     { id: 'console', icon: 'terminal',   name: 'Console',   exclusive: false, component: 'editor-console-tool',  width: 30, height: 50 },
-    { id: 'profiling', icon: 'timer',    name: 'Profiling', exclusive: false, component: 'editor-profiling-tool', width: 30, height: 50 },
     { id: 'scene',   icon: 'network',    name: 'Scene',     exclusive: false, component: 'editor-scene-tool',    width: 30, height: 50 },
     { id: 'data',    icon: 'table',      name: 'Data',      exclusive: false, component: 'editor-data-tool',     width: 30, height: 50 },
     { id: 'metrics', icon: 'chart-bar',  name: 'Metrics',   exclusive: false, component: 'editor-metrics-tool',  width: 30, height: 50,  outputs: ['default/metrics/*/json'] },
     { id: 'docs',    icon: 'file-text',  name: 'Documents', exclusive: true,  component: 'editor-document-tool', width: 40, height: 100, outputs: ['default/docs/*/svg', 'default/docs/*/svg-pages'] },
+    { id: 'profiling', icon: 'timer',    name: 'Profiling', exclusive: false, component: 'editor-profiling-tool', width: 30, height: 50 },
   ];
+
+  /** Tools pinned to the very bottom of the toolbar, below plugin-contributed ones. */
+  readonly TOOLBAR_BOTTOM_IDS = ['profiling'];
 
   //// 
 
@@ -958,10 +962,16 @@ export class PageEditor extends SignalWatcher(LitElement)
     }));
   }
 
-  /** Built-in tools plus (in plugin mode) the plugin's tools. */
+  /** Built-in tools plus (in plugin mode) the plugin's tools, which are inserted
+   *  above the pinned bottom tools so those keep the last slot in the toolbar. */
   private _toolbarTools(pm: PluginModeState | null): ToolDef[]
   {
-    return pm ? [...this.TOOLS, ...this._pluginToolDefs(pm)] : this.TOOLS;
+    const isBottom = (t: ToolDef) => this.TOOLBAR_BOTTOM_IDS.includes(t.id);
+    return [
+      ...this.TOOLS.filter(t => !isBottom(t)),
+      ...(pm ? this._pluginToolDefs(pm) : []),
+      ...this.TOOLS.filter(isBottom),
+    ];
   }
 
   /** archiyou.ui.open/close/toggle('Export') from a plugin part → toggle its tool panel. */

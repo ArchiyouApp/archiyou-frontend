@@ -94,7 +94,7 @@ export const VIEWER_GRID_MAX_SIZE   = 100000;
 export const VIEWER_GRID_TARGET_CELLS = 40;
 // Only rebuild the grid geometry when the scene size moved by more than this
 // fraction of the current grid size since the last rebuild, so small parametric
-// tweaks don't churn the geometry (mirrors VIEWER_GIZMO_RECALC_INCREMENT).
+// tweaks don't churn the geometry (mirrors VIEWER_GIZMO_RECALC_FRACTION).
 export const VIEWER_GRID_RECALC_FRACTION = 0.2;
 
 // Key directional light for shadow casting.
@@ -106,19 +106,35 @@ export const VIEWER_GRID_RECALC_FRACTION = 0.2;
 export const VIEWER_LIGHT_POSITION: [number, number, number] = [1000, -1000, 1000];
 
 // Origin UCS / navigation gizmo
-export const VIEWER_GIZMO_AXIS_LENGTH    = 20;    // positive-arm length, world units (base scale)
+// Positive-arm length in world units at base scale. Because the gizmo is scaled by
+// sceneSize × VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE (= sceneSize/100), this number is
+// effectively "percent of the largest model dimension": 10 → each arm is 10% of it,
+// so a full axis (solid + dashed half) spans 20%. It was 20 (a 40%-wide gizmo),
+// which swallowed small scenes — a 10×20m model got 4m arms across a 10m width.
+export const VIEWER_GIZMO_AXIS_LENGTH    = 10;
 export const VIEWER_GIZMO_COLOR_X        = 0xFF0000; // red   (+X)
 export const VIEWER_GIZMO_COLOR_Y        = 0x00FF00; // green (+Y)
 export const VIEWER_GIZMO_COLOR_Z        = 0x0000FF; // blue  (+Z)
 export const VIEWER_GIZMO_COLOR_ORIGIN   = 0xFFFFFF; // origin sphere at (0,0,0)
-export const VIEWER_GIZMO_LABEL_SIZE     = 10;   // world units
+// X/Y/Z letter sprites, world units at base scale (~15% of the arm). They used to
+// be 10 — half of the then 20-long arm — which read as huge on a small scene: a
+// 10×20m model scales the gizmo to 0.2×, so the letters still stood 2m tall.
+export const VIEWER_GIZMO_LABEL_SIZE     = 1.5;
+// Clear space between the axis tip and the near edge of the letter, as a fraction
+// of the arm length — so the gap stays put when the letter size is retuned.
+export const VIEWER_GIZMO_LABEL_GAP_RATIO = 0.05;
 
-// Gizmo arrowhead cone shape, as a fraction of the axis arm length — e.g. an
-// axis arm of 20 gives a cone height of 20×0.18=3.6 and radius 20×0.055=1.1.
-// Dimension-line arrowheads (below) reuse these same ratios so both kinds of
-// arrow look identical, just scaled by their own base length.
+// Gizmo arrowhead cone shape, as a fraction of the axis arm length — an arm of 10
+// gives a cone height of 10×0.05=0.5 and radius 10×0.01=0.1. Dimension-line
+// arrowheads (below) reuse these same ratios so both kinds of arrow look
+// identical, just scaled by their own base length.
 export const VIEWER_GIZMO_ARROW_LENGTH_RATIO = 0.05;
 export const VIEWER_GIZMO_ARROW_RADIUS_RATIO = 0.01;
+
+// Negative (dashed) arm dash pattern, also as a fraction of the arm length, so the
+// arms keep reading as dashed at any arm length — ~14 dashes per arm.
+export const VIEWER_GIZMO_DASH_SIZE_RATIO = 0.04;
+export const VIEWER_GIZMO_DASH_GAP_RATIO  = 0.03;
 
 // Gizmo auto-scaling: scaleFactor = sceneSize * VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE
 // (sceneSize = largest bbox dimension). Calibrated for scene 100 → factor 1
@@ -128,17 +144,25 @@ export const VIEWER_GIZMO_ARROW_RADIUS_RATIO = 0.01;
 export const VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE = 0.01;
 export const VIEWER_GIZMO_MIN_SCALE = 0.1;
 // Only recompute the gizmo scale when the scene size changed by more than this
-// (world units) since the last recalc, so small parametric tweaks don't resize it.
-export const VIEWER_GIZMO_RECALC_INCREMENT = 250;
+// fraction of itself since the last recalc, so small parametric tweaks don't
+// resize it (mirrors VIEWER_GRID_RECALC_FRACTION). This used to be an absolute
+// 250 world units, which never fires on a scene measured in metres: a 20m model
+// replaced by a 200m one kept the first model's gizmo scale.
+export const VIEWER_GIZMO_RECALC_FRACTION = 0.2;
 
 // Dimension lines (3D viewer) — the in-scene line + arrowhead cones.
 // Sizes are world units in viewer/model space, same shape ratios as the gizmo
 // arrowheads (VIEWER_GIZMO_ARROW_*_RATIO) so both read as the same arrow.
 // The value text is an HTML overlay label, styled via CSS in
 // `viewer-labels-overlay` (not configured here).
-export const DIMENSION_LINE_COLOR       = 0x222222; // line + arrowheads
-export const DIMENSION_ARROW_LENGTH     = VIEWER_GIZMO_AXIS_LENGTH * VIEWER_GIZMO_ARROW_LENGTH_RATIO; // = 3.6
-export const DIMENSION_ARROW_RADIUS     = VIEWER_GIZMO_AXIS_LENGTH * VIEWER_GIZMO_ARROW_RADIUS_RATIO; // = 1.1
+// They share the gizmo's arrow *shape* (the ratios above) but have their own base
+// length: how big the UCS should read next to the model and how big a dimension
+// arrowhead should be are separate questions, so retuning the arm above must not
+// silently resize every dimension line. 20 = the arm length these were tuned at.
+export const DIMENSION_LINE_COLOR        = 0x222222; // line + arrowheads
+export const DIMENSION_ARROW_BASE_LENGTH = 20;
+export const DIMENSION_ARROW_LENGTH      = DIMENSION_ARROW_BASE_LENGTH * VIEWER_GIZMO_ARROW_LENGTH_RATIO; // = 1.0
+export const DIMENSION_ARROW_RADIUS      = DIMENSION_ARROW_BASE_LENGTH * VIEWER_GIZMO_ARROW_RADIUS_RATIO; // = 0.2
 
 // Interaction handles
 export const VIEWER_HANDLE_DEFAULT_ICON   = 'move';

@@ -1,5 +1,16 @@
 import type { ExecutionRequestOutputFormatGLTFOptions } from "./execution/types";
 
+//// ENGINE ////
+
+/** The version script modules declare compatibility against via their manifest
+ *  `engine` range (see packages/core/src/modules/ModuleRegistry.ts).
+ *
+ *  Duplicated from package.json rather than imported: core is consumed as raw
+ *  TypeScript source by several bundlers, and a JSON import would need resolveJson
+ *  plus assertions in every one of them. `tests/unit/modules/version.test.ts`
+ *  fails if the two drift. */
+export const ARCHIYOU_CORE_VERSION = '1.0.0';
+
 //// MODELER ////
 
 // TODO: can we define these on runtime in Modeler?

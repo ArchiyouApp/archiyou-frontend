@@ -29,6 +29,13 @@
       "when": 1785435235969,
       "tag": "0003_jittery_trauma",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786132771173,
+      "tag": "0004_chief_pandemic",
+      "breakpoints": true
     }
   ]
 }

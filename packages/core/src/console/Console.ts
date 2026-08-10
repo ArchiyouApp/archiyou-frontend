@@ -5,6 +5,7 @@
 // import JSONfn from 'json-fn'; // TODO: AFTER REFACTOR
 
 import type { ConsoleMessage, ConsoleMessageType } from './types'
+import { stringifyArgs, stringifyValue } from './stringify'
 
 /** The real environment console, captured at import time - before any execution scope
  *  swaps globalThis.console for an Archiyou Console. Every Console echoes debug output
@@ -157,90 +158,64 @@ export class Console
         return `${colorCode}${message.message}${this.ENDING_COLOR}`; // wrap with color codes
     }
 
-    newMessage(type:ConsoleMessageType, message:any)
+    /** Turn the arguments into one message string and send it on.
+     *  A ConsoleMessage always carries a string: every output target (store, webworker
+     *  postMessage, colored native echo) either serializes or interpolates it anyway,
+     *  which is where objects used to degrade into '[object Object]'. */
+    newMessage(type:ConsoleMessageType, ...messages:Array<any>)
     {
-        // NOTE: we allow in console mode to output non-strings - for example Objects
-        //this._originalConsole.log(type, message, this._getOutputType()) // example of debug output
+        const msgStr = (messages.length === 1 && typeof messages[0] === 'string')
+                            ? messages[0]
+                            : stringifyArgs(messages);
 
-        let msgStr = (typeof message === 'string' || this._getOutputType() == 'console') ? message as any :  this.stringifyMessage(message);
         let newMessage:ConsoleMessage = { type: type, time : this._currentTime() , from: null, message : msgStr  };
         this.sendMessage(newMessage);
     }
 
+    /** Readable string for any value: `{ width: 10, height: 100 }`, a Shape's own
+     *  toString(), `[Circular]`, `[Function: f]`, ... - see console/stringify.ts */
     stringifyMessage(message:any):string
     {
-        if (message === null || message === undefined)
-        {
-            return 'undefined';
-        }
-        
-        // Use serialization methods toString of Shapes
-        let serializatedObj = null;
-
-        try
-        {
-           serializatedObj = message.toString();
-        }
-        catch(e)
-        {
-            console.warn(`Console.stringifyMessage: Could not simply stringify`)
-        }
-        
-        if (!serializatedObj)
-        {
-            try {
-                // TODO AFTER REFACTOR 
-                // serializatedObj = JSONfn.stringify(message);
-                // Is this really worth the dependency?
-                serializatedObj = JSON.stringify(message);
-            }
-            catch(e)
-            {
-                console.error(`stringifyMessage: Serious error exporting Object to JSON: ${e}`);
-                return null;
-            }
-        }
-
-        return serializatedObj;
+        return stringifyValue(message);
     }
 
-    info(message:any)
+    info(...messages:Array<any>)
     {
-        this.newMessage('info', message);
+        this.newMessage('info', ...messages);
     }
 
-    log(message:any)
+    log(...messages:Array<any>)
     {
-        this.newMessage('info', message);
+        this.newMessage('info', ...messages);
     }
 
     /** Make a user message */
-    user(message:any)
+    user(...messages:Array<any>)
     {
-        this.newMessage('user', message);
+        this.newMessage('user', ...messages);
     }
 
     /** log an error */
-    error(message:any)
+    error(...messages:Array<any>)
     {
-        this.newMessage('error', message);
+        this.newMessage('error', ...messages);
     }
 
-    warn(message:any)
+    warn(...messages:Array<any>)
     {
-        this.newMessage('warn', message);
+        this.newMessage('warn', ...messages);
     }
 
     /** Creation of geometry */
-    geom(message:any)
+    geom(...messages:Array<any>)
     {
-        this.newMessage('geom', message);
+        this.newMessage('geom', ...messages);
     }
 
     /** Messages about statement execution */
-    exec(message:any)
+    exec(...messages:Array<any>)
     {
-        this.newMessage('exec', message);
+        this.newMessage('exec', ...messages);
     }
 
     _currentTime()

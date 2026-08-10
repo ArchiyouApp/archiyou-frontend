@@ -27,6 +27,8 @@ import * as Comlink from 'comlink';
 import type { ArchiyouCoreApi } from './runner.worker';
 import type { RunnerScriptExecutionRequest, RunnerScriptExecutionResult } from '../types';
 import type { ScriptData } from '../../execution/types';
+import type { AyModuleCatalogEntry } from '@archiyou/module-sdk';
+
 import type { Script } from '../../Script';
 import type { ModelMode } from '../../modeler/types';
 import type { ConsoleMessageType } from '../../console/types';
@@ -47,6 +49,10 @@ export interface RunOptions
   messages?: ConsoleMessageType[];
   perStatement?: boolean;                // execute statement-by-statement (partial model + profiling)
   assetProxyUrl?: string;                // base URL of the asset proxy for $import(); default '' → /proxy
+  componentLibraryUrl?: string;          // backend base for resolving unlinked $component('./name') from the author's shared library
+  modules?: AyModuleCatalogEntry[];      // optional script modules for this run — include LOCKED ones too (see RunnerScriptExecutionRequest.modules)
+  moduleApiUrl?: string;                 // backend base for module bundles and server-module calls; default '' → root-relative
+  authToken?: string;                    // bearer token, required to reach entitlement-gated modules
 }
 
 /** Constructor options. */
@@ -202,6 +208,10 @@ export class RunnerWorker
       messages: opts.messages,
       perStatement: opts.perStatement,
       assetProxyUrl: opts.assetProxyUrl,
+      componentLibraryUrl: opts.componentLibraryUrl,
+      modules: opts.modules,
+      moduleApiUrl: opts.moduleApiUrl,
+      authToken: opts.authToken,
     };
   }
 

@@ -1,3 +1,5 @@
+import type { AyModuleCatalogEntry } from "@archiyou/module-sdk";
+
 import type { ArchiyouModules } from "../types";
 import type { Modeler } from "../modeler/Modeler";
 import type { ScriptOutputData } from '../execution/types';
@@ -97,6 +99,35 @@ export interface RunnerScriptExecutionRequest
      *  hydrates these into Script instances and calls
      *  runner.linkComponentScripts(...) before execute. */
     componentScripts?: Array<ScriptData>;
+
+    /** Optional script modules available to this run, as served by `GET /modules`
+     *  (see docs/modules.md). Each entry carries `entitled`, so the LOCKED ones
+     *  must be included too: a script referencing a module the user lacks then
+     *  fails with "not available on your account" instead of the
+     *  "undefined is not a function" it would get if the name were simply absent.
+     *  Plain data, so it survives the structured clone to the worker. */
+    modules?: Array<AyModuleCatalogEntry>
+
+    /** Base URL of the Archiyou backend for module bundle fetches and
+     *  server-module calls. Filled by the app from SERVER_API_BASE_URL like
+     *  assetProxyUrl; empty string → root-relative. */
+    moduleApiUrl?: string
+
+    /** Bearer token of the signed-in user. Module bundles and server-module calls
+     *  are entitlement-gated, and this request otherwise carries no identity at
+     *  all. Only ever set by the app for the user's own run — it is not read from
+     *  or written to a script. */
+    authToken?: string
+
+    /** Base URL of the Archiyou backend used to resolve `$component('./name')`
+     *  when nothing was linked in via componentScripts — the case for a published
+     *  configurator, where the visitor has no copy of the author's workspace.
+     *  The name is then looked up in the SHARED library of the script's own
+     *  author: `${componentLibraryUrl}/scripts/shared/${author}/${name}`.
+     *  Filled by the app from SERVER_API_BASE_URL; empty string → root-relative.
+     *  Linked scripts always win, so the editor keeps resolving locally (and
+     *  offline) against the author's unsaved working copies. */
+    componentLibraryUrl?: string
 
     // What to calculate and output
     outputs?: Array<string> // requested output paths

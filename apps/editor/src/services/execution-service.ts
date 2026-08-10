@@ -14,12 +14,16 @@ import { RunnerWorker, ArchiyouCoreLoadError } from '@archiyou/core';
 import type { RunnerScriptExecutionRequest, RunnerScriptExecutionResult } from '@archiyou/core/src/runner/types';
 import type { ConsoleMessage } from '@archiyou/core/src/console/types';
 
+import { authService } from './auth-service.js';
+import { ensureModuleCatalog } from './module-service.js';
+
 // Shared, lazily-initialised worker for the whole app (editor, plugins, etc.).
 const worker = new RunnerWorker();
 
-// Base URL of the backend, used by the core $import() asset proxy. Same value
-// api.ts/auth-service.ts use; '' → root-relative /proxy.
-const ASSET_PROXY_URL = (import.meta.env.SERVER_API_BASE_URL as string | undefined) ?? '';
+// Base URL of the backend. Same value api.ts/auth-service.ts use; '' → root-relative.
+// Feeds two core lookups that have to reach the server on their own: the $import()
+// asset proxy, and the shared-library fallback for $component('./name').
+const API_BASE_URL = (import.meta.env.SERVER_API_BASE_URL as string | undefined) ?? '';
 
 function formatUnknownError(error: unknown): string
 {
@@ -90,7 +94,21 @@ export async function runScript(request: RunnerScriptExecutionRequest): Promise<
   try
   {
     // Point $import() at the backend asset proxy unless the caller set one.
-    request.assetProxyUrl ??= ASSET_PROXY_URL;
+    request.assetProxyUrl ??= API_BASE_URL;
+    // Let $component('./name') fall back to the author's shared library when the caller
+    // linked no local scripts — the published-configurator case. Harmless in the editor:
+    // linked workspace scripts always take precedence, so this is never reached there.
+    request.componentLibraryUrl ??= API_BASE_URL;
+
+    // Gated script modules. The catalog is cached per user, so this is a no-op
+    // after the first call (and warmupWorker() primes it). Locked modules are
+    // included on purpose — the runner needs them to explain itself when a
+    // script uses one. The token is what lets the runner fetch a gated bundle;
+    // the server re-checks entitlement on every such request regardless.
+    request.modules ??= await ensureModuleCatalog();
+    request.moduleApiUrl ??= API_BASE_URL;
+    request.authToken ??= (await authService.getToken()) ?? undefined;
+
     // The viewer needs the full result (scenegraph/annotations/handles), so use run().
     return await worker.run(request);
   }
@@ -108,5 +126,9 @@ export async function runScript(request: RunnerScriptExecutionRequest): Promise<
  */
 export async function warmupWorker(): Promise<void>
 {
+  // Fetch the module catalog alongside the kernel so the first run doesn't wait
+  // on it. Deliberately not awaited together with a failure path: a missing
+  // catalog is not an error (see module-service).
+  void ensureModuleCatalog();
   await worker.init();
 }

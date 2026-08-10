@@ -690,7 +690,9 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
             align-items: center;
         }
 
-        .field-inline .field-label { min-width: 72px; }
+        /* Right-align so a short label (MIN, MAX, STEP) ends up against its input
+           instead of stranded at the left edge of the 72px column. */
+        .field-inline .field-label { min-width: 72px; text-align: right; }
 
         .field-label {
             font-size: var(--text-xs);

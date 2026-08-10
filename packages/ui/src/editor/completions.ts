@@ -184,6 +184,65 @@ topLevelCompletions.push(
   { label: 'console', type: 'variable', detail: 'Console API' },
 );
 
+/* ------------------------------------------------------------------ */
+/*  Gated script modules (registered at runtime)                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Script modules are installed per deployment and gated per user (see
+ * docs/modules.md), so unlike everything else here their completions cannot be
+ * generated at build time — the editor learns about them from `GET /modules`
+ * and registers them below.
+ *
+ * Only ENTITLED modules are registered: offering `example.solve(...)` to someone
+ * who would then be told they may not use it is worse than offering nothing.
+ */
+const moduleGlobalCompletions: Completion[] = [];
+const moduleMemberMap = new Map<string, Completion[]>();
+
+/** Minimal shape of a catalog entry — declared structurally so this package does
+ *  not need to depend on the module SDK just for autocomplete. */
+interface ModuleCompletionSource {
+  global: string;
+  name?: string;
+  description?: string;
+  entitled?: boolean;
+  completions?: Array<{ label: string; detail?: string; info?: string; type?: string }>;
+}
+
+/** Replace the registered module completions. Called by the editor whenever the
+ *  module catalog loads or the signed-in user changes. */
+export function registerModuleCompletions(modules: ReadonlyArray<ModuleCompletionSource>): void
+{
+  moduleGlobalCompletions.length = 0;
+  moduleMemberMap.clear();
+
+  for (const mod of modules)
+  {
+    if (!mod?.global || mod.entitled === false) continue;
+
+    moduleGlobalCompletions.push({
+      label: mod.global,
+      type: 'variable',
+      detail: mod.name ?? 'Archiyou module',
+      info: mod.description,
+    });
+
+    if (mod.completions?.length)
+    {
+      moduleMemberMap.set(
+        mod.global,
+        mod.completions.map(c => ({
+          label: c.label,
+          type: (c.type === 'property' ? 'property' : 'method') as Completion['type'],
+          detail: c.detail,
+          info: c.info,
+        })),
+      );
+    }
+  }
+}
+
 /** Map from class name → static completions (Point, Vector, Bbox, OBbox) */
 const staticMap = new Map<string, Completion[]>();
 
@@ -280,6 +339,21 @@ export function archiyouCompletions(
   {
     const docText = context.state.doc.toString();
     const textBefore = docText.slice(0, memberMatch.from);
+
+    // `example.` on a registered module global. Checked before the type map,
+    // which knows only about shape classes and would fall back to the union of
+    // every shape member — badly wrong for a module.
+    const moduleRoot = textBefore.match(/(\w+)$/)?.[1];
+    const moduleMembers = moduleRoot ? moduleMemberMap.get(moduleRoot) : undefined;
+    if (moduleMembers)
+    {
+      return {
+        from: memberMatch.from + 1,
+        options: moduleMembers,
+        validFor: /^\w*$/,
+      };
+    }
+
     const scopeMap = buildScopeTypeMap(docText);
     const root = extractChainRoot(textBefore);
     const resolvedType = resolveType(root, scopeMap);
@@ -332,6 +406,13 @@ function mergeLocalIdentifiers(context: CompletionContext): Completion[]
 {
   const seen = new Set(topLevelCompletions.map(c => c.label));
   const extra: Completion[] = [];
+
+  // Entitled module globals rank with the built-in API, above the user's own
+  // identifiers — a module is part of the API for whoever has it.
+  for (const m of moduleGlobalCompletions)
+  {
+    if (!seen.has(m.label)) { seen.add(m.label); extra.push(m); }
+  }
 
   const local = localCompletionSource(context);
   if (local)

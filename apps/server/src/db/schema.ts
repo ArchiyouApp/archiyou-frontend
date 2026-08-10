@@ -39,6 +39,12 @@ export const users = sqliteTable('users', {
    *  requireVerified in routes/scripts.ts). Accounts that predate verification
    *  are backfilled as verified by the migration. */
   emailVerifiedAt: integer('email_verified_at', { mode: 'timestamp_ms' }),
+  /** Ids of the script modules this account may use (see docs/modules.md).
+   *  Deliberately read from here on every request rather than carried in the JWT:
+   *  session tokens live for days and have no revocation list, so a claim would
+   *  make a grant or a revoke take up to a week to take effect. A column makes
+   *  both immediate, at the cost of one indexed lookup. */
+  modules: text('modules', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
 }, (t) => ({
   usernameUnique: uniqueIndex('users_username_unique').on(t.username),
   emailUnique: uniqueIndex('users_email_unique').on(t.email),

@@ -25,6 +25,15 @@ export type { OutputData } from './runner/worker/output';
 // Scripts
 export { Script } from './Script';
 
+// Script modules — the extension point for separately-distributed, gated
+// capabilities. Inert unless a run is given a module catalog. See docs/modules.md.
+export { ModuleRegistry, RESERVED_SCOPE_NAMES } from './modules/ModuleRegistry';
+export type { ModuleRegistryOptions } from './modules/ModuleRegistry';
+export { ModuleLoadError } from './modules/loadClientModule';
+export { ServerModuleCallError } from './modules/serverModuleStub';
+export { ModuleUnavailableError } from './modules/unavailableStub';
+export { ARCHIYOU_CORE_VERSION } from './constants';
+
 // Key public types
 export type {
   RunnerScriptExecutionRequest,

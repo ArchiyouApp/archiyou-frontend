@@ -164,7 +164,14 @@ export class Importer
         let collection: ShapeCollection;
         try
         {
-            collection = MeshupImporter.load(payload.bytes, { format });
+            // up:'y' — assets fetched by $import() come from other tools (Blender,
+            // three.js, model libraries), which write conforming Y-up glTF. meshup's
+            // importer defaults to 'z' instead, because that is what meshup itself
+            // *writes* (the Archiyou stack keeps the kernel's Z-up all the way to a Z-up
+            // viewer) and its round trip has to be the identity. Nothing in a glTF says
+            // which convention it used, so the two callers have to differ. Only glTF
+            // reads this; every other format ignores it.
+            collection = MeshupImporter.load(payload.bytes, { format, up: 'y' });
         }
         catch(e)
         {

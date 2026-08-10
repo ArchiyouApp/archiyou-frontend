@@ -55,6 +55,10 @@ export const PublicUserSchema = Type.Object({
   name: Type.Union([Type.String(), Type.Null()]),
   avatarUrl: Type.Union([Type.String(), Type.Null()]),
   emailVerified: Type.Boolean(),
+  /** Ids of the gated script modules this account may use (see docs/modules.md).
+   *  Lets the editor show a module as unlocked; it is never the authority — the
+   *  server re-checks the database on every bundle fetch and module call. */
+  modules: Type.Array(Type.String()),
 });
 export type PublicUser = Static<typeof PublicUserSchema>;
 

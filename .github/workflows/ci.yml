@@ -79,6 +79,56 @@ jobs:
       - name: Typecheck core (budget — fails only if errors increase)
         run: pnpm --filter @archiyou/core typecheck:budget
 
+  # Private script modules are developed as a gitignored overlay in ./modules (see
+  # docs/modules.md). That boundary is one .gitignore line, and a single `git add -f`
+  # or a weakened ignore rule would publish proprietary source into a public repo —
+  # irreversibly, since it would land in the history. So it gets a gate rather than
+  # a convention.
+  private-modules-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # README.md is the one tracked file here (the dev guide); anything else is
+      # private module source.
+      - name: No module source may be tracked
+        run: |
+          tracked="$(git ls-files -- modules/ | grep -v '^modules/README.md$' || true)"
+          if [ -n "$tracked" ]; then
+            echo "::error::files under modules/ are tracked in git — this overlay must stay private"
+            echo "$tracked"
+            exit 1
+          fi
+
+      # Checked separately from the above: an empty `git ls-files` is also what you
+      # get right before someone commits, so the ignore rule itself has to hold.
+      - name: modules/ contents must stay ignored
+        run: |
+          mkdir -p modules/canary
+          echo "canary" > modules/canary/file.txt
+          if [ -z "$(git check-ignore modules/canary/file.txt)" ]; then
+            echo "::error::modules/ contents are no longer covered by .gitignore"
+            exit 1
+          fi
+          rm -rf modules/canary
+
+      # The exception is narrow and easy to widen by accident: `/modules/*` plus a
+      # single negation. If the guide itself stopped being tracked, the directory
+      # would be empty in a public checkout and the setup instructions would vanish.
+      - name: the module dev guide must stay tracked
+        run: |
+          git ls-files --error-unmatch modules/README.md >/dev/null 2>&1 || {
+            echo "::error::modules/README.md is no longer tracked"; exit 1; }
+
+      # The overlay is only usable if pnpm still looks there. Dropping this glob
+      # would not fail any build — it would silently stop linking the modules.
+      - name: workspace must keep the modules overlay glob
+        run: |
+          grep -qE "^\s*-\s*'modules/\*'" pnpm-workspace.yaml || {
+            echo "::error::pnpm-workspace.yaml no longer includes the 'modules/*' glob"; exit 1; }
+
   # The deployment config is executable, so it gets checked like code: a broken
   # Caddyfile means the reverse proxy will not start. This caught `auto_https on`,
   # which was invalid and had gone unnoticed.

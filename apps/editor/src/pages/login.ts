@@ -64,12 +64,6 @@ export class PageLogin extends LitElement
           </wa-button>
         </form>
 
-        <div class="divider"><span>${msg('or')}</span></div>
-
-        <wa-button variant="neutral" appearance="outlined" class="google" @click=${this._handleGoogle}>
-          ${msg('Continue with Google')}
-        </wa-button>
-
         <button class="switch" @click=${this._toggleMode}>
           ${isRegister
             ? msg('Already have an account? Sign in')
@@ -120,10 +114,23 @@ export class PageLogin extends LitElement
     }
   }
 
+  /* Google sign-in is hidden for now — the "Continue with Google" button and the "or"
+     divider were removed from render(). The service call below stays wired up
+     (authService.loginWithGoogle()); to bring it back, restore this handler and:
+
+       <div class="divider"><span>${'or'}</span></div>
+
+       <wa-button variant="neutral" appearance="outlined" class="google" @click=${'this._handleGoogle'}>
+         ${'Continue with Google'}
+       </wa-button>
+
+     The .google and .divider styles are still in place.
+
   private _handleGoogle()
   {
     authService.loginWithGoogle();
   }
+  */
 
   // ── 5. Styles ──
   static override styles = css`

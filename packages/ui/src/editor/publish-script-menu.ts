@@ -42,6 +42,7 @@ import { editorScript, userState, bumpScript } from '@archiyou/editor/src/state/
 import { runScript, warmupWorker } from '@archiyou/editor/src/services/execution-service';
 import { publishScript, fetchPublishedScript, updateConfigurator } from '@archiyou/editor/src/services/publishing';
 import { fetchFileVersions } from '@archiyou/editor/src/services/scripts-sync';
+import { shareReferencedComponents, type ComponentShareResult } from '@archiyou/editor/src/services/component-sharing';
 import { OVERLAY_MENU_WIDTH } from '@archiyou/editor/src/settings';
 
 import {
@@ -143,7 +144,7 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
   @state() private _usedVersions: string[] = [];
   @state() private _submitting  = false;
   @state() private _error       = '';
-  @state() private _success: { url: string; public: boolean; count: number } | null = null;
+  @state() private _success: { url: string; public: boolean; count: number; components: ComponentShareResult[] } | null = null;
 
   // ── Fulfillment editor (sub-pane) ──
   @state() private _editIndex: number | null = null; // index being edited, null = new
@@ -514,7 +515,42 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
             ? 'It is also featured in our public list of configurators because you chose “Public”.'
             : 'It is not featured in our public lists because you did not choose “Public”. Anyone with the link can still use it.'}
         </p>
+        ${this._renderSharedComponents(s.components)}
         <p class="hint">${s.count} fulfillment${s.count === 1 ? '' : 's'} · version ${this._version}</p>
+      </div>`;
+  }
+
+  /** Tell the author what publishing did to their other scripts. Sharing is a visible
+   *  change to a script they did not explicitly share, so it is never silent — and the
+   *  distinction matters: shared means readable, not published as a configurator. */
+  private _renderSharedComponents(components: ComponentShareResult[])
+  {
+    const shared  = components.filter(c => c.action === 'shared');
+    const already = components.filter(c => c.action === 'already-shared');
+    if (!shared.length && !already.length) return nothing;
+
+    const label = (c: ComponentShareResult) => c.version ? `${c.name} ${c.version}` : c.name;
+
+    return html`
+      <div class="components-note">
+        <wa-icon library="lucide" name="share-2"></wa-icon>
+        <div>
+          ${shared.length ? html`
+            <p class="success-line">
+              This configurator uses ${shared.length === 1 ? 'a component' : 'components'} from your other
+              scripts, so ${shared.length === 1 ? 'it was' : 'they were'} <strong>shared</strong> automatically —
+              otherwise the configurator cannot load ${shared.length === 1 ? 'it' : 'them'}:
+            </p>
+            <ul class="components-list">${shared.map(c => html`<li>${label(c)}</li>`)}</ul>` : nothing}
+          ${already.length ? html`
+            <p class="success-line">
+              Already shared and unchanged: ${already.map(label).join(', ')}.
+            </p>` : nothing}
+          <p class="hint">
+            Sharing only makes a script readable. These components are not published as
+            configurators of their own and do not appear in your configurator list.
+          </p>
+        </div>
       </div>`;
   }
 
@@ -850,6 +886,21 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
     this._error = '';
     try
     {
+      // Share the script's $component() dependencies FIRST. A published configurator
+      // carries only this script's code; its components are read from the author's
+      // shared library at run time, so publishing before they are readable would put a
+      // broken configurator online. A failure here aborts the publish (reported below).
+      const components = await shareReferencedComponents(script, this._licence as CCLicence);
+      const failed = components.filter(c => c.action === 'failed' || c.action === 'not-found');
+      if (failed.length)
+      {
+        this._error = failed.map(c => c.action === 'not-found'
+          ? `Component “${c.name}” was not found in your scripts — the configurator cannot run without it.`
+          : `Could not share component “${c.name}”: ${c.error ?? 'unknown error'}`,
+        ).join(' ');
+        return;
+      }
+
       const stored = await publishScript(script, this._thumbnailSvg);
       // Reflect the stored metadata + version on the active script.
       script.published = stored.published ?? script.published;
@@ -866,6 +917,7 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
         url: stored.published?.url ?? configuratorUrl(author, name, stored.version ?? version),
         public: this._public,
         count: this._fulfillments.length,
+        components,
       };
     }
     catch (err)
@@ -912,6 +964,9 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
         url: stored.published?.url ?? configuratorUrl(author, name, stored.version ?? this._version),
         public: this._public,
         count: this._fulfillments.length,
+        // Edit mode touches only the published metadata; the code snapshot (and so its
+        // component references) is untouched, and those were shared when it was published.
+        components: [],
       };
     }
     catch (err)
@@ -1187,6 +1242,25 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
       color: var(--color-primary);
       word-break: break-all;
     }
+
+    /* Auto-shared components. Left-aligned inside the centred success block: it is a
+       list of names, and centred lists are hard to scan. */
+    .components-note {
+      display: flex; gap: 8px; align-items: flex-start;
+      margin-top: 4px; padding: 10px 12px;
+      text-align: left;
+      border: 1px solid var(--color-border, #e5e7eb);
+      border-radius: 6px;
+      background: var(--color-surface-sunken, rgba(0, 0, 0, 0.03));
+      max-width: 380px;
+    }
+    .components-note wa-icon { flex: 0 0 auto; margin-top: 2px; color: var(--color-text-muted); }
+    .components-note .success-line { max-width: none; }
+    .components-list {
+      margin: 4px 0 6px; padding-left: 18px;
+      font-size: var(--text-sm); color: var(--color-text);
+    }
+    .components-list li { font-family: var(--font-mono, monospace); }
 
     .error {
       font-size: var(--text-sm);

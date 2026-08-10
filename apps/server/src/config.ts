@@ -94,6 +94,46 @@ export const config = {
   },
 
   /**
+   * Gated script modules (routes/modules.ts → ModuleHost). See docs/modules.md.
+   *
+   * Modules are built and distributed OUTSIDE this repository and dropped into
+   * `dir` as `<id>/{manifest.json,bundle.js|server.js}`. When SERVER_MODULES_DIR
+   * is unset the whole feature is inert: nothing is installed, `GET /modules`
+   * returns [], and the server behaves exactly as it does today. That is what
+   * lets this repository stand alone as open source.
+   *
+   * Server-runtime modules are loaded into worker threads rather than the API
+   * event loop — they are expected to be long-running and CPU-bound, and a worker
+   * thread's terminate() actually enforces a timeout (unlike the script-execution
+   * timeout, which a synchronous loop can starve; see ExecutionWorker).
+   */
+  modules: {
+    /** Directory of installed modules. Empty ⇒ feature disabled. */
+    dir: process.env.SERVER_MODULES_DIR ?? '',
+    /**
+     * Development mode: watch `dir` and re-scan on change, serve bundles
+     * uncached, and publish a content revision so the editor and the runner can
+     * tell a rebuild apart from the version it already has.
+     *
+     * Defaults ON outside production, because the alternative is a stale bundle
+     * that looks like a working one: bundles are served immutable, so without
+     * this a rebuilt module keeps running the old code through reloads and
+     * restarts alike, with nothing to indicate why.
+     */
+    dev: process.env.SERVER_MODULES_DEV
+      ? /^(1|true|yes)$/i.test(process.env.SERVER_MODULES_DEV)
+      : process.env.NODE_ENV !== 'production',
+    /** Wall-clock cap on one server-module call, enforced by terminating the thread. */
+    callTimeoutMs: Number(process.env.SERVER_MODULES_CALL_TIMEOUT_MS ?? 60_000),
+    /** Max concurrently-running module worker threads. */
+    poolSize: Number(process.env.SERVER_MODULES_POOL_SIZE ?? 2),
+    /** Per-user rate limit on module calls: max requests within the window. */
+    rateLimit: Number(process.env.SERVER_MODULES_RATE_LIMIT ?? 60),
+    /** Rate-limit window in ms. */
+    rateWindowMs: Number(process.env.SERVER_MODULES_RATE_WINDOW_MS ?? 60_000),
+  },
+
+  /**
    * Asset proxy (routes/proxy.ts) — lets browser scripts `$import()` remote
    * assets (SVG/GeoJSON/STL/…) that CORS would otherwise block. Open but
    * guarded: SSRF checks, a size cap, a request timeout and a per-IP rate limit.

@@ -70,6 +70,27 @@ describe('Runner console scope handling', () =>
         expect(consoleChainDepth(globalThis.console)).toBeLessThanOrEqual(1)
     }, 60000)
 
+    it('prints objects as data, not [object Object]', async () =>
+    {
+        const runner = await new Runner().load()
+
+        const result: any = await runner.execute({
+            script: Script.fromData({
+                name: 'printing',
+                code: `print({ width: 10, height: 100 }); print('size:', [1,2]); console.log({ a: 1 });`,
+            })!,
+            params: {},
+            outputs: ['default/model/gltf'],
+            messages: ['user', 'info'],
+        } as any)
+
+        const msgs = (result.messages ?? []).map((m: any) => m.message)
+        expect(msgs).toContain('{ width: 10, height: 100 }')
+        expect(msgs).toContain('size: [ 1, 2 ]')
+        expect(msgs).toContain('{ a: 1 }')
+        expect(msgs.join('\n')).not.toContain('[object Object]')
+    }, 60000)
+
     it("still surfaces a component's messages in the parent script's result", async () =>
     {
         const runner = await new Runner().load()

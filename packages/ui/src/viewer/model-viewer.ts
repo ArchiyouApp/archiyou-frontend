@@ -27,8 +27,10 @@ import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR, VIEWER_BACKGR
   VIEWER_GRID_TARGET_CELLS, VIEWER_GRID_RECALC_FRACTION,
   VIEWER_GIZMO_AXIS_LENGTH, VIEWER_GIZMO_COLOR_X, VIEWER_GIZMO_COLOR_Y,
   VIEWER_GIZMO_COLOR_Z, VIEWER_GIZMO_COLOR_ORIGIN, VIEWER_GIZMO_LABEL_SIZE,
-  VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE, VIEWER_GIZMO_RECALC_INCREMENT, VIEWER_GIZMO_MIN_SCALE,
+  VIEWER_GIZMO_LABEL_GAP_RATIO,
+  VIEWER_GIZMO_SIZE_FACTOR_FROM_SCENE, VIEWER_GIZMO_RECALC_FRACTION, VIEWER_GIZMO_MIN_SCALE,
   VIEWER_GIZMO_ARROW_LENGTH_RATIO, VIEWER_GIZMO_ARROW_RADIUS_RATIO,
+  VIEWER_GIZMO_DASH_SIZE_RATIO, VIEWER_GIZMO_DASH_GAP_RATIO,
   VIEWER_MODEL_COORDSYSTEM, VIEWER_HANDLE_RANGE_LINE_COLOR, VIEWER_HANDLE_RANGE_LINE_WIDTH,
   VIEWER_LIGHT_POSITION } from '@archiyou/editor/src/settings';
 import { THEME_CHANGE_EVENT } from '@archiyou/editor/src/styles/dark-theme.js';
@@ -866,19 +868,22 @@ export class ModelViewer extends SignalWatcher(LitElement)
    *  large models — and legible (not oversized) on small ones. To avoid the
    *  gizmo jumping around while a parametric model changes by small amounts,
    *  the scale is only recomputed when the scene size (largest bbox dimension)
-   *  has moved by more than VIEWER_GIZMO_RECALC_INCREMENT since the last recalc.
-   *  See the settings for the scale-factor formula (calibrated for a scene
-   *  size of 100 → factor 1; scales proportionally both above and below that). */
+   *  has moved by more than VIEWER_GIZMO_RECALC_FRACTION of itself since the last
+   *  recalc (like the grid). See the settings for the scale-factor formula
+   *  (calibrated for a scene size of 100 → factor 1; proportional either way). */
   private _updateGizmoScale()
   {
     if (!this._gizmoGroup) return;
 
     const sceneSize = this._computeSceneSize();
 
-    // Skip small changes — only recompute past the increment (always compute the
-    // first time, when the scale has not been established yet).
+    // Skip small changes — only recompute past the threshold (always compute the
+    // first time, when the scale has not been established yet). The threshold is
+    // relative: a fixed one in world units either never fires on a metric scene or
+    // fires constantly on a millimetre one.
     const uninitialized = this._gizmoScale === 0;
-    if (!uninitialized && Math.abs(sceneSize - this._gizmoSceneSize) < VIEWER_GIZMO_RECALC_INCREMENT)
+    const threshold = this._gizmoSceneSize * VIEWER_GIZMO_RECALC_FRACTION;
+    if (!uninitialized && Math.abs(sceneSize - this._gizmoSceneSize) < threshold)
     {
       return;
     }
@@ -1077,7 +1082,12 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
       // negative dashed line
       const negGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), dir.clone().multiplyScalar(-L)]);
-      const negMat = new THREE.LineDashedMaterial({ color, dashSize: 0.06, gapSize: 0.04, depthTest: false });
+      const negMat = new THREE.LineDashedMaterial({
+        color,
+        dashSize: L * VIEWER_GIZMO_DASH_SIZE_RATIO,
+        gapSize:  L * VIEWER_GIZMO_DASH_GAP_RATIO,
+        depthTest: false,
+      });
       const negLine = new THREE.Line(negGeo, negMat);
       negLine.computeLineDistances();
       negLine.renderOrder = 999;
@@ -1121,7 +1131,9 @@ export class ModelViewer extends SignalWatcher(LitElement)
       const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
       const sprite = new THREE.Sprite(spriteMat);
       sprite.scale.setScalar(VIEWER_GIZMO_LABEL_SIZE);
-      sprite.position.copy(dir.clone().multiplyScalar(L + VIEWER_GIZMO_LABEL_SIZE * 0.7));
+      // sprite is centred on its position: sit it a fixed gap past the axis tip
+      sprite.position.copy(dir.clone().multiplyScalar(
+        L + L * VIEWER_GIZMO_LABEL_GAP_RATIO + VIEWER_GIZMO_LABEL_SIZE / 2));
       sprite.renderOrder = 999;
       sprite.userData.isViewerHelper = true;
       this._gizmoGroup.add(sprite);

@@ -6,6 +6,7 @@
  *   - core.ts         user, active script, all scripts, executing, result
  *   - editor.ts       editor UI + param/preset authoring (on core.script)
  *   - configurator.ts configurator runtime values + UI (derives from core)
+ *   - configurator-url.ts  those values ⇄ the query string of a shared link
  *   - browser.ts      browser UI state (stub)
  *   - viewer.ts       viewer UI state (stub)
  *
@@ -17,6 +18,7 @@ export * from './types';
 export * from './core';
 export * from './editor';
 export * from './configurator';
+export * from './configurator-url';
 export * from './browser';
 export * from './viewer';
 export * from './units';

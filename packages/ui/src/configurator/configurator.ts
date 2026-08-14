@@ -5,9 +5,10 @@ import { SignalWatcher } from '@lit-labs/signals';
 import '@awesome.me/webawesome/dist/components/split-panel/split-panel.js';
 
 import { createExecutionFailureResult, runScript, warmupWorker } from '@archiyou/editor/src/services/execution-service';
-import { editorScript, setExecutionResult, setExecuting } from '@archiyou/editor/src/state/workspace';
+import { setExecutionResult, setExecuting } from '@archiyou/editor/src/state/workspace';
 import { configuratorUnitSystem } from '@archiyou/editor/src/state/workspace';
-import { configuratorParams, configuratorValueFor } from '@archiyou/editor/src/state/configurator';
+import { buildConfiguratorRequest } from '@archiyou/editor/src/state/configurator';
+import { syncConfiguratorParamsToUrl } from '@archiyou/editor/src/state/configurator-url';
 import type { RunnerScriptExecutionRequest } from '@archiyou/core/src/runner/types';
 
 import '../viewer/model-viewer.js';
@@ -57,7 +58,7 @@ export class PageConfigurator extends SignalWatcher(LitElement)
         </div>
       </wa-split-panel>
 
-      <configurator-metric-bar></configurator-metric-bar>
+      <configurator-metric-bar ?preview=${this.preview}></configurator-metric-bar>
     `;
   }
 
@@ -118,6 +119,10 @@ export class PageConfigurator extends SignalWatcher(LitElement)
 
   private _handleParamsChanged()
   {
+    // Keep the address bar on the model being shown, so the link a visitor copies is
+    // this configuration. Not in the preview: there the address bar is the editor's.
+    if (!this.preview) syncConfiguratorParamsToUrl();
+
     if (this._paramExecTimeout !== null) clearTimeout(this._paramExecTimeout);
     this._paramExecTimeout = window.setTimeout(() =>
     {
@@ -151,23 +156,9 @@ export class PageConfigurator extends SignalWatcher(LitElement)
 
   private _buildRequest(): RunnerScriptExecutionRequest
   {
-    // Definitions come from the core active script (already canonical via
-    // toData()); values are the configurator's runtime overrides.
-    const scriptData = editorScript.get()?.toData() as any;
-    const params = configuratorParams.get();
-
-    const paramValues: Record<string, any> = Object.fromEntries(
-      params.map(p => [p.name, configuratorValueFor(p)])
-    );
-
-    return {
-      outputs:  ['default/model/glb', 'default/metrics/*/json'],
-      messages: ['error'],
-      script:   scriptData,
-      params:   paramValues,
-      // display = the end-user's local choice (geometry stays in the model unit)
-      unitSystem: configuratorUnitSystem.get(),
-    } as RunnerScriptExecutionRequest;
+    // Shared with fulfillment downloads (services/fulfillment.ts) so the files a
+    // visitor downloads are always built from the configuration on screen.
+    return buildConfiguratorRequest(['default/model/glb', 'default/metrics/*/json']);
   }
 
 

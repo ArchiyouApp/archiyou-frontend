@@ -10,8 +10,11 @@ import { signal, computed } from '@lit-labs/signals';
 
 import { ScriptParam } from '@archiyou/core/src/execution/ScriptParam';
 import type { ScriptParamData } from '@archiyou/core/src/execution/types';
+import type { RunnerScriptExecutionRequest } from '@archiyou/core/src/runner/types';
+import type { ConsoleMessageType } from '@archiyou/core/src/console/types';
 
 import { editorScript } from './core';
+import { configuratorUnitSystem } from './units';
 import type { ScriptPreset } from './types';
 
 //// DERIVED DEFINITIONS (read-only, from core script) ////
@@ -80,6 +83,40 @@ export function resetConfiguratorValues(): void
 export function setConfiguratorExecuting(value: boolean): void
 {
   configuratorExecuting.set(value);
+}
+
+//// EXECUTION REQUEST ////
+
+/**
+ * The execution request the configurator runs: the active script, the end-user's
+ * param values and their local unit system, for the given output paths.
+ *
+ * Shared by the live run behind the viewer and by fulfillment downloads (see
+ * services/fulfillment.ts) on purpose — a downloaded file must come from exactly
+ * the configuration on screen, and two separately-assembled requests drift.
+ */
+export function buildConfiguratorRequest(
+  outputs: string[],
+  messages: Array<ConsoleMessageType> = ['error'],
+): RunnerScriptExecutionRequest
+{
+  // Definitions come from the core active script (already canonical via toData());
+  // values are the configurator's runtime overrides.
+  const scriptData = editorScript.get()?.toData() as any;
+  const params = configuratorParams.get();
+
+  const paramValues: Record<string, any> = Object.fromEntries(
+    params.map(p => [p.name, configuratorValueFor(p)]),
+  );
+
+  return {
+    outputs,
+    messages,
+    script: scriptData,
+    params: paramValues,
+    // display = the end-user's local choice (geometry stays in the model unit)
+    unitSystem: configuratorUnitSystem.get(),
+  } as RunnerScriptExecutionRequest;
 }
 
 /** Apply a preset's values into the configurator runtime values (by param name). */

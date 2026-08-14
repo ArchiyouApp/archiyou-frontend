@@ -1,14 +1,16 @@
-import { LitElement, html, css } from 'lit';
-import { customElement, state } from 'lit/decorators.js';
+import { LitElement, html, css, nothing } from 'lit';
+import { customElement, property, state } from 'lit/decorators.js';
 import { SignalWatcher } from '@lit-labs/signals';
 
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@awesome.me/webawesome/dist/components/button/button.js';
 import '@awesome.me/webawesome/dist/components/spinner/spinner.js';
+import '@awesome.me/webawesome/dist/components/popover/popover.js';
 
 import './configurator-metric-card.js';
+import './configurator-download-menu.js';
 
-import { executing as scriptExecuting, executionResult } from '@archiyou/editor/src/state/workspace';
+import { editorScript, executing as scriptExecuting, executionResult } from '@archiyou/editor/src/state/workspace';
 import type { Metric } from '@archiyou/core/src/calc/types.js';
 
 @customElement('configurator-metric-bar')
@@ -45,19 +47,42 @@ export class ConfiguratorMetricBar extends SignalWatcher(LitElement)
           </button>
         ` : ''}
 
-        <div class="download-wrap">
-          <button class="download-btn" title="Download" @click=${this._handleDownload}>
-            <wa-icon library="lucide" name="download"></wa-icon>
-            <span>Download</span>
-            <!-- Caret: opens the per-format option list (wired up later). -->
-            <wa-icon class="download-caret" library="lucide" name="chevron-down"></wa-icon>
-          </button>
-        </div>
+        ${this._hasDownloads() ? html`
+          <div class="download-wrap">
+            <button id="download-btn" class="download-btn" title="Download">
+              <wa-icon library="lucide" name="download"></wa-icon>
+              <span>Download</span>
+              <wa-icon class="download-caret" library="lucide" name="chevron-down"></wa-icon>
+            </button>
+          </div>
+        ` : nothing}
       </div>
+
+      <!-- The export options themselves. A popover rather than a panel inside the
+           bar: it renders in a fixed layer, so this component keeps its own fixed
+           height and clipping, and Web Awesome handles anchoring, outside-click and
+           Escape. -->
+      ${this._hasDownloads() ? html`
+        <wa-popover
+          class="download-popover"
+          for="download-btn"
+          placement="top-end"
+          distance="10"
+          without-arrow
+          @wa-after-hide=${this._resetDownloadMenu}
+        >
+          <configurator-download-menu ?preview=${this.preview}></configurator-download-menu>
+        </wa-popover>
+      ` : nothing}
     `;
   }
 
-  // ── 2. State ──
+  // ── 2. State & Properties ──
+
+  /** True inside the editor's Configurator Preview — passed to the download menu,
+   *  which then stands in the publish defaults for a not-yet-published script. */
+  @property({ type: Boolean, reflect: true }) preview = false;
+
   @state() private _hasOverflow = false;
   private _resizeObserver: ResizeObserver | null = null;
 
@@ -133,10 +158,22 @@ export class ConfiguratorMetricBar extends SignalWatcher(LitElement)
     }
   }
 
-  private _handleDownload()
+  /** Closing the menu clears the last run's error/tick, so it reopens clean. Only the
+   *  popover's own hide counts — Web Awesome overlays inside it bubble the same
+   *  composed event. */
+  private _resetDownloadMenu(e: Event)
   {
-    // Stub: download not yet implemented
-    console.info('Configurator: download clicked');
+    if (e.target !== e.currentTarget) return;
+    this.renderRoot.querySelector('configurator-download-menu')?.reset();
+  }
+
+  /** Is there anything to download? A published configurator that offers no
+   *  fulfillments gets no Download button at all rather than one that opens an empty
+   *  list; in the preview the button always stands, since that is where an author
+   *  goes to see what they are about to offer. */
+  private _hasDownloads(): boolean
+  {
+    return this.preview || (editorScript.get()?.published?.fulfillments?.length ?? 0) > 0;
   }
 
   // ── 5. Styles ──
@@ -237,6 +274,23 @@ export class ConfiguratorMetricBar extends SignalWatcher(LitElement)
       margin-left: var(--space-xs);
       font-size: var(--text-xs);
       opacity: 0.85;
+    }
+
+    /* The menu draws its own header/rows edge to edge, so the popover contributes
+       only the frame around it. */
+    .download-popover
+    {
+      --max-width: 26rem;
+    }
+
+    .download-popover::part(body)
+    {
+      padding: 0;
+      overflow: hidden;
+      border-color: var(--color-border);
+      border-radius: var(--radius-md, 8px);
+      background: var(--color-bg-elevated, #fff);
+      user-select: auto;
     }
 
     .empty

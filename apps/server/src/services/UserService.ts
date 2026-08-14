@@ -14,6 +14,7 @@ import type { PublicUser } from '@archiyou/types';
 import { db } from '../db/client';
 import { users, type UserRow } from '../db/schema';
 import { config } from '../config';
+import { ALL_MODULES, grantsAllModules } from '../modules/entitlements';
 
 const BCRYPT_ROUNDS = 10;
 
@@ -50,6 +51,11 @@ export function normalizeModuleIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((m): m is string => typeof m === 'string' && m.length > 0);
 }
+
+// The wildcard lives in modules/entitlements.ts so ModuleHost can read it
+// without importing this file (and with it, the database). Re-exported here
+// because `users.modules` is this service's column.
+export { ALL_MODULES, grantsAllModules };
 
 export class UserService {
   findByEmail(email: string): UserRow | undefined {
@@ -163,15 +169,22 @@ export class UserService {
    *  gated route asks. */
   hasModule(username: string | null | undefined, moduleId: string): boolean {
     if (!username) return false;
-    return this.getModules(username).includes(moduleId);
+    const owned = this.getModules(username);
+    return grantsAllModules(owned) || owned.includes(moduleId);
   }
 
   /** Replace the entitlement list. Deduplicated and sorted so the stored value is
-   *  stable and diffable. Returns the stored list, or null for an unknown handle. */
+   *  stable and diffable. Returns the stored list, or null for an unknown handle.
+   *
+   *  A list containing the wildcard collapses to exactly `["*"]`: the named ids
+   *  alongside it would grant nothing extra, and keeping them would leave a list
+   *  that looks meaningful but is not — revoking one of them would change
+   *  nothing. */
   setModules(username: string, moduleIds: string[]): string[] | null {
     const user = this.findByUsername(username);
     if (!user) return null;
-    const next = [...new Set(normalizeModuleIds(moduleIds))].sort();
+    const ids = normalizeModuleIds(moduleIds);
+    const next = grantsAllModules(ids) ? [ALL_MODULES] : [...new Set(ids)].sort();
     db.update(users).set({ modules: next }).where(eq(users.id, user.id)).run();
     return next;
   }
@@ -184,7 +197,12 @@ export class UserService {
     return this.setModules(username, [...normalizeModuleIds(current.modules), ...moduleIds]);
   }
 
-  /** Revoke modules. Returns the new list, or null for an unknown handle. */
+  /** Revoke modules. Returns the new list, or null for an unknown handle.
+   *
+   *  Revoking a named id from a wildcard account is a no-op — `["*"]` holds no
+   *  named ids to remove. Pass `'*'` to drop the wildcard itself, or use
+   *  setModules to replace it with an explicit list. The admin CLI says so out
+   *  loud, because a silent no-op reads exactly like a successful revoke. */
   revokeModules(username: string, moduleIds: string[]): string[] | null {
     const current = this.findByUsername(username);
     if (!current) return null;

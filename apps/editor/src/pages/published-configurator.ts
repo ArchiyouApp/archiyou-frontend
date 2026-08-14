@@ -18,6 +18,7 @@ import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@archiyou/ui/configurator/configurator.js';
 
 import { openSharedScript } from '../state/workspace';
+import { applyConfiguratorParamsFromQuery } from '../state/configurator-url';
 import { applyLocaleFromQuery } from '../state/locale';
 import { fetchPublishedScriptVersion } from '../services/publishing.js';
 
@@ -62,6 +63,10 @@ export class PagePublishedConfigurator extends SignalWatcher(LitElement)
       }
       // Load read-only as the active script; the configurator picks it up.
       openSharedScript(data as unknown as Record<string, any>);
+      // ?WIDTH=1200&SHELVES=4 — a shared link opens on that exact model. Applied
+      // after the script is loaded (its params are what type the raw strings) and
+      // before <page-configurator> mounts, so the first run is already the right one.
+      applyConfiguratorParamsFromQuery(window.location.search);
       this._status = 'ready';
     }
     catch (err)

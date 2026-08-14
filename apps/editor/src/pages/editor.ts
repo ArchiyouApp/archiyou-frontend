@@ -33,6 +33,7 @@ import '@archiyou/ui/editor/script-importer.js';
 import '@archiyou/ui/editor/share-script-menu.js';
 import '@archiyou/ui/editor/publish-script-menu.js';
 import '@archiyou/ui/editor/manage-configurators-menu.js';
+import '@archiyou/ui/editor/modules-menu.js';
 import type { ToolDef } from '@archiyou/ui/editor/toolbar.js';
 
 import { editorScript, executing, executionResult, scriptParams, scripts, updateScriptCode, setExecutionResult, setExecuting, paramValue, createNewScript, openScript, openSharedScript, deleteScriptById, importScriptFromData, isReadOnly, isScriptNameTaken, selectedPath, scriptUnitSystem, ensureScriptUnitSystem, perStatement, kernel, autoRun, wasActiveScriptRestored } from '../state/workspace';
@@ -147,6 +148,10 @@ export class PageEditor extends SignalWatcher(LitElement)
         @manage-configurators-edit=${this._handleManageConfiguratorsEdit}
         @manage-configurators-cancel=${this._handleManageConfiguratorsCancel}
       ></manage-configurators-menu>
+      <editor-modules-menu
+        ?open=${this._showModules}
+        @modules-menu-cancel=${() => { this._showModules = false; }}
+      ></editor-modules-menu>
       <script-importer
         ?open=${this._showScriptImporter}
         @script-importer-cancel=${this._handleScriptImporterCancel}
@@ -165,6 +170,7 @@ export class PageEditor extends SignalWatcher(LitElement)
   @state() private _showShareMenu = false;
   @state() private _showPublishMenu = false;
   @state() private _showManageConfigurators = false;
+  @state() private _showModules = false;
   // Non-null → the publish menu opens in edit mode for this published version.
   @state() private _editConfigurator: ScriptData | null = null;
   // Why a /editor/{…} deep link could not be opened (empty = no problem).
@@ -573,6 +579,12 @@ export class PageEditor extends SignalWatcher(LitElement)
     if (value === 'manage-configurators')
     {
       this._showManageConfigurators = true;
+      return;
+    }
+
+    if (value === 'modules')
+    {
+      this._showModules = true;
       return;
     }
 

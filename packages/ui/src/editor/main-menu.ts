@@ -7,7 +7,6 @@ import '@awesome.me/webawesome/dist/components/icon/icon.js';
 import '@awesome.me/webawesome/dist/components/tooltip/tooltip.js';
 import '@awesome.me/webawesome/dist/components/dialog/dialog.js';
 import './main-menu-file-menu.js';
-import './modules-menu.js';
 import '../configurator/configurator.js';
 
 import { pluginMode } from '@archiyou/editor/src/state/plugin-mode';
@@ -81,9 +80,6 @@ export class MainMenu extends SignalWatcher(LitElement)
           @click=${() => this._select('help')}
         ><wa-icon library="lucide" name="circle-help" label="Help"></wa-icon></wa-button>
         <wa-tooltip for="btn-help" placement="right">${msg('Help')}</wa-tooltip>
-
-        <!-- Renders nothing unless the backend has modules installed. -->
-        <editor-modules-menu></editor-modules-menu>
 
         <wa-button
           id="btn-settings"

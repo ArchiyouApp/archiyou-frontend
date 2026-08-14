@@ -1460,6 +1460,13 @@ ${contextLines.join('\n')}
         });
 
         await this._moduleRegistry.prepare(code, catalog);
+
+        // Then let each module pull in whatever the script should be able to
+        // reach synchronously. Separate from prepare() because a warm-up needs
+        // to know the run — chiefly its asset proxy, which is the only way a
+        // browser worker can fetch a third-party host at all. This is the last
+        // async moment before the scope is built.
+        await this._moduleRegistry.warmModules({ assetProxyUrl: req.assetProxyUrl });
     }
 
     //// $import ASSETS ////

@@ -13,6 +13,7 @@
     "build:prod": "vite build --mode prod",
     "build:workspace": "APP=workspace vite build",
     "preview": "vite preview",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "typecheck:own": "node ../../scripts/typecheck-own.mjs apps/editor",
     "localize:extract": "lit-localize extract",
@@ -39,6 +40,7 @@
     "@vaadin/router": "^1.7.5",
     "codemirror": "^6.0.1",
     "comlink": "^4.4.2",
+    "fflate": "^0.8.2",
     "json5": "^2.2.3",
     "lit": "^3.2.0",
     "lucide-static": "^1.16.0",
@@ -50,6 +52,7 @@
     "@types/node": "^25.5.0",
     "@types/three": "^0.171.0",
     "typescript": "^5.7.3",
-    "vite": "^6.1.0"
+    "vite": "^6.1.0",
+    "vitest": "^4.1.4"
   }
 }

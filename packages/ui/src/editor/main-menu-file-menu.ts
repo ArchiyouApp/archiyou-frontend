@@ -96,17 +96,11 @@ export class MainMenuFileMenu extends LitElement
 
         <wa-divider></wa-divider>
 
-        <wa-dropdown-item value="plugins">
+        <!-- Plugins sat here; hidden for now, and the handlers in editor.ts are
+             still wired, so restoring it is putting the entry back. -->
+        <wa-dropdown-item value="modules">
           <wa-icon slot="icon" library="lucide" name="puzzle"></wa-icon>
-          ${msg('Plugins')}
-          <wa-dropdown-item slot="submenu" value="plugin-start">
-            <wa-icon slot="icon" library="lucide" name="play"></wa-icon>
-            ${msg('Start Plugin')}
-          </wa-dropdown-item>
-          <wa-dropdown-item slot="submenu" value="plugin-add">
-            <wa-icon slot="icon" library="lucide" name="folder-plus"></wa-icon>
-            ${msg('Add plugin')}
-          </wa-dropdown-item>
+          ${msg('Modules')}
         </wa-dropdown-item>
 
         <wa-divider></wa-divider>

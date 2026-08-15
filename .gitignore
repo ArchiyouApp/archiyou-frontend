@@ -1,7 +1,15 @@
 node_modules
 dist
-# allow dist for editor app for now 
+
+# The editor's build output is NOT committed: the api container builds it on
+# boot from the mounted checkout (apps/server/docker-entrypoint.sh). The empty
+# DIRECTORY is tracked, though — docker-compose.yml bind-mounts it into caddy,
+# and docker creates a missing bind-mount source as root, which would leave the
+# container's uid 1000 unable to build into it. Vite empties outDir on every
+# build and takes the .gitkeep with it, so the entrypoint puts it back.
 !/apps/editor/dist
+/apps/editor/dist/*
+!/apps/editor/dist/.gitkeep
 
 *.db*
 /tmp

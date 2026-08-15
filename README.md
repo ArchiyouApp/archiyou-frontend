@@ -166,22 +166,76 @@ mounts `apps/editor/dist` and `plugins/`. (`apps/server/docker-compose.yml` is
 the *development* stack: server + Redis only.)
 
 ```bash
-# 1. build the editor for a same-origin deployment
-SERVER_API_BASE_URL=/api pnpm --filter @archiyou/editor build
-
-# 2. configure the deployment
+# 1. configure the deployment
 cp .env.example .env
 #    set SERVER_JWT_SECRET (openssl rand -base64 48), FRONTEND_URL, REDIS_PASW
 
-# 3. point the hostnames in Caddyfile at your domain, then:
+# 2. point the hostnames in Caddyfile at your domain, then:
 pnpm docker:prod          # == docker compose up -d
 ```
+
+There is no build step to run: the api container installs dependencies and
+builds the workspace on boot, from the mounted checkout. A deploy is therefore
+
+```bash
+git pull && git submodule update --init --recursive
+docker compose restart api
+```
+
+and `docker compose build` is needed only when the base image itself changes.
+Note that the first boot builds the editor from scratch — minutes, during which
+caddy serves 404s — and that **the API does not accept connections until the
+build finishes**. Subsequent restarts with no source change are immediate.
+
+### What gets built, and when
+
+`docker-entrypoint.sh` builds when any file under `apps/`, `packages/`,
+`modules/` or the root manifests is newer than
+`node_modules/.archiyou-build-stamp` — one `find` that stops at the first stale
+file, so the up-to-date case costs milliseconds. It builds, in this order:
+
+| Package | Output | Consumed by |
+| --- | --- | --- |
+| `packages/meshup` (a **submodule**) | `dist/` | the editor build — its package `exports` point at `dist`, not `src`, so this must come first |
+| `apps/editor` | `dist/` | caddy, as `/srv/app` |
+| `modules/*`, `modules/*/*` | `dist/bundle.js` | the server's `ModuleHost`, read in place |
+
+Nothing else needs building: `apps/server` runs from source via `tsx`, and
+`packages/{core,ui,types,module-sdk}` all export `src/`, so their consumers
+compile the sources.
+
+This is an explicit list rather than the root `pnpm build`, because **`turbo
+build` currently fails outright**: `@archiyou/editor` and `@archiyou/ui` depend
+on each other and turbo rejects the cyclic task graph. Break that cycle and the
+entrypoint collapses back to a single `pnpm run build`.
+
+Two things the build step deliberately does **not** do:
+
+- **It does not inherit the container's environment.** The build runs under
+  `env -i` with an explicit allowlist, because `apps/editor/vite.config.ts` sets
+  `envPrefix: ['VITE_','SERVER_']` and this container is started with
+  `env_file: .env` — without the scrub, every `SERVER_*` variable, including
+  `SERVER_JWT_SECRET`, would be visible to Vite and inlinable into a bundle that
+  ships to browsers. `SERVER_API_BASE_URL` is passed through (default `/api`,
+  matching the prefix caddy strips) and is inlined at build time, so changing it
+  means rebuilding: `ARCHIYOU_FORCE_BUILD=1`.
+- **It does not update `modules/`.** That overlay is a separate, gitignored
+  repository, so a root `git pull` leaves it untouched — pull it too, then
+  restart, and the entrypoint rebuilds it.
+
+Escape hatches: `ARCHIYOU_SKIP_BUILD=1` boots on whatever was built last (useful
+if a build breaks on the server), `ARCHIYOU_FORCE_BUILD=1` always rebuilds. The
+worker service skips the build automatically — its mount is read-only.
+
+**`apps/editor/dist` is not committed.** Only the empty directory is, via a
+`.gitkeep`: docker creates a missing bind-mount source as root, which would
+leave the container's uid 1000 unable to build into it.
 
 ### What runs from where
 
 | Runs from | Mounted into | Rebuild needed? |
 | --- | --- | --- |
-| `apps/editor/dist` | caddy `/srv/app` | no — rebuild the SPA, reload |
+| `apps/editor/dist` | caddy `/srv/app` | built by the api container on boot |
 | `plugins/` | caddy `/srv/plugins` | no |
 | `Caddyfile` | caddy `/etc/caddy` | no — `docker compose restart caddy` |
 | the whole checkout | api `/archiyou` | no |
@@ -201,9 +255,13 @@ Otherwise it is a no-op and startup is immediate. Installing inside the image
 also means `better-sqlite3` — a native module — is compiled against the exact
 Node that loads it.
 
-That install writes into the mounted checkout as uid 1000 (`USER node`), so the
-checkout must be writable by it: `sudo chown -R 1000:1000 <checkout>` on the
-host. If you'd rather not, install once by hand and the entrypoint stays quiet:
+That install — and the build that follows it — writes into the mounted checkout
+as uid 1000 (`USER node`), so the checkout must be writable by it: `sudo chown
+-R 1000:1000 <checkout>` on the host. This is not optional now that the editor's
+`dist/` is produced there rather than committed; a read-only checkout means the
+entrypoint silently skips the build (that is how the worker service opts out)
+and caddy serves whatever was there before. Installing by hand keeps the install
+step quiet, but not the build:
 
 ```bash
 docker compose run --rm --user 0 --entrypoint pnpm api install --frozen-lockfile

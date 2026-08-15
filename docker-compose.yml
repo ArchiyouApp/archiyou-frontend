@@ -23,8 +23,12 @@ services:
       - ./caddy/data:/data
       - ./caddy/config:/config
       - ./caddy/logs:/logs
-      # The built editor SPA. Build it before `docker compose up`:
-      #   SERVER_API_BASE_URL=/api pnpm --filter @archiyou/editor build
+      # The built editor SPA. NOT committed to git — the api container builds it
+      # on boot (apps/server/docker-entrypoint.sh), so on a first deploy this
+      # directory is empty and caddy 404s until that build finishes. The empty
+      # directory itself IS in git (apps/editor/dist/.gitkeep), which is what
+      # stops docker from creating it here as root and leaving uid 1000 unable
+      # to write into it.
       - ./apps/editor/dist:/srv/app:ro
       # Runtime-loaded editor plugins, served at /plugins/* (see Caddyfile).
       # Without this the built-in shape-picker 404s in production.
@@ -65,12 +69,20 @@ services:
       - SERVER_REDIS_PORT=6379
       - SERVER_REDIS_PASSWORD=${REDIS_PASW}
       - SERVER_DATABASE_FILE=./data/archiyou.db
+      # Read by the entrypoint's build step and inlined into the editor bundle
+      # at build time (it cannot be changed afterwards without a rebuild). /api
+      # matches the prefix caddy strips in the Caddyfile; set an absolute URL
+      # only if you split the editor and API across hostnames.
+      - SERVER_API_BASE_URL=${SERVER_API_BASE_URL:-/api}
     depends_on:
       redis:
         condition: service_healthy
     volumes:
       # The image ships no code (see apps/server/Dockerfile): the whole monorepo
       # checkout is mounted, so a deploy is `git pull` + `docker compose restart`.
+      # The entrypoint also BUILDS into this mount (editor SPA, packages, script
+      # modules) when sources are newer than its build stamp — which is why this
+      # mount is read-write here and read-only on the worker.
       # It must be the repo ROOT, not just apps/server — apps/server is a workspace
       # package whose node_modules are symlinks into ../../node_modules/.pnpm, and
       # pnpm needs the root package.json + pnpm-workspace.yaml + lockfile.

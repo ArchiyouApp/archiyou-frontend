@@ -42,3 +42,6 @@ target/
 /modules/*
 !/modules/README.md
 
+
+# tmp AI plans
+/plans

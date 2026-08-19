@@ -13,7 +13,7 @@ import { Document, WebIO } from '@gltf-transform/core'
 import { Modeler } from '../../../src/modeler/Modeler'
 import { brepShapeToMeshup, isBrepShape } from '../../../src/modeler/brep/toMeshup'
 import * as brep from '../../../src/modeler/brep/index'
-import * as meshup from '@archiyou/meshup/src/index'
+import * as meshup from '@archiyou/meshup'
 
 /** Parse GLB bytes back into a glTF document — proves the output is real, not just non-empty */
 async function readGLB(glb: Uint8Array): Promise<Document>

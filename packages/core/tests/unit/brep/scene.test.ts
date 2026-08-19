@@ -6,7 +6,7 @@
  *  kernel Shapes, so one scene graph and one style model serve both kernels.
  */
 import * as brep from '../../../src/modeler/brep/index'
-import { SceneNode } from '@archiyou/meshup/src/SceneNode'
+import { SceneNode } from '@archiyou/meshup'
 
 import { test, describe, beforeAll, expect } from 'vitest'
 

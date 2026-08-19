@@ -2,15 +2,14 @@
 
 Archiyou plugins are **guests** in the Archiyou editor: the editor keeps owning the shell,
 the 3D viewer, and execution, while a plugin contributes to a small set of extension points.
-This is a hands-on manual for the parts that work today. For the full architecture (execution
-modes, tools, worker-scope modules, permissions, the embed path), see
-[`../WIP_PLUGINS.md`](../WIP_PLUGINS.md).
+This is a hands-on manual for the parts that work today. The rest of the architecture —
+`session` mode, worker-scope modules, permissions, the embed path — is still being designed
+and is not documented here yet.
 
 > **Status.** Implemented today: `script`-mode plugins with a **main script**, a **custom main
 > UI**, and **toolbar tools** (with `archiyou.generate` + `archiyou.download` + `archiyou.ui`), loaded at
 > runtime (by URL or from a local folder, with auto-reload) and previewed at `/plugin`.
 > Not yet wired into the loader: worker-scope core modules, `session` mode, and permissions.
-> Those are specified in `WIP_PLUGINS.md`.
 
 ---
 
@@ -56,7 +55,7 @@ Minimum for a `script`-mode plugin with a custom menu:
 ```
 
 `mainScript` **must be plain ESM** (`.js`) so it can be loaded at runtime without a build step.
-Paths are relative to the plugin folder. See the full field reference in `WIP_PLUGINS.md`.
+Paths are relative to the plugin folder. The fields above are the ones the loader reads today.
 
 ---
 
@@ -223,4 +222,3 @@ expect(r.status).toBe('success');
 
 - **Example:** [`shape-picker/`](shape-picker/) — a dropdown (cube/sphere/cylinder) + size.
 - **Loader / bridge / preview:** `apps/editor/src/plugins/` and `apps/editor/src/pages/plugin.ts`.
-- **Full architecture & roadmap:** [`../WIP_PLUGINS.md`](../WIP_PLUGINS.md).

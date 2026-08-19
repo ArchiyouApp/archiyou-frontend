@@ -1,7 +1,7 @@
 /**
  * modules — grant, revoke and inspect script-module entitlements.
  *
- * Access to a gated script module (see docs/modules.md) is a per-user list of
+ * Access to a gated script module (see modules/README.md) is a per-user list of
  * module ids in `users.modules`. This is the only supported way to change it.
  *
  * Entitlements are read from the database on every request, so a change here

@@ -1,6 +1,6 @@
 /**
  * Minimal plugin types for the guest-model loader (implementation slice 2).
- * A subset of the manifest spec in WIP_PLUGINS.md — enough to load a
+ * A subset of the manifest spec in plugins/README.md — enough to load a
  * `script`-mode plugin with a custom param menu.
  */
 

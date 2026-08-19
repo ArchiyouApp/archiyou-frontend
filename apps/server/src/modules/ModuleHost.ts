@@ -1,7 +1,7 @@
 /**
  * ModuleHost — the installed set of gated script modules on this instance.
  *
- * Modules are built and distributed OUTSIDE this repository (see docs/modules.md)
+ * Modules are built and distributed OUTSIDE this repository (see modules/README.md)
  * and deployed into SERVER_MODULES_DIR as:
  *
  *   <dir>/<id>/manifest.json

@@ -9,9 +9,9 @@ advanced calculation engine — available only to accounts entitled to it. Modul
 or commercially-licensed capabilities can be offered without their source being part of this
 repository.
 
-- **This file** is the hands-on guide: set up, write, run, deploy, troubleshoot.
-- [`docs/modules.md`](../docs/modules.md) is the system reference: architecture, the manifest
-  contract, entitlement, and why the pieces are shaped the way they are.
+**This file is the reference for the module system** — both the hands-on guide (set up, write,
+run, deploy, troubleshoot) and the system detail: the manifest contract, the client and server
+runtimes, entitlement, and why the pieces are shaped the way they are.
 
 ---
 
@@ -197,6 +197,15 @@ Depend only on `@archiyou/module-sdk`:
 }
 ```
 
+`workspace:*` is the only way to depend on it: the SDK is internal to this monorepo and is **not
+published to npm**. That is why a module repository is developed from inside the overlay rather
+than as a standalone checkout — cloned into `modules/`, it is a workspace package and resolves the
+SDK (and the same TypeScript) exactly as the engine does. Nothing is lost by it being unpublished:
+`@archiyou/core` carries a verbatim mirror of the contract (`src/modules/sdkTypes.ts`) and
+re-exports it, so an outside consumer of core still sees the module types — but edit the contract
+in `packages/module-sdk/src/types.ts` and re-run `pnpm --filter @archiyou/core sync:sdk-types`,
+never the other way round.
+
 ### `manifest.json`
 
 ```jsonc
@@ -366,7 +375,7 @@ It works because each of the places a stale build could hide is handled:
 
 | | What happens |
 |---|---|
-| Build | `turbo watch build --filter=./modules/*` rebuilds on save |
+| Build | `turbo watch build --filter=./modules/**` rebuilds on save (`**`, not `*` — a one-repo-holding-several layout puts packages two levels down, and a filter that matches nothing exits 0) |
 | Deploy | none — the backend reads `<id>/dist/bundle.js` in place |
 | Backend | watches for changes and re-scans, so new modules and edited manifests need no restart |
 | HTTP cache | bundles are served `no-store` in dev, so a fetch really refetches |

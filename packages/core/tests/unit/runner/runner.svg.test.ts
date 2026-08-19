@@ -82,6 +82,44 @@ describe('Runner — model/svg projection + thumbnail', () =>
         expect(longest).toBeLessThanOrEqual(4)
     }, 120000)
 
+    /**
+     * The regression that made thumbnails look broken: the thumbnail path only ever
+     * consumed a hidden-line projection of MESHES, so a script that draws in 2D — plates,
+     * nesting sheets, anything from rect/circle/offset — silently produced nothing at all,
+     * for every share and every publish. Those scripts are a large share of the library.
+     */
+    it('draws a 2D-only script (no meshes to project) instead of producing nothing', async () =>
+    {
+        const flat = `
+            r1 = rect(100,300).color('blue');
+            r2 = rect(200,40).move(100).color('green');
+            c = circle(50).align(r2, 'center', 'right').color('orange');
+            r1.copy().moveZ(-50).fillet(20);
+        `
+        const result = await run(flat, [THUMBNAIL_OUTPUT_PATH])
+        expect(result.status).toBe('success')
+
+        const svg = outputFor(result, THUMBNAIL_OUTPUT_PATH)
+        expect(typeof svg).toBe('string')
+        writeSnapshot('runner.svg.thumbnail.2d.svg', svg)
+
+        // A real drawing of the authored geometry, framed and capped like any thumbnail.
+        expect(svg).toMatch(/<path\b/)
+        expect(Buffer.byteLength(svg, 'utf8')).toBeLessThanOrEqual(65536)
+        const vb = svg.match(/viewBox="([^"]+)"/)?.[1].split(' ').map(Number)
+        expect(vb).toHaveLength(4)
+        expect(vb![2]).toBeCloseTo(vb![3], 3)
+    }, 120000)
+
+    /** A scene with nothing drawable must still degrade to "no thumbnail", not to a
+     *  broken document — callers show a placeholder for null. */
+    it('still yields no output for a script that draws nothing', async () =>
+    {
+        const result = await run('const a = 1 + 1;', [THUMBNAIL_OUTPUT_PATH])
+        expect(result.status).toBe('success')
+        expect(outputFor(result, THUMBNAIL_OUTPUT_PATH)).toBeUndefined()
+    }, 120000)
+
     it('caps a dense model by degrading rather than emitting a huge asset', async () =>
     {
         // A grid of small boxes: many short edges, the shape that blows up naively.

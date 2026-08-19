@@ -16,14 +16,15 @@
  *  Import this module for its side effects once, before any script runs (see Modeler.ts).
  */
 
-import * as meshup from '@archiyou/meshup/src/index'
+import * as meshup from '@archiyou/meshup'
 import { buildDXF, type toDXFOptions } from './DXFExporter'
-import { buildDAE, type toDAEOptions } from './DAEExporter'
+// Type-only — see the dynamic import in SceneNode.toDAE() below.
+import type { toDAEOptions } from './DAEExporter'
 import type { DimensionOptions, LabelOptions } from '../annotator/types'
 
 //// TYPE AUGMENTATION (declaration merging) ////
 
-declare module '@archiyou/meshup/src/Shape' {
+declare module '@archiyou/meshup' {
     interface Shape {
         /** Kernel a shape belongs to. meshup shapes are always the mesh kernel. */
         readonly mode: 'mesh'
@@ -53,7 +54,7 @@ declare module '@archiyou/meshup/src/Shape' {
     }
 }
 
-declare module '@archiyou/meshup/src/SceneNode' {
+declare module '@archiyou/meshup' {
     interface SceneNode {
         /** Export this subtree's 2D shapes (+ linked dimension lines) to DXF. */
         toDXF(options?: toDXFOptions): string | null
@@ -68,7 +69,7 @@ declare module '@archiyou/meshup/src/SceneNode' {
     }
 }
 
-declare module '@archiyou/meshup/src/ShapeCollection' {
+declare module '@archiyou/meshup' {
     interface ShapeCollection {
         /** Export the 2D shapes in this collection (+ linked dimension lines) to DXF. */
         toDXF(options?: toDXFOptions): string | null
@@ -204,8 +205,12 @@ function linkedAnnotations(modeler: any, shapes: Array<any>): Array<any> {
     return buildDXF(shapes, linkedAnnotations(modeler, shapes), { units: modeler?.units?.(), ...options })
 }
 
-;(meshup.SceneNode.prototype as any).toDAE = function (this: any, options: toDAEOptions = {}): Promise<string | null> {
+;(meshup.SceneNode.prototype as any).toDAE = async function (this: any, options: toDAEOptions = {}): Promise<string | null> {
     // Takes `this` (the node) rather than a flat shape list — the hierarchy is the point.
+    // ./DAEExporter is loaded on demand: it pulls in the COLLADA WASM writer, which no
+    // script needs until it actually asks for a .dae. Already returned a Promise, so
+    // going async costs callers nothing.
+    const { buildDAE } = await import('./DAEExporter')
     const modeler = this.shapes().toArray()[0]?._modeler
     return buildDAE(this, { units: modeler?.units?.(), ...options })
 }

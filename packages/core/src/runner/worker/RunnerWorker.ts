@@ -27,7 +27,7 @@ import * as Comlink from 'comlink';
 import type { ArchiyouCoreApi } from './runner.worker';
 import type { RunnerScriptExecutionRequest, RunnerScriptExecutionResult } from '../types';
 import type { ScriptData } from '../../execution/types';
-import type { AyModuleCatalogEntry } from '@archiyou/module-sdk';
+import type { AyModuleCatalogEntry } from '../../modules/sdkTypes';
 
 import type { Script } from '../../Script';
 import type { ModelMode } from '../../modeler/types';

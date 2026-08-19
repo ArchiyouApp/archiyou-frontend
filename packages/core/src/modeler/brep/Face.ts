@@ -42,7 +42,7 @@ type ISolid = Solid
 
 // Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
 // run at class-definition time, before it has finished initialising.
-import { sceneAdd, sceneCarry } from '@archiyou/meshup/src/sceneDecorators'
+import { sceneAdd, sceneCarry } from '@archiyou/meshup'
 import { checkInput, protectOC } from './decorators'
 import { hostAnnotator } from './host'
 

@@ -1,7 +1,7 @@
 import { Container } from './Container'
 import type { ContainerData, ContainerContent, TextOptions, PageSVGContext } from './types'
 import { convertSizeUnitsToFontPoints, convertTextHeightUnitsToFontPoints, pointsToMm, escapeXml, SVG_TEXT_FONT_FAMILY } from './utils'
-import { Color } from '@archiyou/meshup/src/Color'
+import { Color } from '@archiyou/meshup'
 
 export class Text extends Container
 {

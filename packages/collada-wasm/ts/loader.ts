@@ -5,9 +5,14 @@
  * the generated `init({ module_or_path })`. Deliberately NOT the `__wbg_set_wasm` hand-wiring
  * used by packages/gdrr2bp-wasm/ts/BinPacker.ts, which reaches into wasm-bindgen internals
  * and breaks whenever the generated glue changes shape.
+ *
+ * ./collada-wasm-binary is reached through a DYNAMIC import so the ~171 KB base64 blob lands
+ * in its own lazy chunk instead of the importer's entry — the same split BinPacker.init()
+ * gets from its `await import('./gdrr2bp-wasm-binary')`. A static import here put the whole
+ * blob in @archiyou/core's main bundle for every consumer, including the ones that never
+ * export a .dae. Keep it dynamic.
  */
 
-import { WASM_BASE64 } from './collada-wasm-binary';
 import init, * as WasmExports from './wasm/collada_wasm.js';
 
 export type WasmModule = typeof WasmExports;
@@ -36,6 +41,7 @@ export const loadAsync = async (): Promise<WasmModule> =>
 
     wasmReady = (async () =>
     {
+        const { WASM_BASE64 } = await import('./collada-wasm-binary');
         const bytes = decodeBase64(WASM_BASE64);
         await init({ module_or_path: bytes });
         return WasmExports;

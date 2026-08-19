@@ -124,10 +124,10 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
   @state() private _duration: number | null = null;
   @state() private _tooHeavy        = false;
   @state() private _meta: ScriptMeta | null = null;
-  /** Iso line drawing captured from the precheck run, sent alongside the script on
-   *  publish. Entirely automatic and not surfaced in the form: the author cannot
-   *  influence it, so showing it would only add noise. Null when the script has no 3D
-   *  geometry or the drawing exceeded its size cap — publishing is never blocked by it. */
+  /** Line drawing captured from the precheck run, sent alongside the script on publish.
+   *  Entirely automatic and not surfaced in the form: the author cannot influence it, so
+   *  showing it would only add noise. Null when the script draws nothing at all or the
+   *  drawing exceeded its size cap — publishing is never blocked by it. */
   @state() private _thumbnailSvg: string | null = null;
 
   // ── Form state ──
@@ -648,8 +648,8 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
 
       this._duration = result?.duration ?? 0;
       this._meta = result?.meta ?? null;
-      // Best-effort: a script with no 3D geometry (2D-only, docs-only) or one whose
-      // drawing blew the size cap simply gets no preview. Never blocks publishing.
+      // Best-effort: a script that draws nothing at all, or one whose drawing blew the
+      // size cap, simply gets no preview. Never blocks publishing.
       this._thumbnailSvg = result
         ? ((getOutput(result, THUMBNAIL_OUTPUT_PATH) as string | undefined) ?? null)
         : null;

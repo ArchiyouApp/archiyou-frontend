@@ -94,7 +94,7 @@ export const config = {
   },
 
   /**
-   * Gated script modules (routes/modules.ts → ModuleHost). See docs/modules.md.
+   * Gated script modules (routes/modules.ts → ModuleHost). See modules/README.md.
    *
    * Modules are built and distributed OUTSIDE this repository and dropped into
    * `dir` as `<id>/{manifest.json,bundle.js|server.js}`. When SERVER_MODULES_DIR
@@ -194,6 +194,17 @@ export const config = {
     urlPrefix: process.env.SERVER_THUMBNAIL_URL_PREFIX ?? '/thumbnails',
     /** Hard cap on a stored thumbnail. Matches the client-side budget in THUMBNAIL_OUTPUT_PATH. */
     maxBytes: Number(process.env.SERVER_THUMBNAIL_MAX_BYTES ?? 65_536),
+    /**
+     * JSON Lines diagnostic log for the thumbnail lifecycle — browser generation, what
+     * arrived, and why anything was dropped (services/thumbnailLog.ts). Thumbnail
+     * failures are silent by design on both ends, so without this "sometimes there is
+     * no thumbnail" cannot be investigated at all.
+     *
+     * Set SERVER_THUMBNAIL_LOG='' to turn it off entirely.
+     */
+    logPath: process.env.SERVER_THUMBNAIL_LOG ?? './data/logs/thumbnails.log',
+    /** Rotate to `.log.1` past this size (one generation kept). 0 ⇒ never rotate. */
+    logMaxBytes: Number(process.env.SERVER_THUMBNAIL_LOG_MAX_BYTES ?? 5 * 1024 * 1024),
   },
 
   /**

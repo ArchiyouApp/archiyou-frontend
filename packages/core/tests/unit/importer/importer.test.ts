@@ -9,7 +9,7 @@ import { beforeAll, afterEach, describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 import { Importer, type AssetPayload } from '../../../src/importer/Importer';
-import { initAsync, ShapeCollection } from '@archiyou/meshup/src/index';
+import { initAsync, ShapeCollection } from '@archiyou/meshup';
 
 beforeAll(async () => { await initAsync(); });
 

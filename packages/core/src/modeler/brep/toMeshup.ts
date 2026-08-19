@@ -14,7 +14,7 @@
  *  being re-derived from mesh topology, so a brep model still draws its true silhouette.
  */
 
-import * as meshup from '@archiyou/meshup/src/index'
+import * as meshup from '@archiyou/meshup'
 
 import type { AnyShape, MeshingQualitySettings, FaceMesh, EdgeMesh } from './types'
 import { MESHING_MAX_DEVIATION, MESHING_ANGULAR_DEFLECTION, MESHING_MINIMUM_POINTS,

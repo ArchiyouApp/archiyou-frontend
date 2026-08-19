@@ -14,7 +14,7 @@
  * before the modules that read them are imported.
  */
 
-import { mkdtempSync, existsSync, readdirSync } from 'node:fs';
+import { mkdtempSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -26,9 +26,18 @@ import type { ScriptData } from '@archiyou/core/src/execution/types';
 let store: typeof import('../../src/services/ScriptStore').scriptStore;
 let thumbnails: typeof import('../../src/services/ThumbnailStore').thumbnailStore;
 let checkThumbnailSvg: typeof import('../../src/services/svgSanitize').checkThumbnailSvg;
+let flushThumbnailLog: typeof import('../../src/services/thumbnailLog').flushThumbnailLog;
 
 const AUTHOR = 'tester';
 let THUMB_ROOT: string;
+let LOG_PATH: string;
+
+/** Every line written to the diagnostic log so far, parsed. */
+async function logLines(): Promise<Array<Record<string, unknown>>> {
+  await flushThumbnailLog();
+  if (!existsSync(LOG_PATH)) return [];
+  return readFileSync(LOG_PATH, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+}
 
 /** A minimal document in exactly the shape SVGExporter emits. */
 const GOOD_SVG =
@@ -40,12 +49,16 @@ beforeAll(async () => {
   process.env.SERVER_DATABASE_FILE = join(mkdtempSync(join(tmpdir(), 'ay-thumbs-db-')), 'test.db');
   THUMB_ROOT = mkdtempSync(join(tmpdir(), 'ay-thumbs-'));
   process.env.SERVER_THUMBNAIL_PATH = THUMB_ROOT;
+  // Keep the diagnostic log out of the repo's data/ directory during tests.
+  LOG_PATH = join(THUMB_ROOT, 'logs', 'thumbnails.log');
+  process.env.SERVER_THUMBNAIL_LOG = LOG_PATH;
 
   const { runMigrations } = await import('../../src/db/migrate');
   runMigrations();
   store = (await import('../../src/services/ScriptStore')).scriptStore;
   thumbnails = (await import('../../src/services/ThumbnailStore')).thumbnailStore;
   checkThumbnailSvg = (await import('../../src/services/svgSanitize')).checkThumbnailSvg;
+  flushThumbnailLog = (await import('../../src/services/thumbnailLog')).flushThumbnailLog;
 });
 
 function payload(over: Partial<ScriptData> = {}): Record<string, unknown> {
@@ -121,6 +134,54 @@ describe('ThumbnailStore', () => {
   });
 });
 
+/**
+ * The diagnostic log (services/thumbnailLog.ts). Its whole reason to exist is that
+ * dropping a thumbnail is silent everywhere else, so what is asserted here is that the
+ * silent paths — no SVG at all, and a rejected one — each still leave a line behind, with
+ * the reason attached.
+ */
+describe('thumbnail log', () => {
+  it('records a stored thumbnail with its size and url', async () => {
+    const url = await thumbnails.write(AUTHOR, 'log-1', 'v1', GOOD_SVG, 'share');
+    const stored = (await logLines()).filter((l) => l.event === 'stored' && l.fileId === 'log-1');
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ kind: 'share', versionId: 'v1', url });
+    expect(stored[0].bytes).toBe(Buffer.byteLength(GOOD_SVG, 'utf8'));
+  });
+
+  it('records the silent no-thumbnail case — the usual reason a preview is missing', async () => {
+    await thumbnails.write(AUTHOR, 'log-2', 'v1', undefined, 'share');
+    const line = (await logLines()).find((l) => l.fileId === 'log-2');
+    expect(line).toMatchObject({ event: 'received', bytes: 0, reason: 'no thumbnailSvg in request' });
+  });
+
+  it('records why a thumbnail was rejected', async () => {
+    await thumbnails.write(AUTHOR, 'log-3', 'v1', '<svg><script>alert(1)</script></svg>', 'publish');
+    const line = (await logLines()).find((l) => l.event === 'rejected' && l.fileId === 'log-3');
+    expect(line).toBeTruthy();
+    expect(String(line!.reason)).toContain('script');
+    expect(line!.kind).toBe('publish');
+  });
+
+  it('survives a record it cannot serialize, and truncates long fields', async () => {
+    const { logThumbnail } = await import('../../src/services/thumbnailLog');
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+
+    // A log that can throw is a log that can break a publish — the one thing this must
+    // never do, since it exists to diagnose publishes that already go wrong quietly.
+    await expect(logThumbnail({
+      event: 'write-failed', author: AUTHOR, fileId: 'log-4',
+      reason: 'x'.repeat(5000), detail: circular,
+    })).resolves.toBeUndefined();
+
+    const line = (await logLines()).find((l) => l.fileId === 'log-4');
+    expect(line).toBeTruthy();
+    expect(String(line!.reason).length).toBeLessThan(600);
+    expect(line!.detail).toBe('[unserializable]');
+  });
+});
+
 describe('ScriptStore — thumbnail column', () => {
   it('round-trips a stamped url and never persists one the client supplied', () => {
     const fileId = store.create(AUTHOR, payload()).fileId as string;
@@ -189,6 +250,17 @@ describe('publish → serve (HTTP)', () => {
         res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
       },
     });
+    // Mirror the store-error mapping the real server installs in plugin.ts — routes let
+    // ScriptStoreError propagate rather than handling not-found themselves, so without it
+    // an unowned version would look like a 500 here and like a 404 in production.
+    const { ScriptStoreError } = await import('../../src/services/ScriptStore');
+    app.setErrorHandler(async (error, _request, reply) => {
+      if (error instanceof ScriptStoreError) {
+        return reply.code(error.code === 'not_found' ? 404 : 422).send({ success: false, error: error.message });
+      }
+      return reply.code(error.statusCode ?? 500).send({ success: false, error: error.message });
+    });
+
     await app.register(registerScriptRoutes);
     await app.ready();
 
@@ -238,6 +310,72 @@ describe('publish → serve (HTTP)', () => {
     expect(res.statusCode).toBe(201);
     expect(res.json().thumbnail).toBeNull();
   });
+
+  /**
+   * The deferred attach. This exists because the drawing is generated in the background
+   * and the share does not wait for it: for a slow script the share request carries no
+   * SVG at all, and without this endpoint that version could never get a preview.
+   */
+  describe('PUT …/versions/:versionId/thumbnail', () => {
+    const attach = (fid: string, versionId: string, thumbnailSvg?: unknown) => app.inject({
+      method: 'PUT',
+      url: `/scripts/${AUTHOR}/${fid}/versions/${versionId}/thumbnail`,
+      headers: auth(),
+      payload: { thumbnailSvg },
+    });
+
+    it('attaches a preview to a version that was shared without one', async () => {
+      const published = await publish('3.0.0');
+      expect(published.json().thumbnail).toBeNull();
+      const versionId = published.json().id as string;
+
+      const res = await attach(fileId, versionId, GOOD_SVG);
+      expect(res.statusCode).toBe(200);
+      const url = res.json().thumbnail as string;
+
+      // The URL must actually resolve, and the row must now carry it.
+      const served = await app.inject({ method: 'GET', url });
+      expect(served.statusCode).toBe(200);
+      expect(served.body).toBe(GOOD_SVG);
+      const row = store.findVersionById(AUTHOR, versionId);
+      expect(row?.thumbnail).toBe(url);
+    });
+
+    it('replaces an existing preview with a new url (content-addressed)', async () => {
+      const published = await publish('3.1.0', GOOD_SVG);
+      const versionId = published.json().id as string;
+      const first = published.json().thumbnail as string;
+
+      const changed = GOOD_SVG.replace('M0 0 L100 100', 'M0 0 L300 300');
+      const second = (await attach(fileId, versionId, changed)).json().thumbnail as string;
+
+      expect(second).not.toBe(first);
+      expect(store.findVersionById(AUTHOR, versionId)?.thumbnail).toBe(second);
+      // The superseded drawing is gone, so nothing can serve the old picture.
+      const stale = await app.inject({ method: 'GET', url: first });
+      expect(stale.statusCode).toBe(404);
+    });
+
+    it('422s a refused svg without saying why (the reason is logged, not returned)', async () => {
+      const versionId = (await publish('3.2.0')).json().id as string;
+      const res = await attach(fileId, versionId, '<svg><script>alert(1)</script></svg>');
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error).not.toContain('script element');
+      expect(store.findVersionById(AUTHOR, versionId)?.thumbnail).toBeNull();
+
+      const line = (await logLines()).find((l) => l.event === 'rejected' && l.versionId === versionId);
+      expect(line).toMatchObject({ kind: 'deferred' });
+    });
+
+    it('404s a version that is not the caller\'s (or does not exist)', async () => {
+      const versionId = (await publish('3.3.0')).json().id as string;
+      // Right version, wrong file — the ownership gate is (author, fileId, versionId).
+      const otherFile = store.create(AUTHOR, payload({ name: 'other-thing' })).fileId as string;
+      expect((await attach(otherFile, versionId, GOOD_SVG)).statusCode).toBe(404);
+      expect((await attach(fileId, 'no-such-version', GOOD_SVG)).statusCode).toBe(404);
+    });
+  });
+
 
   it('404s a thumbnail that was never written', async () => {
     const res = await app.inject({ method: 'GET', url: '/thumbnails/tester/nope/nope-00000000.svg' });

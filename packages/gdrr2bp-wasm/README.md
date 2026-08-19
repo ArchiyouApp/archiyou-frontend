@@ -5,6 +5,12 @@ a goal-driven *ruin & recreate* heuristic for the **2D guillotine bin-packing /
 nesting problem** (variable-sized bins, optional 90° rotation, guillotine cuts) —
 with a small typed TypeScript wrapper.
 
+## Install
+
+```bash
+npm install @archiyou/gdrr2bp-wasm
+```
+
 ## Layout
 
 ```
@@ -30,7 +36,7 @@ cargo install wasm-pack                     # once
 ## Usage (TypeScript)
 
 ```ts
-import { BinPacker, type Instance } from './ts';
+import { BinPacker, type Instance } from '@archiyou/gdrr2bp-wasm';
 
 // 1. Load the wasm (separate, awaited step)
 const bp = await new BinPacker().init();

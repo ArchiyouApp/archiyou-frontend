@@ -67,6 +67,16 @@ else
 
 // 2. wasm-pack writes a `.gitignore` containing `*` into --out-dir. Remove it so the
 //    generated glue can be committed alongside the base64 blob.
+// wasm-pack also writes a package.json into --out-dir. A nested manifest inside a published
+// package confuses npm about where the package boundary is, and nothing imports ts/wasm as a
+// package — loader.ts reaches ./wasm/collada_wasm.js directly.
+const outDirManifest = path.join(WASM_DIR, 'package.json');
+if (fs.existsSync(outDirManifest))
+{
+    fs.rmSync(outDirManifest);
+    console.log('[INFO]: removed the wasm-pack package.json from ts/wasm/');
+}
+
 const outDirGitignore = path.join(WASM_DIR, '.gitignore');
 if (fs.existsSync(outDirGitignore))
 {

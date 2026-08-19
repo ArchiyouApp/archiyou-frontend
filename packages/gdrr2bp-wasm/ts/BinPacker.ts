@@ -165,8 +165,12 @@ export class BinPacker
             ? Buffer.from(GDRR2BP_WASM_BASE64, 'base64')
             : Uint8Array.from(atob(GDRR2BP_WASM_BASE64), c => c.charCodeAt(0));
 
+        // Double cast: a module namespace is not structurally a WebAssembly.Imports entry —
+        // bundler resolution synthesises a `default` member on it, and that is not an
+        // ImportValue. wasm-bindgen's contract is "hand the glue module back to the module it
+        // came from", which the type system has no way to express.
         const imports = { './gdrr2bp_wasm_bg.js': bg };
-        const { instance } = await WebAssembly.instantiate(bytes, imports as WebAssembly.Imports);
+        const { instance } = await WebAssembly.instantiate(bytes, imports as unknown as WebAssembly.Imports);
         bg.__wbg_set_wasm(instance.exports);
 
         this.#solve = bg.solve as WasmSolve;

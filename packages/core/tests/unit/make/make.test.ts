@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
 import { Modeler } from '../../../src/modeler/Modeler'
-import { ShapeCollection as SmartShapeCollection } from '@archiyou/meshup/src/index'
+import { ShapeCollection as SmartShapeCollection } from '@archiyou/meshup'
 import { save } from '@archiyou/meshup/src/utils'
 
 const TEST_OUTPUT_DIR = './tests/outputs/modeler'

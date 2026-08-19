@@ -24,9 +24,10 @@
     "watch:meshup": "pnpm --filter @archiyou/meshup build -- --watch",
     "test:core": "pnpm --filter @archiyou/core test",
     "test:meshup": "pnpm --filter @archiyou/meshup test",
+    "lockfile:public": "node scripts/lockfile-public.mjs",
     "localize:extract": "lit-localize extract",
     "localize:build": "lit-localize build",
-    "dev:modules": "concurrently -n build,app -c cyan,green \"turbo watch build --filter=./modules/*\" \"turbo dev --filter=@archiyou/editor --filter=@archiyou/server\""
+    "dev:modules": "concurrently -n build,app -c cyan,green \"turbo watch build --filter=./modules/**\" \"turbo dev --filter=@archiyou/editor --filter=@archiyou/server\""
   },
   "dependencies": {
     "@awesome.me/webawesome": "^3.4.0",
@@ -56,7 +57,7 @@
     "@types/node": "^25.5.0",
     "@types/three": "^0.171.0",
     "concurrently": "^9.2.1",
-    "turbo": "latest",
+    "turbo": "^2.10.0",
     "typescript": "^5.7.3",
     "vite": "^6.1.0"
   }

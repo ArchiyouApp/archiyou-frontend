@@ -26,12 +26,27 @@ export type { OutputData } from './runner/worker/output';
 export { Script } from './Script';
 
 // Script modules — the extension point for separately-distributed, gated
-// capabilities. Inert unless a run is given a module catalog. See docs/modules.md.
+// capabilities. Inert unless a run is given a module catalog. See modules/README.md.
 export { ModuleRegistry, RESERVED_SCOPE_NAMES } from './modules/ModuleRegistry';
 export type { ModuleRegistryOptions } from './modules/ModuleRegistry';
 export { ModuleLoadError } from './modules/loadClientModule';
 export { ServerModuleCallError } from './modules/serverModuleStub';
 export { ModuleUnavailableError } from './modules/unavailableStub';
+// The module contract itself, so a consumer can name what it passes in a catalog. Authored in
+// packages/module-sdk and mirrored as ./modules/sdkTypes (see buildscripts/sync-sdk-types.ts):
+// that package is internal to the monorepo and unpublished, so this is the only public home.
+export type {
+  AyModuleRuntime,
+  AyModuleCompletion,
+  AyModuleManifest,
+  AyModuleCatalogEntry,
+  AyArchiyou,
+  AyModule,
+  AyModuleWarmContext,
+  AyModuleFactory,
+  AyServerModuleMethod,
+  AyServerModule,
+} from './modules/sdkTypes';
 export { ARCHIYOU_CORE_VERSION } from './constants';
 
 // Key public types

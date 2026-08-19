@@ -37,7 +37,7 @@ import type { Console } from '../../console/Console'
 export type ModelUnits = 'mm'|'cm'|'dm'|'m'|'km'|'inch'|'feet'|'yd'|'mi'; // matches ModelUnitsSchema (modeler/schemas.ts)
 export type Units = DocUnits | ModelUnits
 export type UnitsWithPerc = Units | '%'
-import type { StyleData } from '@archiyou/meshup/src/Style'
+import type { StyleData } from '@archiyou/meshup'
 
 export type Coord = number|string
 export type MainAxis = 'x'|'y'|'z'

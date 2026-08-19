@@ -3,7 +3,7 @@
  *
  * The registry decides which script modules a run may use. Everything here uses
  * a fictional 'example' module — real modules live outside this repository (see
- * docs/modules.md), so no test may name one.
+ * modules/README.md), so no test may name one.
  */
 import { describe, it, expect, vi } from 'vitest'
 

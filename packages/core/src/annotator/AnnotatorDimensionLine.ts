@@ -27,7 +27,7 @@ import type  { MainAxis, ModelUnits, AnyShape, AnyShapeCollection, AnyShapeOrCol
  * Note meshup has no `Edge` — its 1D shape is `Curve` (see the casts below,
  * which is what `linkedTo` actually holds in mesh mode).
  */
-import type { Vector, Point, PointLike, Curve } from '@archiyou/meshup/src/index'
+import type { Vector, Point, PointLike, Curve } from '@archiyou/meshup'
 import type { ArchiyouModules } from '../types'
 import type { DimensionLineData, DimensionOptions, AnnotationType } from './types'
 import { BaseAnnotation } from './AnnotatorBaseAnnotation'

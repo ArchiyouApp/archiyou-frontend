@@ -7,7 +7,7 @@
  *
  * The module is fictional ('example') and injected through the registry's
  * loadClient seam, so nothing here needs a bundle server or a real module — which
- * is the point: this repository ships no modules (see docs/modules.md).
+ * is the point: this repository ships no modules (see modules/README.md).
  */
 import { describe, it, expect } from 'vitest'
 

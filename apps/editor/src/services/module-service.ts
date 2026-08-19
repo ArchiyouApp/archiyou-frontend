@@ -2,7 +2,7 @@
  * module-service — the catalog of gated script modules available to this user.
  *
  * `GET /modules` returns every module installed on the backend, each marked
- * entitled or not (see docs/modules.md). The result is cached per signed-in
+ * entitled or not (see modules/README.md). The result is cached per signed-in
  * user and refreshed automatically when that user changes, so a sign-out cannot
  * leave the previous account's modules showing as unlocked.
  *

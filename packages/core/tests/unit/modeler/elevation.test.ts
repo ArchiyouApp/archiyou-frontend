@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { Modeler } from '../../../src/modeler/Modeler'
-import { ShapeCollection as SmartShapeCollection } from '@archiyou/meshup/src/index'
+import { ShapeCollection as SmartShapeCollection } from '@archiyou/meshup'
 
 describe('SmartShapeCollection.elevation', async () =>
 {

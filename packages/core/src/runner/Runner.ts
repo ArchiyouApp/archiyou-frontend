@@ -29,7 +29,7 @@ import type { RunnerActiveScope,
 
 
 import { RunnerComponentImporter } from './RunnerComponentImporter'; // helper for importing components in scope
-import { extractTopLevelComponentCalls, extractFirstArg, type ComponentCall } from './componentRefs'; // $component() reference parsing (shared with the editor)
+import { extractTopLevelComponentCalls, extractFirstArg, MAX_COMPONENT_DEPTH, type ComponentCall } from './componentRefs'; // $component() reference parsing (shared with the editor)
 import { Importer as AssetImporter } from '../importer/Importer'; // $import: fetch+parse remote assets
 import type { AssetPayload } from '../importer/Importer';
 
@@ -86,6 +86,15 @@ export class Runner
      *  uses the same component four times (and the double prefetch on execute) must not
      *  cause four fetches — and a miss must be remembered as a miss. */
     private _sharedComponentFetches: Record<string, Promise<Script|null>> = {};
+    /** The chain of components currently being executed, innermost last, by reference.
+     *  A component already on it would recurse forever, so it is refused with the chain
+     *  in the message. Also caps how deep nesting may go. Unwound in the finally of
+     *  _executeComponentScript, so a throwing component cannot leave it dirty. */
+    private _componentExecStack: Array<string> = [];
+    /** Makes every component activation's scope name unique. Two activations of the SAME
+     *  reference can be live at once (a cycle, before the guard above trips), and they
+     *  would otherwise share -- and then delete -- one entry in _localScopes. */
+    private _componentScopeSeq = 0;
     private _importAssets: Record<string, AssetPayload> = {}; // prefetched $import() assets by url (raw bytes)
     /** Optional script modules (see src/modules/). Persistent like _interactor:
      *  it caches loaded module instances so editor re-runs don't re-fetch a
@@ -441,7 +450,7 @@ export class Runner
             this.pipeline(name, func);
         }
 
-        // Declare a script module (see docs/modules.md). Returns the module, so
+        // Declare a script module (see modules/README.md). Returns the module, so
         // both forms work:
         //
         //     $module('cloudcalc')                  // declare; use the global
@@ -542,17 +551,33 @@ export class Runner
         return this._localScopes[name];
     }
 
-    deleteLocalScope(name:string):this
+    /** Delete a scope and return to `restoreTo`.
+     *
+     *  `restoreTo` matters for NESTED components. Without it this always returned to
+     *  'default', so once an inner component's scope was deleted, the OUTER component was
+     *  still running while the Runner reported the main scope as active. Everything that
+     *  resolves the active scope lazily then looked in the wrong place: `$component()`
+     *  (Runner._addMetaMethodsToScopeState) grafted the outer component's next sub-component
+     *  onto the main scene, and Docs.executePipelines()/View.resolveShapeNameToSVG() ran the
+     *  outer component's doc pipelines against the main scope.
+     *
+     *  It stays a parameter rather than a scope STACK on purpose: scopes are not always
+     *  deleted in the order they were created (see runner.scope-identity.test.ts, which
+     *  creates iso-a + iso-b and deletes them in that same order), so a stack would restore
+     *  the wrong scope. Callers that nest say so; everyone else keeps the old behaviour. */
+    deleteLocalScope(name:string, restoreTo:string='default'):this
     {
         if(!this._localScopes[name]){ throw new Error(`Runner:: scope(): Scope '${name}' does not exist`)}
         delete this._localScopes[name];
-        this._activeScope = { name: 'default', context: 'local' }; // reset to default scope
+        // The scope we return to must still exist - fall back to default if it was itself deleted.
+        const target = this._localScopes[restoreTo] ? restoreTo : 'default';
+        this._activeScope = { name: target, context: 'local' };
 
         // Hand the global console back to the scope we return to. Without this the deleted
         // scope's Console stays installed globally and every later run stacks another one on top.
-        globalThis.console = this._localScopes['default']?._archiyou?.console ?? NATIVE_CONSOLE;
+        globalThis.console = this._localScopes[target]?._archiyou?.console ?? NATIVE_CONSOLE;
 
-        console.info(`Runner::deleteLocalScope(): Deleted scope: '${name}. Returned to default.'`);
+        console.info(`Runner::deleteLocalScope(): Deleted scope: '${name}'. Returned to '${target}'.`);
 
         return this;
     }
@@ -1245,11 +1270,43 @@ ${contextLines.join('\n')}
     _executeComponentScript(request:RunnerScriptExecutionRequest): RunnerScriptExecutionResult
     {
         console.info(`Runner::_executeComponentScript(): Executing component script '${request.component}' in separate scope!`);
-        const scopeName = `component:'${request.component}'`;
+
+        // Refuse a component that is already executing further up the chain. Without this a
+        // cycle (a uses b, b uses a) recurses until the JS stack blows, which surfaces as an
+        // unrelated-looking RangeError. The static walk in _prefetchComponentScripts cannot
+        // catch every case either - $component(someVariable) is only known at call time - so
+        // this runtime guard is the authoritative one.
+        const chain = [...this._componentExecStack, request.component];
+        if(this._componentExecStack.includes(request.component))
+        {
+            throw new Error(`$component(): circular component reference: ${chain.join(' -> ')}. A component cannot use itself, directly or indirectly.`);
+        }
+        if(this._componentExecStack.length >= MAX_COMPONENT_DEPTH)
+        {
+            throw new Error(`$component(): components nested deeper than ${MAX_COMPONENT_DEPTH} levels: ${chain.join(' -> ')}. Try to flatten your component tree.`);
+        }
+
+        // Everything below has to be unwound even when the component throws, or the parent
+        // keeps running against the component's scope and request.
+        const parentScopeName = this._activeScope?.name ?? 'default';
+        const parentRequest = this._activeExecRequest;
+        // Unique per activation: the same reference can legitimately appear twice on the way
+        // down, and two scopes under one name would delete each other.
+        const scopeName = `component:'${request.component}'#${++this._componentScopeSeq}`;
+
+        this._componentExecStack.push(request.component);
         this.createScope(scopeName); // automatically becomes current scope
-        const result = this._executeLocalComponent(request, true, true); // start run and output
-        this.deleteLocalScope(scopeName); // delete scope after execution
-        return result;
+
+        try
+        {
+            return this._executeLocalComponent(request, true, true); // start run and output
+        }
+        finally
+        {
+            this.deleteLocalScope(scopeName, parentScopeName); // hand the parent scope back
+            this._activeExecRequest = parentRequest; // ...and the parent's request (doc titleblock reads it)
+            this._componentExecStack.pop();
+        }
     }
 
      /** For executing component scripts we need to have synchronous execution function
@@ -1324,11 +1381,20 @@ ${contextLines.join('\n')}
          return result;
      }
 
-    /* Prefetch component scripts from request script code */
-    async _prefetchComponentScripts(request:string|Script|RunnerScriptExecutionRequest, level:number=0):Promise<{ scripts: Record<string,Script>; missing: string[] }>
+    /* Prefetch component scripts from request script code
+     *
+     *  Walks the WHOLE component tree, not just the top level: a component may use
+     *  components of its own, and because $component() executes synchronously every one of
+     *  them has to be in the cache before the script runs.
+     *
+     *  @param level    - current depth; only level 0 captures the shared-library fallback
+     *  @param visited  - references already walked on this call. Terminates cycles and stops
+     *                    a diamond (a->b, a->c, b->d, c->d) resolving d twice. Deliberately
+     *                    per-call, never an instance field: the editor re-runs on every
+     *                    keystroke and a component's code changes between runs.
+     */
+    async _prefetchComponentScripts(request:string|Script|RunnerScriptExecutionRequest, level:number=0, visited:Set<string>=new Set()):Promise<{ scripts: Record<string,Script>; missing: string[] }>
     {
-        // protect against unending recursion
-        const MAX_RECURSE_LEVEL = 10;
 
         /* $component(<<script>>) can have multiple ways to reference a script
 
@@ -1396,6 +1462,13 @@ ${contextLines.join('\n')}
                 console.warn(`Runner::_prefetchComponentScripts(): Component name not found in match: ${JSON.stringify(match)}`);
             }
 
+            // Already walked on this pass? Then it is cached (or already reported missing)
+            // and recursing again would loop forever on a cycle. Keyed exactly like
+            // addComponentScriptToCache() so the two always agree on identity.
+            const visitKey = name.replaceAll(/\\/g,'');
+            if(visited.has(visitKey)){ continue; }
+            visited.add(visitKey);
+
             // Fetch component script
             const componentScript = await this._prepareComponentScript(name);
             if(!componentScript)
@@ -1411,19 +1484,30 @@ ${contextLines.join('\n')}
             this.addComponentScriptToCache(name, componentScript);
         };
 
-        // Check found component scripts if they contain
-        if(level < MAX_RECURSE_LEVEL)
+        // Now walk into what those components reference themselves.
+        // IMPORTANT: this loop is awaited. It used to be `forEach(async cs => await ...)`,
+        // which discards the promises — so execute() carried on before the nested components
+        // were cached and $component() at depth >= 2 hit an empty cache. Sequential rather
+        // than Promise.all: shared-library lookups are already memoised by
+        // _sharedComponentFetches, and it keeps the log readable.
+        if(level < MAX_COMPONENT_DEPTH)
         {
             console.info(`Runner::_prefetchComponentScripts(): Recursing nested $component() references. Recursion level: ${level + 1}`);
-            preparedComponentScripts.forEach(async (cs) => await this._prefetchComponentScripts(cs, level + 1));
+            for(const cs of preparedComponentScripts)
+            {
+                const nested = await this._prefetchComponentScripts(cs, level + 1, visited);
+                // Merge nested misses upward, or execute()'s pre-flight check only ever sees
+                // the top level and a missing sub-component surfaces mid-run instead.
+                missing.push(...nested.missing);
+            }
         }
         else {
-            console.error(`Runner::_prefetchComponentScript: Quit recursion after level ${MAX_RECURSE_LEVEL}. Try to flatten your component tree or increase MAX_RECURSE_LEVEL`)
+            console.error(`Runner::_prefetchComponentScript: Quit recursion after level ${MAX_COMPONENT_DEPTH}. Try to flatten your component tree.`)
         }
 
         console.log(`Runner::_prefetchComponentScripts(): Fetched ${Object.keys(this._componentScripts).length} component scripts: ${Object.keys(this._componentScripts).join(', ')}`);
 
-        return { scripts: this._componentScripts, missing }; // return all fetched component scripts
+        return { scripts: this._componentScripts, missing: Array.from(new Set(missing)) }; // return all fetched component scripts
     }
 
     //// SCRIPT MODULES ////

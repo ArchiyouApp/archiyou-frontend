@@ -17,7 +17,7 @@
  * that here would just be a second copy to drift.
  */
 
-import type { AyModuleManifest } from '@archiyou/module-sdk';
+import type { AyModuleManifest } from './sdkTypes';
 
 export interface ServerModuleStubOptions
 {

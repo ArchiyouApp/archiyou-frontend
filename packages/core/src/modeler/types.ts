@@ -1,7 +1,7 @@
 // Mesh kernel — type-only import: keep this module free of a runtime meshup load, as it is
 // imported very early/broadly across core and a value import would force meshup to initialize
 // at a bad point in the module graph (circular Vertex↔Shape init).
-import type * as meshup from '@archiyou/meshup/src/index'
+import type * as meshup from '@archiyou/meshup'
 
 import { type Static } from 'typebox'
 import { ModelUnitsSchema, ModelModeSchema, MainAxisSchema } from './schemas'
@@ -34,7 +34,7 @@ export function isAnyShape(o: any): o is meshup.Shape
 }
 
 /** Serialised SceneNode subtree (re-export of meshup's, mirrors the viewer path builder). */
-export type { SceneNodeData } from '@archiyou/meshup/src/index'
+export type { SceneNodeData } from '@archiyou/meshup'
 
 
 // Infer from typebox schemas

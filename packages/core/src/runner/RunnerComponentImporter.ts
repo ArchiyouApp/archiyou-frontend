@@ -6,8 +6,8 @@ import { ScriptOutputPath } from '../execution/ScriptOutputPath';
 import type { RunnerScriptExecutionRequest, RunnerScriptScope } from './types';
 import { ScriptData } from '../execution/types';
 import { ImportComponentResult, ImportComponentResultPipelines } from './types';
-import { SceneNode } from '@archiyou/meshup/src/index';
-import type { ComponentGraphNode } from '@archiyou/meshup/src/index';
+import { SceneNode } from '@archiyou/meshup';
+import type { ComponentGraphNode } from '@archiyou/meshup';
 
 
 /**
@@ -222,10 +222,17 @@ export class RunnerComponentImporter
      */
     _executeComponentScript(script:Script):ImportComponentResult
     {
+        // Inherit the run-wide settings from whoever is calling us — the main script, or the
+        // enclosing component when this one is nested. Without kernel, _executionStartRunInScope
+        // falls back to 'mesh' and every component in a brep run silently modelled in mesh.
+        const parentRequest = this._runner.getActiveExecRequest();
+
         const request:RunnerScriptExecutionRequest = {
+            kernel: parentRequest?.kernel ?? 'mesh',
+            unitSystem: parentRequest?.unitSystem,
             script: script,
             component: this.label, // scope identifier
-            params: this._params, 
+            params: this._params,
             outputs: (this._requestedOutputs.length === 0) ? this.DEFAULT_OUTPUTS : this._requestedOutputs,
         };
 

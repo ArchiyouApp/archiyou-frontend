@@ -240,20 +240,144 @@ function _applyDashPattern(mat: LineMaterial, pattern: number): void
     mat.needsUpdate = true;
 }
 
+/**
+ * Style the native GLTF line primitives (a Curve exports as one LINE_STRIP), which
+ * three loads as THREE.Line with a LineBasicMaterial.
+ *
+ * WebGL ignores LineBasicMaterial.linewidth on every desktop driver, so a stroke wider
+ * than a hairline can only be drawn with the fat-line pipeline: strokeWidth > 1 swaps the
+ * object for a LineSegments2 + LineMaterial (the same pipeline the mesh edge overlays
+ * above already use). Hairlines stay native — cheaper, and pixel-identical.
+ */
 function _applyNativeLineStyles(root: THREE.Object3D): void
 {
+    // Collect first: upgrading a line replaces it in its parent's child list, which would
+    // otherwise mutate the tree that traverse() is walking.
+    const lines: THREE.Line[] = [];
     root.traverse((node) =>
     {
-        if (!(node instanceof THREE.Line) && !(node instanceof THREE.LineSegments)) return;
-
-        const material = Array.isArray(node.material) ? node.material[0] : node.material;
-        const bentley = material?.userData?.gltfExtensions?.['BENTLEY_materials_line_style'];
-        if (!bentley || bentley.pattern === undefined || bentley.pattern === 0xFFFF) return;
-
-        const dashedMaterial = _createDashedNativeMaterial(material, bentley.pattern);
-        node.material = dashedMaterial;
-        node.computeLineDistances();
+        // LineSegments and LineLoop both extend Line.
+        if (!(node instanceof THREE.Line)) return;
+        if (node.userData.isEdgeOverlay) return; // already styled by _attachEdgeLines
+        lines.push(node);
     });
+
+    for (const node of lines)
+    {
+        const material = Array.isArray(node.material) ? node.material[0] : node.material;
+        const bentley = material?.userData?.gltfExtensions?.['BENTLEY_materials_line_style'] as
+            { width?: number; pattern?: number } | undefined;
+        if (!bentley) continue;
+
+        const width   = bentley.width ?? 1;
+        const pattern = bentley.pattern ?? 0xFFFF;
+
+        if (width > 1)
+        {
+            _upgradeToFatLine(node, material, width, pattern);
+        }
+        else if (pattern !== 0xFFFF)
+        {
+            const dashedMaterial = _createDashedNativeMaterial(material, pattern);
+            node.material = dashedMaterial;
+            node.computeLineDistances();
+        }
+    }
+}
+
+/** Replace a native THREE.Line with a screen-space-width LineSegments2 in the same slot. */
+function _upgradeToFatLine(
+    line: THREE.Line,
+    source: THREE.Material,
+    width: number,
+    pattern: number,
+): void
+{
+    const parent = line.parent;
+    if (!parent) return;
+
+    const positions = _segmentPositions(line);
+    if (!positions.length) return;
+
+    const color = source instanceof THREE.LineBasicMaterial
+        ? source.color
+        : new THREE.Color(0x000000);
+    const opacity = source.opacity ?? 1;
+    const dashed = pattern !== 0xFFFF;
+
+    const material = new LineMaterial({
+        color: color.getHex(),
+        linewidth: width, // px — LineMaterial.resolution is kept in sync on resize
+        opacity,
+        transparent: source.transparent || opacity < 1,
+        dashed,
+    });
+    if (dashed)
+    {
+        const { dashSize, gapSize } = _dashSizesFromPattern(pattern);
+        material.dashSize = dashSize;
+        material.gapSize  = gapSize;
+    }
+
+    const geometry = new LineSegmentsGeometry().setPositions(positions);
+    const fat = new LineSegments2(geometry, material);
+    if (dashed) fat.computeLineDistances();
+
+    // Carry over everything the rest of the viewer keys off: the scene-path map, the
+    // scene explorer and click-selection all read name / userData from this object.
+    fat.name        = line.name;
+    fat.userData    = { ...line.userData };
+    fat.visible     = line.visible;
+    fat.renderOrder = line.renderOrder;
+    fat.frustumCulled = line.frustumCulled;
+    fat.position.copy(line.position);
+    fat.quaternion.copy(line.quaternion);
+    fat.scale.copy(line.scale);
+    fat.matrixAutoUpdate = line.matrixAutoUpdate;
+    if (!line.matrixAutoUpdate) fat.matrix.copy(line.matrix);
+    while (line.children.length) fat.add(line.children[0]);
+
+    // Swap in place so sibling ORDER survives — _buildPathMap pairs scenegraph nodes
+    // with object children positionally.
+    parent.children[parent.children.indexOf(line)] = fat;
+    fat.parent = parent;
+    line.parent = null;
+
+    line.geometry.dispose();
+    source.dispose();
+}
+
+/** Flatten a line primitive's vertices to the [x1,y1,z1, x2,y2,z2, ...] pairs LineSegmentsGeometry wants. */
+function _segmentPositions(line: THREE.Line): number[]
+{
+    const geometry = line.geometry;
+    const pos = geometry.attributes.position;
+    if (!pos) return [];
+
+    const index = geometry.index;
+    const count = index ? index.count : pos.count;
+    const vertexAt = (i: number) => (index ? index.getX(i) : i);
+
+    const out: number[] = [];
+    const pushSegment = (a: number, b: number) =>
+    {
+        out.push(
+            pos.getX(a), pos.getY(a), pos.getZ(a),
+            pos.getX(b), pos.getY(b), pos.getZ(b),
+        );
+    };
+
+    if ((line as THREE.LineSegments).isLineSegments)
+    {
+        for (let i = 0; i + 1 < count; i += 2) pushSegment(vertexAt(i), vertexAt(i + 1));
+    }
+    else
+    {
+        // LINE_STRIP (and LineLoop, which additionally closes back to the first vertex)
+        for (let i = 0; i + 1 < count; i++) pushSegment(vertexAt(i), vertexAt(i + 1));
+        if ((line as THREE.LineLoop).isLineLoop && count > 2) pushSegment(vertexAt(count - 1), vertexAt(0));
+    }
+    return out;
 }
 
 function _createDashedNativeMaterial(

@@ -16,12 +16,12 @@
  * its source without executing it — which is what lets the runner fetch exactly
  * the right bundles up front, and lets publishing report what a design needs.
  *
- * Modules live outside this repository (see docs/modules.md), so nothing here
+ * Modules live outside this repository (see modules/README.md), so nothing here
  * knows any module by name.
  */
 
 import semver from 'semver';
-import type { AyArchiyou, AyModule, AyModuleCatalogEntry, AyModuleWarmContext } from '@archiyou/module-sdk';
+import type { AyArchiyou, AyModule, AyModuleCatalogEntry, AyModuleWarmContext } from './sdkTypes';
 
 import { MODELER_METHODS_INTO_GLOBAL, ARCHIYOU_CORE_VERSION } from '../constants';
 import { loadClientModule, ModuleLoadError } from './loadClientModule';

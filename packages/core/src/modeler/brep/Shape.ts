@@ -39,12 +39,12 @@ import { Vector, Point, Bbox, OBbox, Vertex, Edge, Wire, Face,
 
 // Scene + style come from the MESH kernel: both kernels share one SceneNode graph and one
 // Style model, which is what lets the scene navigator and the GLTF exporter stay kernel-agnostic.
-import { SceneNode } from '@archiyou/meshup/src/SceneNode'
-import { nodeToString } from '@archiyou/meshup/src/utils'
-import { Style } from '@archiyou/meshup/src/Style'
-import type { StyleData } from '@archiyou/meshup/src/Style'
-import { Color } from '@archiyou/meshup/src/Color'
-import { replaceInScene, activeLayerOf, sceneAdd, sceneCarry, sceneReplace, sceneUpdate } from '@archiyou/meshup/src/sceneDecorators'
+import { SceneNode } from '@archiyou/meshup'
+import { nodeToString } from '@archiyou/meshup'
+import { Style } from '@archiyou/meshup'
+import type { StyleData } from '@archiyou/meshup'
+import { Color } from '@archiyou/meshup'
+import { replaceInScene, activeLayerOf, sceneAdd, sceneCarry, sceneReplace, sceneUpdate } from '@archiyou/meshup'
 
 import { BaseAnnotation } from '../../annotator/AnnotatorBaseAnnotation'
 import { DimensionLine } from '../../annotator/AnnotatorDimensionLine'
@@ -5240,7 +5240,7 @@ export class Shape
     async toGLTF(_options?:ExportGLTFOptions): Promise<ArrayBuffer>
     {
         const { brepShapeToMeshup } = await import('./toMeshup');
-        const { SceneNode } = await import('@archiyou/meshup/src/SceneNode');
+        const { SceneNode } = await import('@archiyou/meshup');
 
         const exported = brepShapeToMeshup(this as any);
         if(!exported)

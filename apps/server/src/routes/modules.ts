@@ -1,5 +1,5 @@
 /**
- * routes/modules.ts — the gated script-module API. See docs/modules.md.
+ * routes/modules.ts — the gated script-module API. See modules/README.md.
  *
  *   GET  /modules                            catalog, each entry marked entitled
  *   GET  /modules/:id/:version/bundle.js     client bundle — 403 unless entitled

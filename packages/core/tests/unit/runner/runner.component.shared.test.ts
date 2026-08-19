@@ -146,26 +146,61 @@ describe('Runner: $component("./name") from the author\'s shared library', () =>
         expect(fetchSpy).not.toHaveBeenCalled()
     })
 
-    it('resolves a nested component against the same author', async () =>
+    /** A three-deep chain, all of it resolved over the network: wall -> stud -> screw.
+     *  This is the case the fire-and-forget recursion could never do reliably — a real
+     *  fetch does not settle within the microtask ticks execute() happened to leave. */
+    const CHAIN: Record<string, string> = {
+        wall:  `$component('./stud').model();`,
+        stud:  `$component('./screw').model();`,
+        screw: `screw = box(2, 2, 20);`,
+    }
+    const stubChain = () => stubFetch((url) =>
+    {
+        const name = url.split('/').pop() as string
+        return { body: { success: true, data: { name, author: 'archiyou', code: CHAIN[name] } } }
+    })
+
+    it('resolves a nested component chain against the same author', async () =>
     {
         const runner = await new Runner().load()
-        const fetchSpy = stubFetch((url) => url.endsWith('/wall')
-            ? { body: { success: true, data: { name: 'wall', author: 'archiyou', code: `$component('./stud').model();` } } }
-            : { body: { success: true, data: { name: 'stud', author: 'archiyou', code: `stud = box(5,5,100);` } } })
+        const fetchSpy = stubChain()
 
+        // Asserted straight after the await, with no extra tick: the recursion inside
+        // _prefetchComponentScripts is awaited, so everything is cached by the time it
+        // resolves. (This used to need `await new Promise(r => setTimeout(r, 0))`.)
         await runner._prefetchComponentScripts({
             kernel: 'mesh',
             script: { author: 'archiyou', name: 'housetest', code: `$component('./wall').model();` },
             componentLibraryUrl: '/api',
         } as any)
 
-        // The nested prefetch is fire-and-forget inside the Runner; give it a tick.
-        await new Promise(r => setTimeout(r, 0))
-
         expect(fetchSpy.mock.calls.map(c => c[0])).toEqual([
             '/api/scripts/shared/archiyou/wall',
             '/api/scripts/shared/archiyou/stud',
+            '/api/scripts/shared/archiyou/screw',
         ])
+        expect(runner.getComponentScriptFromCache('./screw')).not.toBeNull()
+    })
+
+    it('runs a three-deep shared chain end to end', async () =>
+    {
+        const runner = await new Runner().load()
+        stubChain()
+
+        const result = await runner.execute({
+            kernel: 'mesh',
+            script: { author: 'archiyou', name: 'housetest', code: `wall = $component('./wall').model();` },
+            componentLibraryUrl: '/api',
+            outputs: ['default/model/glb'],
+        } as any)
+
+        expect(result.status).toBe('success')
+        // The screw is three levels down; it only reaches the main scene by chaining
+        // toComponentGraph() -> _recreateComponentObjTree() at every hop.
+        const names: string[] = []
+        const walk = (n: any) => { if (!n) return; names.push(n.name); (n.children ?? []).forEach(walk) }
+        walk(result.state?.scenegraph)
+        expect(names.some(n => n.includes('screw'))).toBe(true)
     })
 
     it('runs a script whose only component comes from the shared library', async () =>

@@ -10,8 +10,8 @@
  *      - Circle 
  */
 
-import { Color } from '@archiyou/meshup/src/Color'
-import { SHAPE_DEFAULT_STYLE } from '@archiyou/meshup/src/constants'
+import { Color } from '@archiyou/meshup'
+import { SHAPE_DEFAULT_STYLE } from '@archiyou/meshup'
 // import { DxfBlock, point3d } from '@tarikjabiri/dxf'
 
 // types
@@ -49,7 +49,7 @@ type IDimensionLine = DimensionLine
 
 // Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
 // run at class-definition time, before it has finished initialising.
-import { sceneAdd, sceneCarry } from '@archiyou/meshup/src/sceneDecorators'
+import { sceneAdd, sceneCarry } from '@archiyou/meshup'
 import { checkInput } from './decorators'
 import { hostUnits, hostAnnotator } from './host'
 

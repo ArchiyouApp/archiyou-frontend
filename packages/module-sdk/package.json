@@ -1,17 +1,12 @@
 {
   "name": "@archiyou/module-sdk",
   "version": "0.1.0",
-  "description": "Contract for Archiyou script modules — manifest format and module interfaces.",
+  "private": true,
+  "description": "Contract for Archiyou script modules — manifest format and module interfaces. Internal to this monorepo; consumed via workspace:*, never published.",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
-  },
-  "files": [
-    "src"
-  ],
-  "publishConfig": {
-    "access": "public"
   },
   "scripts": {
     "lint": "tsc --noEmit",

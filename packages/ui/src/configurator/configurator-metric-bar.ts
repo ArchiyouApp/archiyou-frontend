@@ -11,7 +11,7 @@ import './configurator-metric-card.js';
 import './configurator-download-menu.js';
 
 import { editorScript, executing as scriptExecuting, executionResult } from '@archiyou/editor/src/state/workspace';
-import type { Metric } from '@archiyou/core/src/calc/types.js';
+import type { Metric } from '@archiyou/core/src/calc/types';
 
 @customElement('configurator-metric-bar')
 export class ConfiguratorMetricBar extends SignalWatcher(LitElement)

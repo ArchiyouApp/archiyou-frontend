@@ -13,6 +13,7 @@ import type { ScriptData, ScriptShared } from '@archiyou/core/src/execution/type
 import { config } from '../config';
 import { scriptStore } from '../services/ScriptStore';
 import { thumbnailStore } from '../services/ThumbnailStore';
+import { logThumbnail } from '../services/thumbnailLog';
 import { translationQueue } from '../translation/TranslationQueue';
 import { userService } from '../services/UserService';
 
@@ -37,8 +38,9 @@ async function attachThumbnail(
   fileId: string,
   stored: ScriptData,
   svg: unknown,
+  kind: 'share' | 'publish' | 'configurator-edit',
 ): Promise<ScriptData> {
-  const url = await thumbnailStore.write(author, fileId, stored.id as string, svg);
+  const url = await thumbnailStore.write(author, fileId, stored.id as string, svg, kind);
   if (!url) return stored;
   scriptStore.setThumbnail(author, stored.id as string, url);
   return { ...stored, thumbnail: url };
@@ -126,7 +128,7 @@ export async function registerScriptRoutes(fastify: FastifyInstance): Promise<vo
       // so a cached old image can never be shown.
       return attachThumbnail(
         request.user.sub, stored.fileId as string, stored,
-        (request.body as WithThumbnailSvg)?.thumbnailSvg,
+        (request.body as WithThumbnailSvg)?.thumbnailSvg, 'configurator-edit',
       );
     },
   );
@@ -175,6 +177,46 @@ export async function registerScriptRoutes(fastify: FastifyInstance): Promise<vo
     },
   );
 
+  /**
+   * Attach (or replace) one version's thumbnail on its own, after the fact.
+   *
+   * Thumbnails normally ride along in the share/publish body, which requires the drawing
+   * to exist at the moment the user presses the button. It is generated in the browser in
+   * the background and deliberately not waited for, so for a slow script it frequently
+   * does not — the share goes out without a preview even though nothing failed anywhere.
+   * That race is the single most common cause of a missing thumbnail (it is what the
+   * `submit` + `state:"pending"` pair in the thumbnail log means).
+   *
+   * This endpoint decouples the two: the client sends the drawing whenever it is ready,
+   * before or after the share, and a slow script simply gets its preview a few seconds
+   * late. Content-addressed filenames make a late write safe — the URL changes with the
+   * drawing, so nothing can be served stale.
+   *
+   * Unlike the publish path this is not best-effort: nothing else is riding on the
+   * request, so a refused SVG is reported as a 422 rather than silently swallowed. The
+   * reason stays in the log (it is not something a client should be told).
+   */
+  fastify.put<{ Params: { user: string; fileId: string; versionId: string }; Body: WithThumbnailSvg }>(
+    '/scripts/:user/:fileId/versions/:versionId/thumbnail',
+    authVerified,
+    async (request, reply) => {
+      const { fileId, versionId } = request.params;
+      // Ownership + existence gate: getVersion 404s for a version that is not this
+      // author's, so a late upload can never land on somebody else's row.
+      scriptStore.getVersion(request.user.sub, fileId, versionId);
+
+      const url = await thumbnailStore.write(
+        request.user.sub, fileId, versionId, request.body?.thumbnailSvg, 'deferred',
+      );
+      if (!url) {
+        reply.code(422);
+        return { success: false, error: 'Thumbnail was not accepted' };
+      }
+      scriptStore.setThumbnail(request.user.sub, versionId, url);
+      return { success: true, thumbnail: url };
+    },
+  );
+
   // Share a file: append a new version carrying a concrete semver + shared
   // metadata. Body is the full ScriptData (with `version` + `shared` set).
   fastify.post<{ Params: { user: string; fileId: string } }>(
@@ -185,7 +227,7 @@ export async function registerScriptRoutes(fastify: FastifyInstance): Promise<vo
       reply.code(201);
       return attachThumbnail(
         request.user.sub, request.params.fileId, stored,
-        (request.body as WithThumbnailSvg)?.thumbnailSvg,
+        (request.body as WithThumbnailSvg)?.thumbnailSvg, 'share',
       );
     },
   );
@@ -213,7 +255,7 @@ export async function registerScriptRoutes(fastify: FastifyInstance): Promise<vo
       }).catch(() => undefined);
       return attachThumbnail(
         request.user.sub, request.params.fileId, stored,
-        (request.body as WithThumbnailSvg)?.thumbnailSvg,
+        (request.body as WithThumbnailSvg)?.thumbnailSvg, 'publish',
       );
     },
   );

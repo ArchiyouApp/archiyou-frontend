@@ -24,7 +24,10 @@
  * line drawing whose URL is only ever handed out in an access-gated API response.
  *
  * EVERY failure here is silent and returns null. A thumbnail is a nicety; a publish that
- * 500s because a directory was not writable is not.
+ * 500s because a directory was not writable is not. Silent to the CALLER, that is: every
+ * outcome — including the do-nothing ones — is recorded in the thumbnail log (see
+ * services/thumbnailLog.ts), which is the only thing that makes a missing preview
+ * explainable after the fact.
  */
 
 import { createHash } from 'node:crypto';
@@ -33,6 +36,7 @@ import { join } from 'node:path';
 
 import { config } from '../config';
 import { checkThumbnailSvg } from './svgSanitize';
+import { logThumbnail } from './thumbnailLog';
 
 /** Path segments come from server-controlled ids, but they end up as filesystem paths —
  *  a traversal check on anything that becomes a path is not optional. */
@@ -59,18 +63,39 @@ export class ThumbnailStore {
   /**
    * Validate + store `svg` for one script version and return its public URL.
    * Returns null when there is nothing to store or anything at all goes wrong.
+   *
+   * `kind` ('share' | 'publish' | 'configurator-edit') only labels the log lines — the
+   * three flows are otherwise identical here, but which one dropped a thumbnail is the
+   * first question anyone asks.
    */
   async write(
     author: string,
     fileId: string,
     versionId: string,
     svg: unknown,
+    kind?: string,
   ): Promise<string | null> {
-    if (svg === undefined || svg === null || svg === '') return null;
+    if (svg === undefined || svg === null || svg === '') {
+      // By far the most common reason a script ends up without a preview: the browser
+      // never produced one, or the user hit Share before the background run finished.
+      // The matching src:"client" lines say which of the two it was.
+      void logThumbnail({
+        event: 'received', kind, author, fileId, versionId, bytes: 0,
+        reason: svg === '' ? 'empty thumbnailSvg in request' : 'no thumbnailSvg in request',
+      });
+      return null;
+    }
+
+    const bytes = typeof svg === 'string' ? Buffer.byteLength(svg, 'utf8') : null;
+    void logThumbnail({ event: 'received', kind, author, fileId, versionId, bytes });
 
     const segments = safeSegments(author, fileId, versionId);
     if (!segments) {
       console.warn(`ThumbnailStore: refusing unsafe path segments for ${author}/${fileId}`);
+      void logThumbnail({
+        event: 'unsafe-path', kind, author, fileId, versionId,
+        reason: 'author/fileId/versionId is not a safe path segment',
+      });
       return null;
     }
     const [authorSeg, fileSeg, versionSeg] = segments;
@@ -78,6 +103,13 @@ export class ThumbnailStore {
     const check = checkThumbnailSvg(svg, config.thumbnails.maxBytes);
     if (!check.ok) {
       console.warn(`ThumbnailStore: rejected thumbnail for ${authorSeg}/${fileSeg}: ${check.reason}`);
+      void logThumbnail({
+        event: 'rejected', kind, author: authorSeg, fileId: fileSeg, versionId: versionSeg,
+        bytes, reason: check.reason,
+        // The opening tag distinguishes "our own exporter, one unexpected attribute" from
+        // "something else entirely was posted", without keeping the drawing itself.
+        detail: { head: typeof svg === 'string' ? svg.slice(0, 120) : typeof svg },
+      });
       return null;
     }
     const source = svg as string;
@@ -98,9 +130,18 @@ export class ThumbnailStore {
       // Drop any earlier drawing for this same version — its URL is already superseded.
       await this.removeOtherVersions(dir, versionSeg, filename);
 
-      return `${this.urlPrefix}/${authorSeg}/${fileSeg}/${filename}`;
+      const url = `${this.urlPrefix}/${authorSeg}/${fileSeg}/${filename}`;
+      void logThumbnail({
+        event: 'stored', kind, author: authorSeg, fileId: fileSeg, versionId: versionSeg, bytes, url,
+      });
+      return url;
     } catch (error) {
       console.warn(`ThumbnailStore: failed to write thumbnail for ${authorSeg}/${fileSeg}:`, (error as Error).message);
+      void logThumbnail({
+        event: 'write-failed', kind, author: authorSeg, fileId: fileSeg, versionId: versionSeg, bytes,
+        reason: (error as Error)?.message ?? String(error),
+        detail: { root: this.root },
+      });
       return null;
     }
   }
@@ -111,6 +152,10 @@ export class ThumbnailStore {
     const segments = safeSegments(author, fileId);
     if (!segments) return;
     const [authorSeg, fileSeg] = segments;
+
+    // Deletion is the one way a thumbnail that DID exist stops existing, so it belongs in
+    // the same log — otherwise a vanished preview looks like it was never written.
+    void logThumbnail({ event: 'removed', author: authorSeg, fileId: fileSeg, versionId });
 
     try {
       const dir = join(this.root, authorSeg, fileSeg);

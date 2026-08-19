@@ -35,7 +35,7 @@
  *
  */ 
 
-import { ShapeCollection } from '@archiyou/meshup/src/index';            
+import { ShapeCollection } from '@archiyou/meshup';            
 import { analyzeFunc } from '../utils'
 
 //// SETTINGS ////

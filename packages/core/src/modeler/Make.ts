@@ -9,14 +9,14 @@
 
 import { ArchiyouModules } from '../types';
 import type { Modeler } from './Modeler';
-import { ShapeCollection } from '@archiyou/meshup/src/index';
-import type * as meshup from '@archiyou/meshup/src/index';
-import type { Polygon } from '@archiyou/meshup/src/index';
-import type { Mesh } from '@archiyou/meshup/src/index';
+import { ShapeCollection } from '@archiyou/meshup';
+import type * as meshup from '@archiyou/meshup';
+import type { Polygon } from '@archiyou/meshup';
+import type { Mesh } from '@archiyou/meshup';
 import { Table } from '../calc/Table';
 
-import { BinPacker } from '@archiyou/gdrr2bp-wasm/ts/BinPacker';
-import type { CuttingNode, Instance, Part } from '@archiyou/gdrr2bp-wasm/ts/BinPacker';
+import { BinPacker } from '@archiyou/gdrr2bp-wasm';
+import type { CuttingNode, Instance, Part } from '@archiyou/gdrr2bp-wasm';
 
 import { Static } from 'typebox';
 import { PackOptionsSchema } from './schemas';

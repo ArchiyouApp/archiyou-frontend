@@ -8,10 +8,16 @@
  * nothing else.
  *
  * Deliberately dependency-free — importing anything from @archiyou/core here
- * would make every module repo depend on the whole engine to typecheck, and
- * would be circular (core depends on this package). Where a real core type is
- * wanted, it is modelled structurally (see AyArchiyou) so core's own types stay
- * assignable to it.
+ * would make every module repo depend on the whole engine to typecheck. Where a
+ * real core type is wanted, it is modelled structurally (see AyArchiyou) so
+ * core's own types stay assignable to it.
+ *
+ * This file is AUTHORED HERE and MIRRORED into the engine as
+ * packages/core/src/modules/sdkTypes.ts, a generated verbatim copy. Core is
+ * published to npm and this package is not, so core cannot import it by name
+ * without shipping an unresolvable import. After editing this file run
+ * `pnpm --filter @archiyou/core sync:sdk-types`; a unit test there fails while
+ * the copy is stale.
  */
 
 //// MANIFEST ////

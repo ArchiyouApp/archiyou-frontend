@@ -1,4 +1,4 @@
-import type { AyModuleCatalogEntry } from "@archiyou/module-sdk";
+import type { AyModuleCatalogEntry } from "../modules/sdkTypes";
 
 import type { ArchiyouModules } from "../types";
 import type { Modeler } from "../modeler/Modeler";
@@ -101,7 +101,7 @@ export interface RunnerScriptExecutionRequest
     componentScripts?: Array<ScriptData>;
 
     /** Optional script modules available to this run, as served by `GET /modules`
-     *  (see docs/modules.md). Each entry carries `entitled`, so the LOCKED ones
+     *  (see modules/README.md). Each entry carries `entitled`, so the LOCKED ones
      *  must be included too: a script referencing a module the user lacks then
      *  fails with "not available on your account" instead of the
      *  "undefined is not a function" it would get if the name were simply absent.

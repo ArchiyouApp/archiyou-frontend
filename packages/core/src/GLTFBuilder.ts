@@ -2,16 +2,16 @@
 // ./modeler/brep, which pulled the 10MB OpenCascade barrel into every mesh-only run — and
 // worse, brep's Point constructor calls getOc(), so `new Vector(1,0,0)` below threw outright
 // whenever the brep kernel had not been loaded.
-import { Vector } from '@archiyou/meshup/src/Vector'
-import { rad as toRad } from '@archiyou/meshup/src/utils'
+import { Vector } from '@archiyou/meshup'
+import { rad as toRad } from '@archiyou/meshup'
 import type { ArchiyouData } from './modeler/brep/types'
 import { Document, Accessor, Animation, AnimationChannel, AnimationSampler, Scene as GltfScene, Node as GltfNode } from '@gltf-transform/core'
 
 import {
     createNodeIO,
-} from '@archiyou/meshup/src/GLTFBuilder'
+} from '@archiyou/meshup'
 
-import { GLTFJsonDocumentToString } from '@archiyou/meshup/src/utils'
+import { GLTFJsonDocumentToString } from '@archiyou/meshup'
 import type {
     LayoutAnimationInterpolation,
     LayoutAnimationOptions,

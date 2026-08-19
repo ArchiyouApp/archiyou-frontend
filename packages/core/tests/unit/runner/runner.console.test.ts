@@ -65,8 +65,11 @@ describe('Runner console scope handling', () =>
 
         await runner.execute({ script: PARENT(), params: {}, outputs: ['default/model/gltf'] } as any)
 
-        // the component's Console must not still be installed globally
-        expect((globalThis.console as any)?._scopeName).not.toBe(`component:'./loggingbox'`)
+        // The component's Console must not still be installed globally: what is left on
+        // globalThis has to be the MAIN scope's own Console, the one deleteLocalScope()
+        // restores. (This used to compare a `_scopeName` field that does not exist on
+        // Console, so it passed no matter which Console was installed.)
+        expect(globalThis.console).toBe((runner.getScope('default') as any)?._archiyou?.console)
         expect(consoleChainDepth(globalThis.console)).toBeLessThanOrEqual(1)
     }, 60000)
 

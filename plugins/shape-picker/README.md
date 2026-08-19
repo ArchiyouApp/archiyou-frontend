@@ -2,8 +2,8 @@
 
 The smallest real archiyou **guest plugin** (`script` mode): a dropdown that picks a
 primitive shape — **cube / sphere / cylinder** — plus a size, and runs the main script to
-generate it. It is implementation slice 1 of the plugin architecture in
-[`WIP_PLUGINS.md`](../../WIP_PLUGINS.md).
+generate it. It is implementation slice 1 of the plugin architecture described in
+[`../README.md`](../README.md).
 
 ## Structure
 

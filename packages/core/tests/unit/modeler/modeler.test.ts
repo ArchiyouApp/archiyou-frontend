@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 
 import { Modeler } from '../../../src/modeler/Modeler'
-import { Curve as SmartMeshCurve, Mesh as SmartMesh, Polygon as SmartMeshPolygon, Vertex as SmartMeshVertex } from '@archiyou/meshup/src/index';
-import { ShapeCollection as SmartShapeCollection } from '@archiyou/meshup/src/index';
-import { ShapeCollection } from '@archiyou/meshup/src/ShapeCollection';
-import { Mesh } from '@archiyou/meshup/src/Mesh';
+import { Curve as SmartMeshCurve, Mesh as SmartMesh, Polygon as SmartMeshPolygon, Vertex as SmartMeshVertex } from '@archiyou/meshup';
+import { ShapeCollection as SmartShapeCollection } from '@archiyou/meshup';
+import { ShapeCollection } from '@archiyou/meshup';
+import { Mesh } from '@archiyou/meshup';
 
 import { save } from '@archiyou/meshup/src/utils';
 

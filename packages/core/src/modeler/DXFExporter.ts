@@ -23,8 +23,8 @@
  *  SceneNode.toDXF() and Modeler.toDXF() (all via shapeAnnotations.ts).
  */
 
-import type * as meshup from '@archiyou/meshup/src/index'
-import type { SpanParams, SpanPoint } from '@archiyou/meshup/src/types'
+import type * as meshup from '@archiyou/meshup'
+import type { SpanParams, SpanPoint } from '@archiyou/meshup'
 import type { ModelUnits } from './types'
 import type { AnyShape } from './types'
 

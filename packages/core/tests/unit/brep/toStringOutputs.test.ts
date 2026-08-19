@@ -1,5 +1,5 @@
 import * as brep from '../../../src/modeler/brep/index'
-import { SceneNode } from '@archiyou/meshup/src/SceneNode'
+import { SceneNode } from '@archiyou/meshup'
 
 import { test, beforeAll, expect } from 'vitest'
 

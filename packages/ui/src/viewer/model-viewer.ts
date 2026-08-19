@@ -9,8 +9,8 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { buildScenegraphPath, executionResult, scenegraph, scriptParams, updateParam, selectedPath, setSelectedPath, interactiveShapes } from '@archiyou/editor/src/state/workspace';
 import { formatDimensionValue } from './gltf-annotations.js';
 import { scheduleExecution, resetCameraCounter } from '@archiyou/editor/src/state/viewer';
-import type { ScriptOutputData } from '@archiyou/core/src/execution/types.js';
-import type { SceneNodeData } from '@archiyou/core/src/modeler/types.js';
+import type { ScriptOutputData } from '@archiyou/core/src/execution/types';
+import type { SceneNodeData } from '@archiyou/core/src/modeler/types';
 import { applyEdgeExtensions, applyPointStyles } from './gltf-edge-extensions.js';
 import { applyAnnotations } from './gltf-annotations.js';
 import type { HtmlLabelDef } from './gltf-annotations.js';
@@ -18,7 +18,7 @@ import './viewer-labels-overlay.js';
 import type { ViewerLabelsOverlay, OverlayLabel, OverlayLabelPos, DimensionParamChangeDetail } from './viewer-labels-overlay.js';
 import { handleDefFromData } from './gltf-handles.js';
 import type { HandleDef } from './gltf-handles.js';
-import type { ManagedHandlesData } from '@archiyou/core/src/interaction/types.js';
+import type { ManagedHandlesData } from '@archiyou/core/src/interaction/types';
 import './viewer-handles-overlay.js';
 import type { ViewerHandlesOverlay, HandleOverlay, HandleOverlayPos, HandleDragEventDetail } from './viewer-handles-overlay.js';
 import { VIEWER_AUTO_FRAME_ON_FIRST_LOAD, VIEWER_BACKGROUND_COLOR, VIEWER_BACKGROUND_COLOR_DARK,

@@ -11,7 +11,7 @@ import type { MainAxis, AnyShape, AnyShapeCollection } from '../modeler/types'
 // the AnyShape* aliases. See the note in AnnotatorDimensionLine.ts: the BREP
 // kernel has identically-named Point/Vector, so be explicit about the source.
 // meshup's 1D shape is `Curve`; there is no `Edge`.
-import type { PointLike, Point, Vector, Curve, Bbox } from '@archiyou/meshup/src/index'
+import type { PointLike, Point, Vector, Curve, Bbox } from '@archiyou/meshup'
 
 import type {
     DimensionOptions,DimensionLevelSettings,DimensionLevel,

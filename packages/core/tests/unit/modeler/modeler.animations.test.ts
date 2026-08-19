@@ -1,8 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { Modeler } from '../../../src/modeler/Modeler'
-import { createNodeIO } from '@archiyou/meshup/src/GLTFBuilder'
-import { ShapeCollection } from '@archiyou/meshup/src/index'
+import { createNodeIO } from '@archiyou/meshup'
+import { ShapeCollection } from '@archiyou/meshup'
 import { Layouter } from '../../../src/modeler/Layouter'
 import { save } from '@archiyou/meshup/src/utils'
 

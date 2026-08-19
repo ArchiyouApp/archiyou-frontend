@@ -38,13 +38,15 @@ import { validate, optional } from "../decorators";
 import { type AnyShape, isAnyShape } from "./types";
 
 import { buildDXF, type toDXFOptions } from "./DXFExporter";
-import { buildSVG, buildProjectionSVG, buildThumbnailSVG,
+import { buildSVG, buildProjectionSVG, buildThumbnailSVG, buildThumbnailSVGFromCurves,
     type toSVGOptions, type toProjectionSVGOptions,
     type ThumbnailSVGOptions, type ThumbnailSVGResult } from "./SVGExporter";
-import { buildDAE, type toDAEOptions } from "./DAEExporter";
+// Type-only: ./DAEExporter is reached through a dynamic import in toDAE() so the COLLADA
+// writer and its ~171 KB of base64 WASM stay out of the eager bundle. See DAEExporter.ts.
+import type { toDAEOptions } from "./DAEExporter";
 
 // Meshup namespace — imported as value (for instanceof) and type
-import * as meshup from '@archiyou/meshup/src/index'
+import * as meshup from '@archiyou/meshup'
 
 // Side-effect import: augments meshup Shape/SceneNode/ShapeCollection prototypes with the
 // visual/app methods (dimension, label, material, onClick, addToScene, toDXF, …). Must load
@@ -59,10 +61,10 @@ import type * as brepTypes from './brep/index'
 
 /** The meshup module namespace as a type. meshup no longer exports this alias itself:
  *  a self-referential `typeof import('./index')` inside its barrel broke its dts rollup. */
-type Meshup = typeof import('@archiyou/meshup/src/index')
+type Meshup = typeof import('@archiyou/meshup')
 
 import { defaultTextFont, getFont, registerFont, fetchFont } from "./TextFonts";
-import { SceneNodeGraphNode, isPointLike } from "@archiyou/meshup/src/types";
+import { SceneNodeGraphNode, isPointLike } from "@archiyou/meshup";
 import { Layouter } from "./Layouter";
 import { GLTFBuilder } from "../GLTFBuilder";
 import { Make } from './Make';
@@ -243,7 +245,7 @@ export class Modeler
     {
         console.info('Modeler: Loading Meshup kernel...');
         const t = performance.now();
-        this._kernels.mesh = (await import('@archiyou/meshup/src/index')) as Meshup;
+        this._kernels.mesh = (await import('@archiyou/meshup')) as Meshup;
         await this._kernels.mesh.init(); // load wasm
         console.info(`Modeler: Meshup loaded successfully in ${Math.round(performance.now() - t)} ms.`);
         console.info(`With these methods/classes: "${Object.keys(this._kernels.mesh)}"`);
@@ -906,14 +908,32 @@ export class Modeler
         return buildProjectionSVG(meshes, { units: this.units(), ...(options ?? {}) })
     }
 
-    /** Size-capped projection SVG for use as a thumbnail or list icon. Returns null when
-     *  the scene has no meshes, or when even the degraded drawing exceeds the hard cap —
-     *  callers show a placeholder rather than storing something unusable. */
+    /** Size-capped SVG for use as a thumbnail or list icon.
+     *
+     *  Two sources, in order: a hidden-line projection of the scene's meshes, or — for a
+     *  scene that has none — the 2D geometry the script authored, drawn as it lies. The
+     *  fallback matters more than it sounds: a 2D-only script (plate layouts, nesting
+     *  sheets, anything from rect/circle/offset) previously got NO thumbnail whatsoever,
+     *  silently, because this path only ever consumed meshes.
+     *
+     *  Returns null only when the scene holds no drawable geometry at all, or when even
+     *  the degraded drawing exceeds the hard byte cap — callers then show a placeholder
+     *  rather than storing something unusable. */
     toThumbnailSVG(options?: ThumbnailSVGOptions): ThumbnailSVGResult | null
     {
-        const meshes = this._sceneMeshCollection('toThumbnailSVG')
-        if (!meshes) return null
-        return buildThumbnailSVG(meshes, { units: this.units(), ...(options ?? {}) })
+        const opts = { units: this.units(), ...(options ?? {}) }
+        const exportScene = this._exportScene()
+
+        const meshes = exportScene.shapes().meshes()
+        if (meshes && meshes.length > 0) return buildThumbnailSVG(meshes, opts)
+
+        // No 3D to project — draw the 2D geometry itself. `view`/`cam` do not apply.
+        const thumb = buildThumbnailSVGFromCurves(exportScene.shapes(), opts)
+        if (!thumb)
+        {
+            console.warn('Modeler::toThumbnailSVG(): No Meshes and no 2D geometry in scene. Nothing to export.')
+        }
+        return thumb
     }
 
     /** The scene's Meshes as a ShapeCollection (the projection entrypoints live on the
@@ -1063,6 +1083,7 @@ export class Modeler
      *  <lines>. Returns null when the scene holds no exportable geometry. */
     async toDAE(options?: toDAEOptions): Promise<string | null>
     {
+        const { buildDAE } = await import('./DAEExporter')
         return buildDAE(this._exportScene(), { units: this.units(), ...(options ?? {}) })
     }
 

@@ -21,7 +21,7 @@ import { isRelativeCoordString } from './utils'
 
 // The mesh kernel's point contract — brep accepts everything meshup does (see isPointLike).
 // Type-only elsewhere in core, but needed as a value here.
-import { isPointLike as isMeshupPointLike } from '@archiyou/meshup/src/types'
+import { isPointLike as isMeshupPointLike } from '@archiyou/meshup'
 
 
 

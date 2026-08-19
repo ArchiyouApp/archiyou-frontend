@@ -2,6 +2,7 @@
   "name": "materials-generator",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Standalone AI generator for the archiyou materials database + textures (Google Gemini for both data and images).",
   "scripts": {

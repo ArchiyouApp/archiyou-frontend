@@ -25,8 +25,8 @@ import type { ArchiyouApp, PointLike, PointLikeOrAnyShapeOrCollection,
 import { Point, Vector, Shape, Vertex, Edge, Wire, Face, Shell, Solid, Brep } from './index'
 
 // Scene + style come from the mesh kernel — one SceneNode graph and one Style model for both.
-import { SceneNode } from '@archiyou/meshup/src/SceneNode'
-import type { StyleData } from '@archiyou/meshup/src/Style'
+import { SceneNode } from '@archiyou/meshup'
+import type { StyleData } from '@archiyou/meshup'
 import { Exporter } from './Exporter'
 import { BaseAnnotation } from '../../annotator/AnnotatorBaseAnnotation'
 
@@ -37,7 +37,7 @@ import { flattenEntitiesToArray, flattenEntities, roundToTolerance } from '.'  /
 
 
 // special libraries
-import { Color } from '@archiyou/meshup/src/Color'
+import { Color } from '@archiyou/meshup'
 //import { packer } from 'guillotine-packer' // see: https://github.com/tyschroed/guillotine-packer
 // import { DxfWriter, Units } from '@tarikjabiri/dxf'; // TODO: after refactor
  
@@ -2841,7 +2841,7 @@ import { getOc } from './index' // OC global getter
       async toGLTF(_options?:ExportGLTFOptions): Promise<ArrayBuffer>
       {
          const { brepShapeToMeshup } = await import('./toMeshup');
-         const { SceneNode } = await import('@archiyou/meshup/src/SceneNode');
+         const { SceneNode } = await import('@archiyou/meshup');
 
          const root = SceneNode.root('scene');
          this.shapes.forEach(s =>

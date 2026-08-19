@@ -1,7 +1,7 @@
-import { Vector as MeshupVector } from '@archiyou/meshup/src/index'
-import { ShapeCollection } from '@archiyou/meshup/src/ShapeCollection'
+import { Vector as MeshupVector } from '@archiyou/meshup'
+import { ShapeCollection } from '@archiyou/meshup'
 import { isKernelShapeCollection } from './typeguards'
-import { SceneNode as MeshupSceneNode } from '@archiyou/meshup/src/SceneNode'
+import { SceneNode as MeshupSceneNode } from '@archiyou/meshup'
 
 import type {
     ExplodedViewOptions,
@@ -12,7 +12,7 @@ import type {
     AnyShape,
 } from './types'
 
-import { TOLERANCE } from '@archiyou/meshup/src/constants'
+import { TOLERANCE } from '@archiyou/meshup'
 
 export class Layouter
 {

@@ -7,6 +7,12 @@ vendored + patched copy of [`collada_io`](https://github.com/5mattmatt1/voxport)
 Used by `packages/core/src/modeler/DAEExporter.ts`, which walks the meshup scene graph and
 drives this writer. See `Modeler.toDAE()`.
 
+## Install
+
+```bash
+npm install @archiyou/collada-wasm
+```
+
 ## Why the crate is vendored
 
 Upstream is unmaintained (published 2020), undocumented, and its writer was missing most of
@@ -33,7 +39,7 @@ Two phases, mirroring COLLADA's own structure: `library_geometries` is a flat po
 `library_visual_scenes` is a tree.
 
 ```ts
-import { createColladaWriter } from '@archiyou/collada-wasm/ts';
+import { createColladaWriter } from '@archiyou/collada-wasm';
 
 const writer = await createColladaWriter({ unitName: 'millimeter', meter: 0.001 });
 try {

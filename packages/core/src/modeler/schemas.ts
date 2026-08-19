@@ -1,5 +1,5 @@
 import { Type } from 'typebox'
-import { isPointLike, type PointLike } from '@archiyou/meshup/src/types'
+import { isPointLike, type PointLike } from '@archiyou/meshup'
 
 
 export const ModelModeSchema = Type.Union(

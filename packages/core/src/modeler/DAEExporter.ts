@@ -13,14 +13,14 @@
  *      triangle soup Mesh.toBuffer() produces. Welding happens in the WASM writer.
  */
 
-import * as meshup from '@archiyou/meshup/src/index'
-import { Color } from '@archiyou/meshup/src/Color'
-import { Style } from '@archiyou/meshup/src/Style'
+import * as meshup from '@archiyou/meshup'
+import { Color } from '@archiyou/meshup'
+import { Style } from '@archiyou/meshup'
 
 import {
     createColladaWriter, type ColladaWriter, DEFAULT_WELD_TOLERANCE,
     GEOMETRY_DERIVED_ID_SUFFIXES, MATERIAL_DERIVED_ID_SUFFIXES,
-} from '@archiyou/collada-wasm/ts'
+} from '@archiyou/collada-wasm'
 import { MM_PER_UNIT } from '../units/UnitConverter'
 import type { ModelUnits } from './types'
 

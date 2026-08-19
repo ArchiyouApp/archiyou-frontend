@@ -5,7 +5,7 @@ import { SignalWatcher } from '@lit-labs/signals';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import { executionResult } from '@archiyou/editor/src/state/workspace';
-import type { Metric } from '@archiyou/core/src/calc/types.js';
+import type { Metric } from '@archiyou/core/src/calc/types';
 import './metric-card.js';
 
 @customElement('editor-metrics-tool')

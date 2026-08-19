@@ -13,7 +13,7 @@
  * bundles must be self-contained.
  */
 
-import type { AyModule, AyModuleFactory, AyModuleManifest } from '@archiyou/module-sdk';
+import type { AyModule, AyModuleFactory, AyModuleManifest } from './sdkTypes';
 
 export interface LoadClientModuleOptions
 {
@@ -133,7 +133,7 @@ export async function loadClientModule(
     if(typeof factory !== 'function')
     {
         throw new ModuleLoadError(manifest.id,
-            `bundle does not default-export a factory function (see @archiyou/module-sdk defineModule)`);
+            `bundle does not default-export a factory function (see defineModule in the module contract, src/modules/sdkTypes.ts)`);
     }
 
     let instance: AyModule;

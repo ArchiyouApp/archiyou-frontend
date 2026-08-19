@@ -190,7 +190,7 @@ topLevelCompletions.push(
 
 /**
  * Script modules are installed per deployment and gated per user (see
- * docs/modules.md), so unlike everything else here their completions cannot be
+ * modules/README.md), so unlike everything else here their completions cannot be
  * generated at build time — the editor learns about them from `GET /modules`
  * and registers them below.
  *

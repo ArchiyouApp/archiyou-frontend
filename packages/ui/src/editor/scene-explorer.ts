@@ -7,7 +7,7 @@ import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import { buildScenegraphPath, scenegraph, toggleNodeVisibility, activeBottomPanel, 
     setActiveBottomPanel, selectedPath, setSelectedPath } from '@archiyou/editor/src/state/workspace';
-import type { SceneNodeData } from '@archiyou/core/src/modeler/types.js';
+import type { SceneNodeData } from '@archiyou/core/src/modeler/types';
 import { SCENE_EXPLORER_MINIMIZED_TREE_LEVEL } from '@archiyou/editor/src/settings';
 
 /** Pick a row icon by node kind. Layer/group nodes have no held shape;

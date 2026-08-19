@@ -25,7 +25,7 @@
  *  the same maths with no scene management — see ShapeCollection.ts.
  */
 
-import type * as meshup from '@archiyou/meshup/src/index'
+import type * as meshup from '@archiyou/meshup'
 import type { ModelUnits } from './types'
 
 //// TYPES ////
@@ -296,7 +296,14 @@ function prepareCurves(collection: any): Array<PreparedCurve>
         ?? collection?.curves?.()
         ?? []
 
-    const hiddenGroup = collection?.group?.('hidden')
+    // Ask for the 'hidden' group only when it is actually there: ShapeCollection.group()
+    // logs an ERROR for a missing group, and it is missing in both common cases — authored
+    // 2D geometry has no groups at all, and a projection taken with hidden lines off only
+    // has 'visible'/'silhouette'. That console error is exactly the kind of noise that
+    // makes a working thumbnail look like a failed one. Read through `_groups` rather than
+    // importing meshup, which this module deliberately does not do at runtime.
+    const groups = collection?._groups
+    const hiddenGroup = (groups?.has ? groups.has('hidden') : true) ? collection?.group?.('hidden') : undefined
     const hiddenSet = new Set<any>(hiddenGroup?.toArray?.() ?? [])
 
     const out: Array<PreparedCurve> = []
@@ -406,9 +413,6 @@ export function buildProjectionSVG(meshCollection: any, options?: toProjectionSV
 export function buildThumbnailSVG(meshCollection: any, options?: ThumbnailSVGOptions): ThumbnailSVGResult | null
 {
     const o = options ?? {}
-    const maxBytes = o.maxBytes ?? DEFAULT_MAX_BYTES
-    const hardMaxBytes = Math.max(o.hardMaxBytes ?? DEFAULT_HARD_MAX_BYTES, maxBytes)
-
     const projected = projectMeshes(meshCollection, {
         ...o,
         samples: o.samples ?? THUMB_SAMPLES,
@@ -417,8 +421,34 @@ export function buildThumbnailSVG(meshCollection: any, options?: ThumbnailSVGOpt
         hidden: o.hidden === true,
     })
     if (!projected) return null
+    return thumbnailFromPrepared(prepareCurves(projected), o)
+}
 
-    const prepared = prepareCurves(projected)
+/**
+ * As {@link buildThumbnailSVG}, but for a scene that has no meshes to project: the 2D
+ * curves the script authored ARE the drawing.
+ *
+ * Without this a 2D-only script — a plate layout, a nesting sheet, anything built from
+ * rect/circle/offset — got no thumbnail at all, because the thumbnail path only ever
+ * consumed a hidden-line projection of 3D geometry. Those scripts are a large share of the
+ * library, and their preview is exactly what `toSVG()` would draw.
+ *
+ * `view`/`cam` do not apply here (there is nothing to project, so the geometry is taken as
+ * it lies in XY); everything else — square framing, the byte budget and its degradation
+ * ladder — is identical, so both kinds of thumbnail are interchangeable to a caller.
+ */
+export function buildThumbnailSVGFromCurves(collection: any, options?: ThumbnailSVGOptions): ThumbnailSVGResult | null
+{
+    return thumbnailFromPrepared(prepareCurves(collection), options ?? {})
+}
+
+/** The size-capped serialization + degradation ladder, shared by both thumbnail entry
+ *  points. Everything above this line decides WHAT to draw; this decides how to fit it. */
+function thumbnailFromPrepared(prepared: Array<PreparedCurve>, o: ThumbnailSVGOptions): ThumbnailSVGResult | null
+{
+    const maxBytes = o.maxBytes ?? DEFAULT_MAX_BYTES
+    const hardMaxBytes = Math.max(o.hardMaxBytes ?? DEFAULT_HARD_MAX_BYTES, maxBytes)
+
     if (prepared.length === 0) return null
 
     const base: toSVGOptions = {

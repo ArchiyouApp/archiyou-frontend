@@ -14,7 +14,7 @@ import { roundTo } from '../../utils' // utils
 import { SIDES, SIDE_TO_AXIS } from './constants'
 
 import { getOc } from './index'
-import { addResultToScene } from '@archiyou/meshup/src/sceneDecorators'
+import { addResultToScene } from '@archiyou/meshup'
 
 
 // Import decorators directly (not via the barrel) — the barrel is a cycle and decorators

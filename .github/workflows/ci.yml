@@ -57,6 +57,14 @@ jobs:
       - name: Core tests
         run: pnpm --filter @archiyou/core test:runner
 
+      # The module contract is authored in packages/module-sdk and mirrored into
+      # packages/core/src/modules/sdkTypes.ts, because core is published to npm and the
+      # SDK is not — an import by name would dangle in everything core ships. Two copies
+      # of one contract drift silently, so the mirror is checked here as well as by a
+      # unit test (which `test:runner` does not run).
+      - name: Module contract mirror is in sync
+        run: pnpm --filter @archiyou/core check:sdk-types
+
       # Real gates. Each package's own source must typecheck against its
       # dependencies' actual types. tsconfig `paths` makes tsc resolve
       # @archiyou/core (its exports map defeats tsc, which silently typed those
@@ -80,7 +88,7 @@ jobs:
         run: pnpm --filter @archiyou/core typecheck:budget
 
   # Private script modules are developed as a gitignored overlay in ./modules (see
-  # docs/modules.md). That boundary is one .gitignore line, and a single `git add -f`
+  # modules/README.md). That boundary is one .gitignore line, and a single `git add -f`
   # or a weakened ignore rule would publish proprietary source into a public repo —
   # irreversibly, since it would land in the history. So it gets a gate rather than
   # a convention.
@@ -129,6 +137,22 @@ jobs:
           grep -qE "^\s*-\s*'modules/\*'" pnpm-workspace.yaml || {
             echo "::error::pnpm-workspace.yaml no longer includes the 'modules/*' glob"; exit 1; }
 
+      # The .gitignore keeps module SOURCE out, but pnpm-lock.yaml is tracked and
+      # records an importer per workspace project — including the overlay ones,
+      # with their full dependency lists. That is enough to leak a private
+      # module's name and, from its deps, what it does. pnpm tolerates importers
+      # that have no directory, so a lockfile generated without the overlay still
+      # installs cleanly for everyone.
+      - name: no private module may appear in the lockfile
+        run: |
+          leaked="$(grep -nE "^  modules/" pnpm-lock.yaml || true)"
+          if [ -n "$leaked" ]; then
+            echo "::error::pnpm-lock.yaml contains importers for the private modules overlay"
+            echo "$leaked"
+            echo "Fix: run 'pnpm lockfile:public' and commit the result."
+            exit 1
+          fi
+
   # The deployment config is executable, so it gets checked like code: a broken
   # Caddyfile means the reverse proxy will not start. This caught `auto_https on`,
   # which was invalid and had gone unnoticed.
@@ -141,7 +165,7 @@ jobs:
 
       - name: Validate Caddyfile
         run: |
-          docker run --rm -v "${{ github.workspace }}/apps/server/Caddyfile:/etc/caddy/Caddyfile:ro" \
+          docker run --rm -v "${{ github.workspace }}/Caddyfile:/etc/caddy/Caddyfile:ro" \
             caddy:2 caddy validate --config /etc/caddy/Caddyfile
 
       - name: Validate compose files

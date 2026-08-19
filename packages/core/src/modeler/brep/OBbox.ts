@@ -12,7 +12,7 @@ import { getOc } from './index' // OC global getter
 // Import decorators directly (not via the barrel) — the barrel is a cycle and decorators
 // run at class-definition time, before it has finished initialising.
 import { checkInput } from './decorators'
-import { addResultToScene } from '@archiyou/meshup/src/sceneDecorators'
+import { addResultToScene } from '@archiyou/meshup'
 
 export class OBbox
 {

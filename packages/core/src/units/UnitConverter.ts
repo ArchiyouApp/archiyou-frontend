@@ -69,6 +69,29 @@ export function paramDisplayDecimals(unit: ModelUnits | null | undefined): numbe
     return PARAM_DISPLAY_DECIMALS[unit] ?? 2;
 }
 
+/** Max decimals a step-derived precision may ask for (guards odd/converted steps). */
+export const PARAM_MAX_STEP_DECIMALS = 6;
+
+/**
+ * Decimals needed to display values on a `step` grid: step 1 → 0, 0.1 → 1,
+ * 0.25 → 2, 0.001 → 3. Non-finite/non-positive steps → null (no opinion), so
+ * callers can fall back to the per-unit default.
+ */
+export function stepDecimals(step: number | null | undefined): number | null
+{
+    if (step === null || step === undefined) return null;
+    if (!Number.isFinite(step) || step <= 0) return null;
+
+    // Walk the decimals up until the step lands on the grid it implies. Uses a
+    // relative epsilon so 0.1/0.3-style float noise doesn't cost extra digits.
+    for (let d = 0; d <= PARAM_MAX_STEP_DECIMALS; d++)
+    {
+        const scaled = step * Math.pow(10, d);
+        if (Math.abs(scaled - Math.round(scaled)) < 1e-6 * Math.max(1, scaled)) return d;
+    }
+    return null;
+}
+
 /** The canonical base unit of a system: metric → 'mm', imperial → 'inch'. */
 export function baseUnitForSystem(system: UnitSystem): ModelUnits
 {

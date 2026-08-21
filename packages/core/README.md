@@ -1,10 +1,26 @@
 # @archiyou/core
 
-The geometry kernel and script runtime behind [Archiyou](https://archiyou.com): run a parametric
+The geometry kernel and script runtime behind [Archiyou](https://archiyou.com) - *an open source open design and automation platform*: run a parametric
 CAD script — a few lines of JavaScript — and get back a model, drawings, or a bill of materials.
 
+This is a simple script on our platform:
+
 ```js
-box(100, 100, 20).color('red')
+// Parameters
+WIDTH = 100;
+DEPTH = 80; 
+HEIGHT = 70;
+
+legHeight = HEIGHT-TOP_THICKNESS;
+leg = box(LEG_SIZE, LEG_SIZE, legHeight)
+        .move(LEG_SIZE/2, LEG_SIZE/2,legHeight/2); // start position of leg
+     
+legs = leg.array([2,2],[WIDTH-LEG_SIZE,DEPTH-LEG_SIZE]);
+
+top = boxbetween(
+    [0,0,legHeight],
+    [WIDTH, DEPTH, HEIGHT])
+    .color('green');
 ```
 
 Scripts run in the browser, in a Web Worker, or on a server. The same script that draws a shelf in

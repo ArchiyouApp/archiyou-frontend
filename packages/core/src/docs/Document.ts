@@ -49,7 +49,7 @@ import type { DocUnits, PageSize, PageOrientation, DocPipeline, DocData,
     ContainerPositionLike, ContainerPositionAbs, DocUnitsWithPerc, PercentageString,
     ValueWithUnitsString, WidthHeightInput, ContainerTableInput,
     DocGraphicInputRect, DocGraphicInputCircle, DocGraphicInputOrthoLine,
-    ContainerBlock, TitleBlockInput, LabelBlockOptions, DocSVGPage } from './types'
+    ContainerBlock, TitleBlockInput, LabelBlockOptions, DocSVGPage, ViewOptions } from './types'
 
 import { isDocUnits, isPercentageString, isValueWithUnitsString, isAnyPageContainer,
     isContainerPositionCoordRel, isWidthHeightInput, isContainerTableInput, isPageOrientation,
@@ -233,8 +233,15 @@ export class Document
 
     //// BASIC CONTAINERS ////
 
-    /** Add View Container to active Page */
-    view(name?:string, shapes?:ShapeCollection):this
+    /** Add View Container to active Page
+     *
+     *  `view('elevation', { scale: 1/100, caption: true, bar: true })` — options may take the
+     *  place of the shapes, or follow them. The two are told apart structurally (a Shape and
+     *  a ShapeCollection both answer isShapeClass()/isShapeCollection()), so an options object
+     *  can never be mistaken for geometry. Passing options where shapes were expected used to
+     *  drop them silently.
+     */
+    view(name?:string, shapesOrOptions?:ShapeCollection|string|ViewOptions, options?:ViewOptions):this
     {
         if(typeof name !== 'string'){ throw new Error(`Document::view: Please supply a name to the view!`);}
         this._checkPageIsActive();
@@ -242,9 +249,16 @@ export class Document
         const newViewContainer = new View().on(this._getOrMakeActivePage()).setName(name);
         this._activeContainer = newViewContainer;
 
-        if(isKernelShapeOrCollection(shapes))
+        const givenShapes = (isKernelShapeOrCollection(shapesOrOptions) || typeof shapesOrOptions === 'string')
+                                ? shapesOrOptions
+                                : null;
+        const givenOptions = (givenShapes === null) ? shapesOrOptions as ViewOptions : options;
+
+        newViewContainer.setOptions(givenOptions);
+
+        if(givenShapes !== null)
         {
-            this.shapes(shapes);
+            this.shapes(givenShapes as ShapeCollection|string);
         }
         return this;
     }
@@ -961,7 +975,9 @@ export class Document
     }
 
     /** Set caption on active container */
-    caption(s?:string):this
+    /** Caption the active container. On a view, no argument means "say what you are": its
+     *  name, and the scale it is drawn at. See View.caption(). */
+    caption(s?:string|boolean|Record<string,any>):this
     {
         if(!this._activeContainer){ throw new Error(`Document::caption(): Cannot set caption. No active container. Please make one first!`)};
         if(this.TYPES_WITHOUT_CAPTION.includes(this._activeContainer._type)){ console.warn(`Document::caption(): Container type ${this._activeContainer._type} does not support caption!`); return this; }

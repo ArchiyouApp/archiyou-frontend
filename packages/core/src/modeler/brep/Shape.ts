@@ -1498,44 +1498,79 @@ export class Shape
         return selectedExtrudedFace._copy() as Face;
     }
 
-    /** Flatten a Shape into a copy of a Face without altering the position 
-     *  If given an axis we only select Faces that face that axis
-     *  Otherwise we consider the Shapes as extrusions and use extrudedFace 
+    /** Flatten a Shape onto a coordinate plane: keep the Faces whose normal is parallel to
+     *  `axis`, collapse them onto the plane through the origin perpendicular to that axis
+     *  and drop the doubles that creates. Mirrors meshup's Mesh.flatten(): flattening a Box
+     *  along 'z' selects its top and bottom Face, which land on the same rectangle, so only
+     *  one is kept.
+     *
+     *  @param axis - axis to collapse along ('x'|'y'|'z', default 'z' - onto the XY plane)
+     *  @returns a single Face, or a ShapeCollection of Faces when the Shape flattens onto
+     *      more than one distinct outline. Null when no Face aligns with the axis.
     */
-    @checkInput([['MainAxis',null]], ['auto'])
-    _flattened(axis?:MainAxis):AnyShape
+    @checkInput([['MainAxis','z']], ['auto'])
+    _flattened(axis?:MainAxis):AnyShapeOrCollection
     {
         const FACE_NORMAL_AXIS_ANGLE_MAX = 1;
 
-        if(this.type !== 'Solid')
+        const faces = this.faces().toArray() as Array<Face>;
+
+        if(faces.length === 0)
         {
-            console.warn(`Shape::_flattened(): Can only flatten Solid. This Shape is a ${this.type}. Returned copy of original`);
+            console.warn(`Shape::_flattened(): Cannot flatten a ${this.type}: it has no Faces. Returned copy of original`);
             return this._copy();
         }
 
-        let flatFace:Face = null;
-        if(isMainAxis(axis))
-        {
-            const axisVec = this._axisAndPlanesToVector(axis);
-            flatFace = this.faces().find((f) => 
+        const axisVec = this._axisAndPlanesToVector(axis);
+
+        const flatFaces = faces
+            .filter(f => 
             {
                 const a1 = Math.abs(f.normal().angle(axisVec));
                 const a2 = Math.abs(f.normal().angle(axisVec.reversed()));
                 return ( a1 <= FACE_NORMAL_AXIS_ANGLE_MAX || a2 <= FACE_NORMAL_AXIS_ANGLE_MAX)
             })
-            flatFace = flatFace._copy(); // Make copy
-        }
-        else {
-            flatFace = this._extrudedFace();
+            .map(f => 
+            {
+                // A Face whose normal is parallel to the axis sits at a constant coordinate
+                // along it, so moving it to zero along that axis IS the projection.
+                const c = f.center();
+                return (f._copy() as Face).move(
+                    (axis === 'x') ? -c.x : 0,
+                    (axis === 'y') ? -c.y : 0,
+                    (axis === 'z') ? -c.z : 0) as Face;
+            });
+
+        if (flatFaces.length === 0) 
+        {
+            console.warn(`Shape::_flattened(): We cannot find a Face aligned with axis "${axis}" to flatten to. Returned null.`)
+            return null;
         }
 
-        if (!flatFace) 
+        // Faces that were apart along the axis now lie on top of each other: keep the first
+        // per vertex set. The key is sorted, so it does not depend on where a Face starts or
+        // which way round it is wound.
+        const seen = new Set<string>();
+        const uniqueFaces = flatFaces.filter(f => 
         {
-            console.warn(`Shape::flattened(): We cannot find a Face to flatten to. Returned null.`)
-        }
-        return flatFace;
+            const key = f._flatKey();
+            if(seen.has(key)){ return false };
+            seen.add(key);
+            return true;
+        })
+
+        return (uniqueFaces.length === 1) ? uniqueFaces[0] : new ShapeCollection(uniqueFaces);
     }
 
+    /** Order- and winding-independent key for this Shape's geometry, used by _flattened()
+     *  and ShapeCollection.flatten() to filter out Shapes that flattened onto each other. */
+    _flatKey(decimals:number = 3):string
+    {
+        return (this.vertices().toArray() as Array<Vertex>)
+            .map(v => [v.x, v.y, v.z].map(c => (roundToTolerance(c, decimals) + 0).toFixed(decimals)).join(','))
+            .sort()
+            .join('|');
+    }
 
     /** 
      *   Move, rotate and (later) scale a Shape based on given points on the Shape and destination points
@@ -4351,9 +4386,10 @@ export class Shape
         return newShape;
     }
 
-    /** Flatten this Shape in place onto a plane (along `axis`, or its extrusion plane). */
-    @checkInput([['MainAxis',null]], ['auto'])
-    flatten(axis?:MainAxis):AnyShape
+    /** Flatten this Shape in place onto the coordinate plane perpendicular to `axis`
+     *  (default 'z'). See _flattened() for what is kept and what is filtered out. */
+    @checkInput([['MainAxis','z']], ['auto'])
+    flatten(axis?:MainAxis):AnyShapeOrCollection
     {
         const newShape = this._flattened(axis);
         this.replaceShape(newShape);
@@ -4455,8 +4491,11 @@ export class Shape
     /** add dimension to annotations of this shape */
     addAnnotations(a:Annotation|Array<Annotation>):boolean
     {
-        // TODO: check for doubles etc
-        const annotations = (Array.isArray(a) ? a : [a]).filter(ann => BaseAnnotation.isAnnotation(ann) )
+        // NOTE: skip annotations already linked to this Shape — link() and the Annotator both
+        // add the same dimension line, which used to draw it twice. Mirrors meshup.
+        const annotations = (Array.isArray(a) ? a : [a])
+                                .filter(ann => BaseAnnotation.isAnnotation(ann) )
+                                .filter(ann => !this.annotations.includes(ann))
         this.annotations = this.annotations.concat(annotations)
         return true;
     }

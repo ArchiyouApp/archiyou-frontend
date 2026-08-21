@@ -235,15 +235,34 @@ function compactElement(elem: string, decimals: number, tol: number): string
         .replace(DECIMAL_RE, (m) => String(+(+m).toFixed(decimals)))
 }
 
-function stylesheet(strokeWidth: number): string
+/** Screen ink: theme-aware, pinned to device pixels.
+ *  `scope` ('.view-3 ') confines every rule to one drawing — see BuildSVGDocumentOptions. */
+function stylesheet(strokeWidth: number, scope: string = ''): string
 {
+    const root = scope ? scope.trim() : 'svg'
     return '<style>'
-        + `svg{color:${INK_LIGHT}}`
-        + `@media (prefers-color-scheme:dark){svg{color:${INK_DARK}}}`
-        + '.line{fill:none;stroke:currentColor;'
+        + `${root}{color:${INK_LIGHT}}`
+        + `@media (prefers-color-scheme:dark){${root}{color:${INK_DARK}}}`
+        + `${scope}.line{fill:none;stroke:currentColor;`
         + `stroke-width:${strokeWidth};vector-effect:non-scaling-stroke;`
         + 'stroke-linecap:round;stroke-linejoin:round}'
-        + '.hidden{opacity:.35;stroke-dasharray:6 4}'
+        + `${scope}.hidden{opacity:.35;stroke-dasharray:6 4}`
+        + '</style>'
+}
+
+/** Paper ink: a real width, in model units, that lands at the intended millimeters once the
+ *  drawing is placed at its scale. Black rather than theme-aware — this is print. */
+function stylesheetMm(strokeWidth: number, scope: string = ''): string
+{
+    // Dashes tied to the line weight, so hidden lines keep the same rhythm at any scale.
+    const dash = `${+(strokeWidth * 12).toFixed(6)} ${+(strokeWidth * 8).toFixed(6)}`
+    return '<style>'
+        + `${scope}.line{fill:none;stroke:black;stroke-width:${strokeWidth};`
+        + 'stroke-linecap:round;stroke-linejoin:round}'
+        + `${scope}.hidden{stroke:#888;stroke-dasharray:${dash}}`
+        // Opaque face fills, emitted only by the 'painter' HLR strategy: they exist to cover
+        // the shapes drawn before them, which is that strategy's entire occlusion mechanism.
+        + `${scope}.fill{fill:#fff;stroke:none}`
         + '</style>'
 }
 
@@ -316,6 +335,154 @@ function prepareCurves(collection: any): Array<PreparedCurve>
     return out
 }
 
+//// DOCUMENT ASSEMBLY ////
+
+/** A set of SVG elements that belong together, with the box they occupy in SVG coordinates.
+ *
+ *  This is the whole contract between what DRAWS (a geometry kernel, the annotator, a view's
+ *  caption) and what FRAMES (the assembler below). A contributor emits element strings and
+ *  says how much room they take; it never decides a viewBox, a stylesheet or a line weight —
+ *  those are properties of the document, and a document has exactly one of each. */
+export interface SVGLayer
+{
+    elements: Array<string>
+    /** In SVG coordinates (y already flipped). Null for elements that take no room of their
+     *  own — a caption drawn in page space, say — which then never grow the frame. */
+    box: Box2D | null
+    /** Wrapped in `<g class="…">` when given, so a layer can be styled or found as a whole. */
+    cssClass?: string
+}
+
+/** How thick the lines are drawn.
+ *   - `device`: pinned to screen pixels via vector-effect, whatever the model scale. Right
+ *     for previews and thumbnails, where the drawing is fitted to an unknown box.
+ *   - `mm`: a real width on paper. Right for a document view, which knows its scale
+ *     (`unitsPerMm` = model units per page millimeter), so a 0.25mm line is 0.25mm. */
+export type SVGStroke =
+    | { mode: 'device', width?: number }
+    | { mode: 'mm', widthMm: number, unitsPerMm: number }
+    /** A width in MODEL units. For a drawing with no known scale, where the only sensible
+     *  weight is one derived from the drawing's own size. */
+    | { mode: 'units', width: number }
+
+/** How the drawing is framed.
+ *   - `fit`: the box, padded — the drawing decides its own scale.
+ *   - `scale`: an imposed scale. The viewBox spans exactly the page area the drawing is
+ *     given (`wMm` x `hMm` at `unitsPerMm`), anchored on the box per `align`, so the drawing
+ *     comes out at that scale and anything outside is simply outside the frame. */
+export type SVGFrame =
+    | { mode: 'fit', padding?: number, square?: boolean, /** extra room in MODEL units */ margin?: number }
+    | { mode: 'scale', unitsPerMm: number, wMm: number, hMm: number, align?: [SVGAlignH, SVGAlignV],
+        /** extra room in MODEL units */ margin?: number }
+
+export type SVGAlignH = 'left' | 'center' | 'right'
+export type SVGAlignV = 'top' | 'center' | 'bottom'
+
+export interface BuildSVGDocumentOptions
+{
+    layers: Array<SVGLayer>
+    stroke?: SVGStroke
+    frame?: SVGFrame
+    units?: ModelUnits
+    title?: string
+    precision?: number
+    /** Scope the stylesheet to `.<scoped>` and wrap the content in it. A document page holds
+     *  several drawings, and an unscoped `.line{stroke-width:…}` from one of them applies to
+     *  all of the others — last one wins, for the browser and for svg2pdf alike. */
+    scoped?: string
+    /** Extra `data-*` attributes on the root element. */
+    data?: Record<string, string | number>
+}
+
+/** Frame a set of layers into one SVG document — the single writer of an Archiyou drawing.
+ *  Returns null when there is nothing to draw. */
+export function buildSVGDocument(o: BuildSVGDocumentOptions): string | null
+{
+    const layers = (o.layers ?? []).filter(l => l && l.elements?.length > 0)
+    if (layers.length === 0) return null
+
+    let box: Box2D | null = null
+    for (const l of layers) box = unionBox(box, l.box)
+    if (!box) return null
+
+    const size = Math.max(box.maxX - box.minX, box.maxY - box.minY) || 1
+    const decimals = o.precision ?? precisionForSize(size)
+
+    const frame: SVGFrame = o.frame ?? { mode: 'fit' }
+    // The frame owns the margin, not the layer that needs it: a dimension's value text is
+    // quoted in page millimeters and only the frame knows the scale. It is added here rather
+    // than to `box` so `data-extents` below keeps describing the drawing itself.
+    /*  The margin is room the CONTENT needs but does not report: a dimension line's value
+        text sits at the middle of the line and its arrowheads straddle the ends, so both
+        stick out past the line's own box. It is quoted in page millimeters and only the frame
+        knows the scale, so the frame adds it — to the box used for FRAMING, never to `box`
+        itself, which goes on describing the drawing (see data-extents below).
+
+        It applies to a scaled frame just as much as to a fitted one. Leaving it out there
+        anchored the drawing flush against the frame and cut every label and arrowhead on the
+        leading edges; the scale is unaffected either way, since only the window MOVES. */
+    const framed = frame.margin
+                        ? { minX: box.minX - frame.margin, minY: box.minY - frame.margin,
+                            maxX: box.maxX + frame.margin, maxY: box.maxY + frame.margin }
+                        : box
+    const viewBox = (frame.mode === 'scale')
+                        ? scaledViewBox(framed, frame, decimals)
+                        : viewBoxFor(framed, frame.padding ?? DEFAULT_PADDING, frame.square === true, decimals)
+
+    const stroke: SVGStroke = o.stroke ?? { mode: 'device' }
+    const scope = o.scoped ? `.${o.scoped} ` : ''
+    const style = (stroke.mode === 'device')
+                    ? stylesheet(stroke.width ?? DEFAULT_STROKE_WIDTH, scope)
+                    : stylesheetMm(
+                        +(stroke.mode === 'mm' ? stroke.widthMm * stroke.unitsPerMm : stroke.width).toFixed(4),
+                        scope)
+
+    const content = layers.map(l =>
+        {
+            const body = l.elements.join('')
+            return l.cssClass ? `<g class="${escapeXML(l.cssClass)}">${body}</g>` : body
+        }).join('')
+
+    const dataAttrs = Object.entries(o.data ?? {})
+                        .map(([k, v]) => ` data-${escapeXML(k)}="${escapeXML(String(v))}"`).join('')
+    const unitsAttr = o.units ? ` data-units="${escapeXML(o.units)}"` : ''
+    const titleElem = o.title ? `<title>${escapeXML(o.title)}</title>` : ''
+
+    // The drawing's own extents, before framing — a document view needs them to work out the
+    // scale it can fit the drawing at, without re-deriving them from the geometry.
+    const extents = [box.minX, box.minY, box.maxX - box.minX, box.maxY - box.minY]
+                        .map(n => +n.toFixed(decimals)).join(' ')
+
+    const inner = o.scoped ? `<g class="${escapeXML(o.scoped)}">${content}</g>` : content
+
+    return '<svg xmlns="http://www.w3.org/2000/svg"'
+        + ` viewBox="${viewBox}" preserveAspectRatio="xMidYMid meet" role="img"`
+        + `${unitsAttr} data-extents="${extents}"${dataAttrs}>`
+        + titleElem
+        + style
+        + inner
+        + '</svg>'
+}
+
+/** The viewBox for an imposed scale: exactly the page area the drawing is given, in model
+ *  units, anchored on the drawing per `align` (default: centered). */
+function scaledViewBox(box: Box2D, frame: Extract<SVGFrame, { mode: 'scale' }>, decimals: number): string
+{
+    const w = frame.wMm * frame.unitsPerMm
+    const h = frame.hMm * frame.unitsPerMm
+    const [alignH, alignV] = frame.align ?? ['center', 'center']
+
+    const slack = (available: number, used: number, at: 'start' | 'middle' | 'end') =>
+        at === 'start' ? 0 : at === 'end' ? available - used : (available - used) / 2
+
+    const x = box.minX - slack(w, box.maxX - box.minX, alignH === 'left' ? 'start' : alignH === 'right' ? 'end' : 'middle')
+    // SVG's y axis points down, so 'top' is the START of the box in this space
+    const y = box.minY - slack(h, box.maxY - box.minY, alignV === 'top' ? 'start' : alignV === 'bottom' ? 'end' : 'middle')
+
+    const f = (n: number) => +n.toFixed(decimals)
+    return `${f(x)} ${f(y)} ${f(w)} ${f(h)}`
+}
+
 //// PUBLIC API ////
 
 /** Serialize a ShapeCollection of 2D curves to one SVG document.
@@ -341,25 +508,26 @@ function buildSVGFromPrepared(prepared: Array<PreparedCurve>, options: toSVGOpti
     // remove points that rounding was about to collapse onto the line anyway.
     const tol = size / PRECISION_TARGET
 
-    const elems: Array<string> = []
+    const elements: Array<string> = []
     for (const p of drawn)
     {
         const raw = p.curve?.toSVGElem?.(p.isHidden ? 'line hidden' : 'line')
         if (typeof raw !== 'string' || !raw) continue
-        elems.push(compactElement(raw, decimals, tol))
+        elements.push(compactElement(raw, decimals, tol))
     }
-    if (elems.length === 0) return null
+    if (elements.length === 0) return null
 
-    const viewBox = viewBoxFor(box, options.padding ?? DEFAULT_PADDING, options.square === true, decimals)
-    const unitsAttr = options.units ? ` data-units="${escapeXML(options.units)}"` : ''
-    const titleElem = options.title ? `<title>${escapeXML(options.title)}</title>` : ''
-
-    return '<svg xmlns="http://www.w3.org/2000/svg"'
-        + ` viewBox="${viewBox}" preserveAspectRatio="xMidYMid meet" role="img"${unitsAttr}>`
-        + titleElem
-        + stylesheet(options.strokeWidth ?? DEFAULT_STROKE_WIDTH)
-        + elems.join('')
-        + '</svg>'
+    // A preview is a drawing like any other: same assembler, different dials. It is fitted
+    // into an unknown box on a screen, so the ink is theme-aware and pinned to device pixels,
+    // and there are no annotations — a dimension line in a 40px list icon is noise.
+    return buildSVGDocument({
+        layers: [{ elements, box }],
+        stroke: { mode: 'device', width: options.strokeWidth ?? DEFAULT_STROKE_WIDTH },
+        frame: { mode: 'fit', padding: options.padding ?? DEFAULT_PADDING, square: options.square === true },
+        precision: decimals,
+        units: options.units,
+        title: options.title,
+    })
 }
 
 /** Hidden-line-project a collection of meshes to 2D curves.

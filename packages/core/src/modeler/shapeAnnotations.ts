@@ -21,6 +21,12 @@ import { buildDXF, type toDXFOptions } from './DXFExporter'
 // Type-only — see the dynamic import in SceneNode.toDAE() below.
 import type { toDAEOptions } from './DAEExporter'
 import type { DimensionOptions, LabelOptions } from '../annotator/types'
+import { collectAnnotations } from '../annotator/annotationLayer'
+import { renderDrawing } from './svgLayers'
+
+/** meshup's own collection serializer, kept as the fallback for a drawing with nothing
+ *  core can add to it (an empty collection, which meshup answers with a placeholder). */
+const kernelCollectionToSVG = (meshup.ShapeCollection.prototype as any).toSVG
 
 //// TYPE AUGMENTATION (declaration merging) ////
 
@@ -98,9 +104,25 @@ Object.defineProperty(ShapeProto, '_ay', {
     configurable: true,
 })
 
+/** The host Annotator, or null with an explicit warning. A Shape reaches the app through
+ *  `_modeler`; a Shape built outside it (or by a helper that forgot to carry the reference)
+ *  has none, and annotating it used to be a silent no-op — the annotation simply never
+ *  appeared, with nothing in the console to say why. */
+function annotatorOf(shape: any, method: string): any
+{
+    const annotator = shape?._ay?.annotator
+    if (!annotator)
+    {
+        console.warn(`Shape::${method}(): no Annotator reachable from this ${shape?.type ?? 'Shape'} `
+            + `(it carries no modeler reference), so the annotation was skipped.`)
+        return null
+    }
+    return annotator
+}
+
 /** Create dimension line(s) for this shape. Centralized in the Annotator. */
 ShapeProto.dimension = function (this: any, options?: DimensionOptions) {
-    return this._ay?.annotator?.dimensionLine()?.fromShape(this, options)
+    return annotatorOf(this, 'dim')?.dimensionLine()?.fromShape(this, options) ?? null
 }
 
 /** Alias for dimension() */
@@ -111,14 +133,14 @@ ShapeProto.dim = function (this: any, options?: DimensionOptions) {
 /** Automatic dimensioning of this shape. `dim()` already routes here for shapes a single
  *  bbox dimension cannot describe; call it directly to force it (or to pick a strategy). */
 ShapeProto.autoDim = function (this: any, options?: DimensionOptions, strategy?: string) {
-    const annotator = this._ay?.annotator
+    const annotator = annotatorOf(this, 'autoDim')
     if (!annotator) return null
     return annotator.autoDim(new meshup.ShapeCollection(this), options, strategy)
 }
 
 /** Attach a free-text label at this shape's center. Rendered by the viewer as an overlay. */
 ShapeProto.label = function (this: any, value: string, options?: LabelOptions) {
-    return this._ay?.annotator?.label()?.fromShape(this, value, options)
+    return annotatorOf(this, 'label')?.label()?.fromShape(this, value, options) ?? null
 }
 
 /**
@@ -217,16 +239,45 @@ function linkedAnnotations(modeler: any, shapes: Array<any>): Array<any> {
 
 ;(meshup.ShapeCollection.prototype as any).toDXF = function (this: any, options: toDXFOptions = {}): string | null {
     const shapes = this._shapes
-    const linked = linkedAnnotations(this._modeler, shapes)
-    const local = Array.isArray(this.annotations) ? this.annotations : []
-    const annotations = [...new Set([...linked, ...local])]
+    // Both routes to the same annotations: the global list filtered by what it is linked to,
+    // and the two-sided links on the Shapes themselves. Merged through the shared collector so
+    // DXF and SVG can never disagree about which dimensions exist, or how many times.
+    const annotations = [...new Set([...linkedAnnotations(this._modeler, shapes), ...collectAnnotations(this)])]
     return buildDXF(shapes, annotations, { units: this._modeler?.units?.(), ...options })
 }
+
+//// SVG (Shape + ShapeCollection) ////
+
+/*  Drawing an Archiyou drawing is core's job, not the kernel's.
+    meshup can serialize its own curves — and still does, for anyone using the package on its
+    own — but it cannot draw ANNOTATIONS: those are core objects (the Annotator), and meshup
+    must never import core. It also has no business deciding a document's framing, stylesheet
+    or line weight, which is how those came to be implemented twice, differently, once per
+    kernel. So core takes the method over here and routes it through the one assembler, the
+    same one brep's ShapeCollection.toSVG() calls. */
+;(meshup.ShapeCollection.prototype as any).toSVG = function (this: any, options?: any): string | null {
+    return renderDrawing(this, options) ?? kernelCollectionToSVG.call(this, options)
+}
+
+/*  A single Shape draws through a collection of one — the same route brep's Shape.toSVG()
+    takes. Without it a dimensioned `rect(400,500)` handed straight to a doc view came out
+    with no dimensions at all, while the identical collection drew them. Curve overrides
+    Shape.toSVG with its own, so it is patched too. */
+function shapeToSVG(this: any, options?: any): string | null {
+    return renderDrawing(new meshup.ShapeCollection(this), options)
+}
+;(meshup.Shape.prototype as any).toSVG = shapeToSVG
+;(meshup.Curve.prototype as any).toSVG = shapeToSVG
 
 /** Automatic dimensioning of this collection — mirrors brep's ShapeCollection.autoDim(). */
 ;(meshup.ShapeCollection.prototype as any).autoDim = function (this: any, options?: any, strategy?: string) {
     const annotator = this._modeler?.modules?.annotator ?? this._shapes?.[0]?._ay?.annotator
-    if (!annotator) return this
+    if (!annotator)
+    {
+        console.warn(`ShapeCollection::autoDim(): no Annotator reachable from this collection `
+            + `(no shape in it carries a modeler reference), so the dimensions were skipped.`)
+        return this
+    }
     annotator.autoDim(this, options, strategy)
     return this
 }

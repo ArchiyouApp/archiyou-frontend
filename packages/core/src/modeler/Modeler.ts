@@ -699,16 +699,39 @@ export class Modeler
         return this.all();
     }
 
-    /** Create a scene-backed ShapeCollection. Its shapes (and groups) are nested under a new
-     *  layer parented at the current active layer. */
+    /** Create a ShapeCollection that only REFERENCES its shapes: the scene graph is left
+     *  exactly as it is, so shapes keep the layer they were made in. Safe to build anywhere,
+     *  including as a throwaway argument (`make.partList(collection(a,b))`).
+     *
+     *  Use group() when you also want the shapes gathered under a layer in the scene. */
     collection(...args: Array<any>): meshup.ShapeCollection
     {
         const col = new meshup.ShapeCollection() // empty: keep constructor scene-agnostic
         col._modeler = this
-        const layer = new meshup.SceneNode(col._name)
+        args.forEach(arg => col.add(arg))
+        return col
+    }
+
+    /** Create a scene-backed ShapeCollection: a new layer under the current active layer,
+     *  with every given Shape MOVED into it - from any layer it was in, because the scene is
+     *  a tree and a Shape lives in exactly one place. Shapes added later (`g.add(...)`) are
+     *  moved in too.
+     *
+     *  `group(a, b)` names the layer after the variable it is assigned to (the Runner's
+     *  auto-namer); `group('table', a, b)` names it explicitly.
+     *
+     *  Use collection() when you only want to reference shapes without restructuring. */
+    group(...args: Array<any>): meshup.ShapeCollection
+    {
+        const name = (typeof args[0] === 'string') ? args.shift() as string : null
+
+        const col = new meshup.ShapeCollection() // empty: keep constructor scene-agnostic
+        col._modeler = this
+        const layer = new meshup.SceneNode(name ?? col._name)
         this._activeLayer!.addChild(layer) // child of active layer; do NOT reassign _activeLayer
         col._layer = layer
-        args.forEach(arg => col.add(arg))
+        if (name){ col.name(name) }
+        args.forEach(arg => col.add(arg)) // ShapeCollection.add() re-parents into col._layer
         return col
     }
 
@@ -879,10 +902,14 @@ export class Modeler
     /** Export the scene's 2D shapes to an SVG string. Returns null when the scene
      *  has no 2D geometry, so exporters don't hand the user an empty drawing.
      *
-     *  Called with no options this is byte-for-byte the pre-SVGExporter output — scripts
-     *  that author their own 2D geometry and export 'default/model/svg' are unaffected.
+     *  Called with no options this is the SCENE, drawn by SceneNode.toSVG(): a node tree of
+     *  nested `<g>`s with per-shape inline styling. That hierarchy is the point of the model
+     *  export — it is what survives into Illustrator as layers — and it is the one thing the
+     *  drawing assembler (which frames one flat drawing) cannot express, so this path stays
+     *  where it is rather than being folded into it. See runner.svg.test.ts, which pins it.
+     *
      *  Pass options to opt into the richer serializer (padding, square framing, relative
-     *  coordinate precision, theme-aware stroke). */
+     *  coordinate precision, theme-aware stroke) — that one is the assembler. */
     toSVG(options?: toSVGOptions): string | null
     {
         const exportScene = this._exportScene();

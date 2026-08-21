@@ -1,13 +1,26 @@
-# `modules/` — private script modules
+# `modules/` — separately-licensed script modules
 
-This directory is the **overlay** where private, separately-licensed Archiyou script modules
-are developed. It is empty in a public checkout, and everything in it except this file is
-gitignored.
+This directory is the **overlay** where Archiyou script modules are developed. It is empty in a
+public checkout, and everything in it except this file is gitignored.
 
 A **script module** adds one global to the scope an Archiyou script runs in — `fem`, say, or an
-advanced calculation engine — available only to accounts entitled to it. Modules exist so heavy
-or commercially-licensed capabilities can be offered without their source being part of this
-repository.
+advanced calculation engine. Modules exist so capabilities that cannot live in this repository
+can still be offered, whether because they are commercially licensed, or because their licence
+is incompatible with this one.
+
+Two kinds, and the difference is one manifest field:
+
+| | |
+|---|---|
+| **Gated** (the default) | Available only to accounts entitled to it. What the system was built for. |
+| **Public** (`"public": true`) | Available to everybody, no grant needed. For open-source modules, whose source anyone can read and build anyway. |
+
+> **A copyleft module must never enter this repository's dependency graph.** archiyou-web is
+> Apache-2.0. A module under the GPL or AGPL lives in its own repository, is built to its own
+> `dist/bundle.js`, and reaches the engine only through the module system — which fetches that
+> artifact over HTTP and imports it from a blob URL. Nothing here imports it, and nothing here
+> depends on it. Cloning such a module into this overlay for development is fine; adding it to
+> a `package.json` in `packages/` or `apps/` is not.
 
 **This file is the reference for the module system** — both the hands-on guide (set up, write,
 run, deploy, troubleshoot) and the system detail: the manifest contract, the client and server
@@ -138,7 +151,7 @@ The panel is hidden entirely when no modules are installed.
 
 ## Setup
 
-Clone each private module repository into a **subdirectory** of this one:
+Clone each module repository into a **subdirectory** of this one:
 
 ```bash
 # from the repo root
@@ -214,7 +227,7 @@ never the other way round.
   "global": "fem",         // the name scripts use
   "name": "FEM Solver",
   "version": "0.1.0",      // bump to invalidate a deployed bundle
-  "engine": "^1.0.0",      // semver range of @archiyou/core you support
+  "engine": "^0.9.0",      // semver range of @archiyou/core you support
   "runtime": "server",     // 'client' | 'server'
   "description": "Linear-static finite element analysis.",
   "docsUrl": "https://…",
@@ -233,6 +246,24 @@ misbehave:
   never shadow a core global.
 
 `id` must equal the directory name at deploy time, or the backend skips the module with a warning.
+
+### `public` — opting out of entitlement
+
+Everything else in this system assumes a module is gated: the catalog marks it `entitled: false`
+for accounts that lack it, and both the bundle route and the server-call route return 403.
+`"public": true` turns that off for one module, and nothing else.
+
+Use it for a module whose source is public anyway. Requiring an admin grant before an
+open-source module will run makes it administratively indistinguishable from a paid one, for no
+benefit — anyone can read and build it regardless.
+
+What does **not** change: a public module still appears in the catalog, still has its `engine`
+range checked against the running core, and is still refused outright if its `global` collides
+with a name Archiyou already uses. `public` affects entitlement, and only entitlement.
+
+It is set by the **deployment**, not by a user — manifests live in `SERVER_MODULES_DIR`, so
+whoever installs a module decides whether it is public. The schema accepts only a literal
+`true`; `"yes"` or `1` is a malformed manifest and the module is skipped.
 
 ---
 
@@ -349,8 +380,21 @@ Point the backend at **this directory** — not at a copy — and there is no de
 # apps/server/.env  (once)
 # Point at the directory whose CHILDREN are modules — i.e. the repo you cloned,
 # not modules/ itself. The backend scans one level: <dir>/<id>/manifest.json.
-SERVER_MODULES_DIR=../../modules/archiyou-modules
+SERVER_MODULES_DIR=../../modules/archiyou-private-modules
 ```
+
+**Several roots at once.** `SERVER_MODULES_DIR` accepts a comma- or colon-separated list, which
+is what you want as soon as more than one module repository is checked out — a private one and
+an open-source one, say, since they cannot share a repository:
+
+```bash
+SERVER_MODULES_DIR=../../modules/archiyou-private-modules,../../modules/struct
+```
+
+Roots are scanned in order and the **first definition of an id wins**, so an earlier root can
+deliberately shadow a later one — useful for testing a local build against a deployed copy. A
+duplicate is reported at boot, naming both directories. A root that does not exist is warned
+about and skipped; it does not take the others down with it.
 
 ```bash
 # one command: rebuilds modules on change, runs editor + backend

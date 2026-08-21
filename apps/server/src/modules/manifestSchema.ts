@@ -38,6 +38,8 @@ export const ModuleManifestSchema = Type.Object({
   description: Type.Optional(Type.String({ maxLength: 2000 })),
   docsUrl: Type.Optional(Type.String({ maxLength: 500 })),
   completions: Type.Optional(Type.Array(ModuleCompletionSchema, { maxItems: 500 })),
+  /** Available without an entitlement. See AyModuleManifest.public. */
+  public: Type.Optional(Type.Boolean()),
 });
 
 export type ModuleManifest = Static<typeof ModuleManifestSchema>;

@@ -740,6 +740,10 @@ export interface toSVGOptions
     annotations?:boolean
     fills?:boolean // Generate fills in SVG
     outlines?:boolean // Calculate the Shape outlines (Slow!)
+    /** Model units per millimeter ON THE PAGE. Set by a document view from the scale it fits
+     *  this drawing at, so annotations come out at their real page size (see the
+     *  DIMENSION_*_MM settings on the Annotator). */
+    unitsPerMm?:number
 }
 
 export interface SVGtoPDFtransform

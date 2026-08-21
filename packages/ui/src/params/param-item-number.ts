@@ -15,7 +15,7 @@ import type { ModelUnits } from '@archiyou/core/src/modeler/types';
 import type { UnitSystem } from '@archiyou/core/src/units/UnitConverter';
 import {
     MM_PER_UNIT, UNIT_SYSTEMS, convert, systemOfUnit, pickBestUnit,
-    toMM, fromMM, snapMMToSystem, formatImperial, paramDisplayDecimals,
+    toMM, fromMM, snapMMToSystem, formatImperial, paramDisplayDecimals, stepDecimals,
 } from '@archiyou/core/src/units/UnitConverter';
 
 /** Sentinel stored in param.units to mark a param as explicitly unitless. */
@@ -38,9 +38,9 @@ export class ParamItemNumber extends SignalWatcher(LitElement)
         const step = (src && display) ? convert(paramStep(this.param), src, display) : paramStep(this.param);
         const displayValue = (src && display) ? convert(this._value, src, display) : this._value;
 
-        // Per-unit fixed-decimal display when idle/after a slider drag (mm → integer,
-        // other units → 2 decimals); while the field is focused show a light-rounded
-        // value so typing isn't reformatted.
+        // Step-driven fixed-decimal display when idle/after a slider drag (step 1 →
+        // integer, 0.1 → 1 decimal, …); while the field is focused show a
+        // light-rounded value so typing isn't reformatted.
         const numStr  = this._focused
             ? String(Math.round(displayValue * 1e4) / 1e4)
             : this._displayFixed(displayValue, display);
@@ -361,12 +361,25 @@ export class ParamItemNumber extends SignalWatcher(LitElement)
         }));
     }
 
-    /** Format the number input with the per-unit fixed decimals (mm → integer,
-     *  other units → 2 decimals; unitless → 2) so the displayed precision stays
-     *  consistent across unit switches. */
+    /** Format the number input with as many decimals as the param's step needs
+     *  (step 1 → "120", 0.1 → "120.5", 0.25 → "120.25"), so the value shown can
+     *  actually be reached with the arrows/slider.
+     *
+     *  When the value is displayed in another unit than it is stored in the step
+     *  no longer lands on a clean grid (1mm ≈ 0.03937"), so the per-unit default
+     *  (mm → integer, others → 2 decimals) takes over. */
     private _displayFixed(v: number, unit: ModelUnits | null): string
     {
-        return (Number.isFinite(v) ? v : 0).toFixed(paramDisplayDecimals(unit));
+        return (Number.isFinite(v) ? v : 0).toFixed(this._decimals(unit));
+    }
+
+    /** Decimals for the number field — see _displayFixed. */
+    private _decimals(unit: ModelUnits | null): number
+    {
+        const src = this._sourceUnit();
+        const converted = !!src && !!unit && src !== unit;
+        const fromStep = converted ? null : stepDecimals(paramStep(this.param));
+        return fromStep ?? paramDisplayDecimals(unit);
     }
 
     // ── 5. Styles ──

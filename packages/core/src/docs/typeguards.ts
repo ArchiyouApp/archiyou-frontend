@@ -1,3 +1,4 @@
+import { parseScaleRatio } from './scale'
 import type {
     ContainerHAlignment, ContainerVAlignment, ContainerPositionAbs,
     ContainerAlignment, ContainerPositionCoordAbs, ContainerPositionCoordRel,
@@ -65,8 +66,14 @@ export function isContainerPositionLike(o:any): o is ContainerPositionLike
 
 
 
+/** NOTE: this used to be called as `if(!isScaleInput)` — the FUNCTION, never invoked — so the
+ *  guard it stood in was always true and nothing was ever rejected. */
 export function isScaleInput(o:any): o is ScaleInput {
-    return (typeof o === 'string' && o === 'auto') || (typeof o === 'number')
+    if(o === 'fit' || o === 'auto'){ return true }
+    if(typeof o === 'number'){ return isFinite(o) && o > 0 }
+    if(typeof o === 'string'){ return parseScaleRatio(o) !== null }
+    if(Array.isArray(o)){ return o.length > 0 && o.every(c => parseScaleRatio(c as any) !== null) }
+    return false;
 }
 
 export function isImageOptionsFit(o:any): o is ImageOptionsFit
@@ -123,7 +130,8 @@ export function isValueWithUnitsString(o:any): o is PercentageString
 
 export function isWidthHeightInput(o:any): o is WidthHeightInput
 {
-    return typeof o === 'number' ||
+    return o === 'auto' ||
+        typeof o === 'number' ||
         isPercentageString(o) ||
         isValueWithUnitsString(o);
 }

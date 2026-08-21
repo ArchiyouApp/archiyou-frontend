@@ -68,7 +68,9 @@ export async function registerModuleRoutes(fastify: FastifyInstance): Promise<vo
       const manifest = moduleHost.get(id);
       if (!manifest) return reply.code(404).send({ success: false, error: `Unknown module '${id}'` });
 
-      if (!userService.hasModule(username, id)) {
+      // A public module skips the entitlement check entirely — see AyModuleManifest.public.
+      // Gating stays the default; this is the opt-out an open-source module declares.
+      if (!manifest.public && !userService.hasModule(username, id)) {
         return reply.code(403).send({
           success: false,
           error: `Module '${id}' is not available on your account`,
@@ -119,7 +121,9 @@ export async function registerModuleRoutes(fastify: FastifyInstance): Promise<vo
       const manifest = moduleHost.get(id);
       if (!manifest) return reply.code(404).send({ success: false, error: `Unknown module '${id}'` });
 
-      if (!userService.hasModule(username, id)) {
+      // A public module skips the entitlement check entirely — see AyModuleManifest.public.
+      // Gating stays the default; this is the opt-out an open-source module declares.
+      if (!manifest.public && !userService.hasModule(username, id)) {
         return reply.code(403).send({
           success: false,
           error: `Module '${id}' is not available on your account`,

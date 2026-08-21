@@ -6,6 +6,7 @@ import {
     pickBestUnit, toFraction, snapMMToSystem,
     formatImperial, formatMetric, formatLength, formatFromUnit,
     paramDisplayDecimals,
+    stepDecimals,
 } from '../../../src/units/UnitConverter'
 import type { ModelUnits } from '../../../src/modeler/types'
 
@@ -81,6 +82,28 @@ describe('UnitConverter', () =>
         {
             expect(paramDisplayDecimals(null)).toBe(2)
             expect(paramDisplayDecimals(undefined)).toBe(2)
+        })
+    })
+
+    describe('stepDecimals', () =>
+    {
+        it('derives the decimals from the step grid', () =>
+        {
+            expect(stepDecimals(1)).toBe(0)
+            expect(stepDecimals(5)).toBe(0)
+            expect(stepDecimals(0.5)).toBe(1)
+            expect(stepDecimals(0.1)).toBe(1)
+            expect(stepDecimals(0.25)).toBe(2)
+            expect(stepDecimals(0.001)).toBe(3)
+        })
+
+        it('has no opinion on missing / invalid steps', () =>
+        {
+            expect(stepDecimals(0)).toBeNull()
+            expect(stepDecimals(-1)).toBeNull()
+            expect(stepDecimals(NaN)).toBeNull()
+            expect(stepDecimals(null)).toBeNull()
+            expect(stepDecimals(undefined)).toBeNull()
         })
     })
 

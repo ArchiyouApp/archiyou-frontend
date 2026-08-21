@@ -134,7 +134,7 @@ describe('Modeler', async () =>
         modeler = new Modeler();
         await modeler.load();
 
-        const hidden = modeler.collection(
+        const hidden = modeler.group(   // group(): scene-backed, so it HAS a layer to hide
             modeler.box(10, 10, 10),
             modeler.box(5, 5, 5).move(15, 0, 0),
         ).name('expl').hide();
@@ -480,11 +480,11 @@ describe('Modeler — mesh mode methods', () =>
         expect(col.length).toBe(1);
     });
 
-    it('collection().removeFromScene() detaches child shapes and clears the backing layer', () =>
+    it('group().removeFromScene() detaches child shapes and clears the backing layer', () =>
     {
         const left = m.box(5, 5, 5);
         const right = m.box(5, 5, 5).moveX(10);
-        const col = m.collection(left, right);
+        const col = m.group(left, right);   // collection() has no layer to clear
 
         expect(col._layer).not.toBeNull();
         expect((left as any)._node).not.toBeNull();

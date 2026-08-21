@@ -164,4 +164,137 @@ describe('Dimensions', () =>
         annotator.reset()
         expect(annotator.getAnnotations().length).toBe(0)
     })
+
+    it('bbox().back().dim() on a collection creates a dimension (regression: silent no-op)', () =>
+    {
+        /*  Regression: Bbox.getSide()/planes() handed back Shapes with no `_modeler`, so
+            `.dim()` could not reach the Annotator and returned undefined without a word —
+            every `elevation().bbox().back().dim()` in a doc pipeline silently vanished. */
+        const col = modeler.collection(
+            modeler.rect(400, 200).moveTo(200, 100, 0),
+            modeler.rect(100, 100).moveTo(600, 50, 0),
+        ) as any
+
+        const side = col.bbox().back()
+        expect((side as any)._modeler).toBeTruthy()
+
+        const dim = side.dim()
+        expect(dim).toBeInstanceOf(DimensionLine)
+        expect(annotator.getAnnotations().length).toBe(1)
+        expect((annotator.getAnnotationsData()[0] as DimensionLineData).value).toBeCloseTo(650) // bbox width
+    })
+
+    it('dim() on a shape with no modeler warns instead of silently doing nothing', () =>
+    {
+        const orphan = modeler.rect(100, 100) as any
+        orphan._modeler = null // as if built outside the modeler
+
+        const warnings: Array<string> = []
+        const orig = console.warn
+        console.warn = (...args: Array<any>) => { warnings.push(args.join(' ')) }
+        try { expect(orphan.dim()).toBe(null) }
+        finally { console.warn = orig }
+
+        expect(annotator.getAnnotations().length).toBe(0)
+        expect(warnings.join(' ')).toContain('no Annotator reachable')
+    })
+
+    describe('param() remapping', () =>
+    {
+        /*  A dimension is measured in model units, the parameter it writes back to need not
+            be: a model in mm dimensioning a param in cm needs (v) => v/10 in between. The
+            function is serialized here and re-created in the viewer's main thread, so what
+            toData() carries is its SOURCE. */
+
+        it('param(name) without a remap carries no source', () =>
+        {
+            const line = modeler.line([0, 0], [800, 0]) as any
+            const dim = line.dim().param('DEPTH')
+
+            const data = dim.toData() as DimensionLineData
+            expect(data.param).toBe('DEPTH')
+            expect(data.interactive).toBe(true)
+            expect(data.paramRemapSrc).toBe(null)
+        })
+
+        it('param(name, fn) serializes the remap function to source', () =>
+        {
+            const line = modeler.line([0, 0], [800, 0]) as any
+            const dim = line.dim().param('DEPTH', (v: number) => v / 10)
+
+            const data = dim.toData() as DimensionLineData
+            expect(data.param).toBe('DEPTH')
+            expect(data.paramRemapSrc).toContain('=>')
+
+            // What the viewer does with it: rebuild from source, in an empty scope
+            const fn = (new Function(`return (${data.paramRemapSrc})`))() as (v: number) => number
+            expect(fn(800)).toBe(80)
+        })
+
+        it('bindParam(name, fn) is the same call', () =>
+        {
+            const line = modeler.line([0, 0], [800, 0]) as any
+            const dim = line.dim().bindParam('DEPTH', (v: number) => v / 10)
+
+            expect((dim.toData() as DimensionLineData).paramRemapSrc).toContain('/ 10')
+        })
+
+        it('the remap gets the current param value as second argument', () =>
+        {
+            const line = modeler.line([0, 0], [800, 0]) as any
+            const dim = line.dim().param('DEPTH', (v: number, current: number) => v / 10 + current)
+
+            const fn = (new Function(`return (${(dim.toData() as DimensionLineData).paramRemapSrc})`))() as
+                            (v: number, c: number) => number
+            expect(fn(800, 5)).toBe(85)
+        })
+
+        it('rejects a remap that closes over the script scope', () =>
+        {
+            /*  The viewer rebuilds the function without the script around it, so a closure
+                variable is a ReferenceError there - on an edit, long after this call. Bind
+                time is where the author can still see it. */
+            const scriptVariable = 10
+            const line = modeler.line([0, 0], [800, 0]) as any
+            const dim = line.dim()
+
+            expect(() => dim.param('DEPTH', (v: number) => v / scriptVariable))
+                .toThrow(/cannot run outside the script/)
+        })
+
+        it('rejects a remap that is not a function', () =>
+        {
+            const line = modeler.line([0, 0], [800, 0]) as any
+            const dim = line.dim()
+
+            expect(() => dim.param('DEPTH', 10 as any)).toThrow(/must be a function/)
+        })
+    })
+
+    it('toSVG() writes real coordinates and scales with the drawing (regression: x1="undefined")', () =>
+    {
+        /*  Regression: the SVG writers took PointLike arrays from toSVG() and read `.x` off
+            them. @validate only validates — unlike the old @checkInput it does not convert —
+            so every dimension line came out as x1="undefined", i.e. present in the SVG but
+            impossible to draw. Line weight/text/arrows also scale with the drawing now:
+            fixed 0.5/1 model units are invisible on a metre-sized elevation. */
+        const line = modeler.line([0, 0], [1000, 0]) as any
+        line.dim()
+
+        const dim = annotator.getAnnotations()[0] as any
+        const svg = dim.toSVG({ drawingSize: 1000 })
+
+        expect(svg).not.toContain('undefined')
+        expect(svg).toContain('class="dimensionline"')
+        const coords = [...svg.matchAll(/x1="([^"]+)" y1="([^"]+)" x2="([^"]+)" y2="([^"]+)"/g)]
+        expect(coords.length).toBe(1)
+        coords[0].slice(1).forEach((c: string) => expect(Number.isFinite(Number(c))).toBe(true))
+
+        expect(svg).toContain('stroke:black')                 // arrows have no other styling
+        expect(svg).toContain(`font-size="${1000 / 80}"`)     // 2.5mm-on-paper text
+        expect(svg).toContain(`stroke-width:${1000 / 800}`)   // 0.25mm-on-paper lines
+
+        // Without a drawing size the old fixed sizes are kept (callers that do not pass one)
+        expect(dim.toSVG()).toContain('font-size="1"')
+    })
 })

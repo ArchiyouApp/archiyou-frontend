@@ -42,7 +42,7 @@ function stubFetch(bytes: Uint8Array, contentType: string, init?: { ok?: boolean
     vi.stubGlobal('fetch', vi.fn(async () => fakeResponse(bytes, contentType, init)));
 }
 
-/** A fake console + modeler for build(). modeler.collection() returns a real
+/** A fake console + modeler for build(). modeler.group() returns a real
  *  (non-scene-backed) meshup ShapeCollection so add()/bbox()/scale() work; scene
  *  membership itself is covered by the Runner integration tests. */
 function makeCtx()
@@ -55,7 +55,7 @@ function makeCtx()
         user: (m: string) => messages.push({ level: 'user', msg: m }),
     };
     const layers: any[] = [];
-    const modeler = { collection: () => { const c = new ShapeCollection(); layers.push(c); return c; } };
+    const modeler = { group: () => { const c = new ShapeCollection(); layers.push(c); return c; } };
     return { con, modeler, messages, layers, ctx: { modeler, console: con } };
 }
 
@@ -150,7 +150,7 @@ describe('Importer.fetch (proxied)', () =>
 
 describe('Importer.build (SVG)', () =>
 {
-    it('parses, centers on origin and returns a collection built via modeler.collection()', () =>
+    it('parses, centers on origin and returns a collection built via modeler.group()', () =>
     {
         const { ctx, layers } = makeCtx();
         const col = Importer.build(payload(SVG_VENUS, 'image/svg+xml', 'http://x/venus.svg'), {}, ctx);

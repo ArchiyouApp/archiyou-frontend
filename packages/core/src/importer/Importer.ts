@@ -188,16 +188,17 @@ export class Importer
         }
 
         // Put the whole import under its own scene-backed layer so it is easy to
-        // manage as one unit (hide/move/name). modeler.collection() creates a new
-        // layer parented at the active layer; naming the returned collection (the
-        // Runner auto-names it after the assigned variable) renames the layer too.
+        // manage as one unit (hide/move/name). modeler.group() creates a new layer
+        // parented at the active layer and moves the shapes into it; naming the returned
+        // collection (the Runner auto-names it after the assigned variable) renames the
+        // layer too. (collection() would only reference the shapes, leaving them loose.)
         // Fall back to the raw parsed collection when no scene-backed modeler is present.
         let result: ShapeCollection = collection;
-        if(typeof ctx?.modeler?.collection === 'function')
+        if(typeof ctx?.modeler?.group === 'function')
         {
             try
             {
-                result = ctx.modeler.collection();
+                result = ctx.modeler.group();
                 (result as any).add(parsedShapes);
             }
             catch(e)

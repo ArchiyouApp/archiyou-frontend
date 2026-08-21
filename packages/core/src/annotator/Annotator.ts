@@ -32,7 +32,44 @@ export class Annotator
 {
     //// SETTINGS ////
     DIMENSION_BOX_OFFSET_DEFAULT = 20;
-    
+
+    /*  On-page sizes of annotations in an exported drawing, in millimeters. A document view
+        scales its drawing to fit the page, so anything sized in model units comes out at a
+        different size in every view; these are converted with that view's scale, so a
+        dimension reads the same on an A4 whether it measures a 50mm dowel or a 12m truss.
+        Change them from a script: `annotator.DIMENSION_TEXT_SIZE_MM = 3`. */
+
+    /** Height of the value text (mm on the page) */
+    DIMENSION_TEXT_SIZE_MM = 1.5;
+    /** Width of an arrowhead, tip to tip (mm on the page) */
+    DIMENSION_ARROW_SIZE_MM = 1;
+    /** Line weight of the dimension line and its arrows (mm on the page) */
+    DIMENSION_LINE_WIDTH_MM = 0.15;
+    /** Colour behind a dimension's value text, so it stays readable where the line, the
+     *  geometry or another dimension runs under it. Null draws no box. */
+    DIMENSION_TEXT_BACKGROUND_COLOR:string|null = 'white';
+    /** Room left around a drawing for the parts of a dimension that stick out past the line
+     *  itself — the value text at its middle, the arrowheads straddling its ends (mm on the
+     *  page). Null derives it from the text size, which is what it has to clear. */
+    DIMENSION_MARGIN_MM:number|null = null;
+
+    /*  Proportions of a dimension's value label, as multiples of the text height — so they
+        hold at any text size and any drawing scale. */
+
+    /** A dimension line shorter than this many text heights cannot hold its own value, so
+     *  the value steps aside onto a leader beside it. */
+    DIMENSION_SMALL_LINE_FACTOR = 2;
+    /** How far along that leader the value sits, in text heights. */
+    DIMENSION_LEADER_LENGTH_FACTOR = 1.5;
+    /** Width of the backing box per character of the value, in text heights. There are no
+     *  font metrics where a drawing is written (a worker, or node), so the box is estimated;
+     *  0.6em is a safe average advance for the sans faces documents use. */
+    DIMENSION_TEXT_CHAR_WIDTH_FACTOR = 0.6;
+    /** Padding of that box, in text heights. */
+    DIMENSION_TEXT_PADDING_FACTOR = 0.5;
+    /** Height of that box, in text heights. */
+    DIMENSION_TEXT_HEIGHT_FACTOR = 1.2;
+
     //// END SETTINGS ////
 
     _archiyou:ArchiyouModules;
@@ -136,6 +173,12 @@ export class Annotator
             const off:[number,number,number] = [0,0,0];
             off[a] = Math.sign(dir) * this.DIMENSION_BOX_OFFSET_DEFAULT;
 
+            /*  Link to the Shape being dimensioned BEFORE setting the offset (link()
+                recalculates the offset from the linked Shape). Without the link these
+                dimensions lived only in the Annotator's global list, so nothing could find
+                them from the Shape - and a drawing of a collection holding it (doc view,
+                toSVG()) came out without them. */
+            dim.link(shape);
             dim.setOffsetVec(new Vector(off[0], off[1], off[2]));
             this.annotations.push(dim);
         }
@@ -463,51 +506,71 @@ export class Annotator
             if(lvl?.showLine){ sectionLine.color('red').addToScene() };
 
 
-            // to deal with accurary issues we use a section plane
-            const sectionPlaneNormal = new this.classes.Vector(0,0,0)['set'+sectionLineDepthAxis.toUpperCase()](1);
-            if(typeof (sectionLine as any)._extruded !== 'function')
-            {
-                throw new Error(`Annotator.autoDimLevels(): the 'levels' strategy needs the BREP kernel — `+
-                    `the mesh kernel has no section-plane extrude yet. Use the 'part' strategy, or run with kernel: 'brep'.`);
-            }
-
-            const sectionPlane = sectionLine._extruded(SECTION_PLANE_DEPTH, sectionPlaneNormal)
-                                    ['move'+sectionLineDepthAxis.toUpperCase()](-SECTION_PLANE_DEPTH/2);
-
-            // now get unique intersection points of all shapes
-            const intersectionPointsAlongRangeAxis = []
-
-            /*  If we want dimensions from the bbox too, add its outline to the collection.
-                Bbox.rect() is null unless the bbox is flat — a 3D collection sectioned at levels
-                (the main use of this strategy) has no rect, and this used to die on
-                `null._toWire()`. brep hands back a Face, meshup the outline Curve itself. */
-            const bboxRect:any = ADD_BBOX_OUTLINE_TO_LEVEL_SECTION ? collectionBbox.rect() : null;
+            /*  If we want dimensions from the bbox too, section its outline along with the
+                Shapes. Only a flat bbox has an outline — a 3D collection sectioned at levels
+                (the main use of this strategy) has none. brep hands back a Face, meshup the
+                outline Curve itself. */
+            const bboxRect:any = (ADD_BBOX_OUTLINE_TO_LEVEL_SECTION && collectionBbox.is2D()) ? collectionBbox.rect() : null;
             const bboxOutline = (typeof bboxRect?._toWire === 'function') ? bboxRect._toWire() : bboxRect;
 
-            if(bboxOutline){ collection.add(bboxOutline); }
+            // Coordinates along rangeAxis where the Shapes cross this level - the only thing
+            // the dimension lines below are built from.
+            let intersectionPointsAlongRangeAxis:Array<number> = [];
 
-            const intersections = collection._intersections(sectionPlane);
-
-            // Remove last added bbox outline
-            if(bboxOutline){ collection.pop(); }
-
-            if(intersections.length === 0)
+            if(typeof (sectionLine as any)._extruded === 'function')
             {
-                console.warn(`ShapeCollection::autoDim(): level "${levelAxis}=${levelCoord}" [${levelCoordType}] Did not cut any Shapes!`)
+                // BREP: section with a real Face, given some depth to deal with accuracy issues
+                const sectionPlaneNormal = new this.classes.Vector(0,0,0)['set'+sectionLineDepthAxis.toUpperCase()](1);
+                const sectionPlane = sectionLine._extruded(SECTION_PLANE_DEPTH, sectionPlaneNormal)
+                                        ['move'+sectionLineDepthAxis.toUpperCase()](-SECTION_PLANE_DEPTH/2);
+
+                if(bboxOutline){ collection.add(bboxOutline); }
+                const intersections = collection._intersections(sectionPlane);
+                if(bboxOutline){ collection.pop(); } // remove last added bbox outline
+
+                intersections.forEach((int) => 
+                {
+                    // NOTE: we can get intersections of Shapes: points, lines, planes
+                    // We just check all their points
+                    int.vertices().forEach(v => {
+                        const coordAlongRangeAxis = v[rangeAxis];
+                        if(!intersectionPointsAlongRangeAxis.includes(coordAlongRangeAxis))
+                        {
+                            intersectionPointsAlongRangeAxis.push(coordAlongRangeAxis)
+                        }
+                    })
+                });
+            }
+            else {
+                // MESH kernel: it has no section-plane extrude, but sectioning here only ever
+                // serves to find where the geometry crosses the level - so read those crossings
+                // off the geometry directly (see _levelCrossingCoords).
+                intersectionPointsAlongRangeAxis = this._levelCrossingCoords(
+                        [ ...collection.toArray(), bboxOutline ],
+                        levelAxis, sectionLineLevelCoord, rangeAxis);
+
+                bboxOutline?.removeFromScene?.(); // meshup's Bbox.rect() attaches itself to the scene
             }
 
-            intersections.forEach((int) => 
+            if(intersectionPointsAlongRangeAxis.length === 0)
             {
-                // NOTE: we can get intersections of Shapes: points, lines, planes
-                // We just check all their points
-                int.vertices().forEach(v => {
-                    const coordAlongRangeAxis = v[rangeAxis];
-                    if(!intersectionPointsAlongRangeAxis.includes(coordAlongRangeAxis))
-                    {
-                        intersectionPointsAlongRangeAxis.push(coordAlongRangeAxis)
-                    }
-                })
-            });
+                /*  An absolute level is a WORLD coordinate: moving the drawing after picking
+                    the levels (elevation(...).move(...)) leaves them behind, which is by far
+                    the most common way this happens - so say where the Shapes actually are. */
+                const lvlMin = roundTo(collectionBbox.minAtAxis(levelAxis), 2);
+                const lvlMax = roundTo(collectionBbox.minAtAxis(levelAxis) + bboxSize, 2);
+                const outside = (sectionLineLevelCoord < lvlMin) || (sectionLineLevelCoord > lvlMax);
+
+                console.warn(`Annotator::autoDimLevels(): level "${levelAxis}=${levelCoord}" [${levelCoordType}] `
+                    + `did not cut any Shapes` 
+                    + (outside
+                        ? `: ${levelAxis}=${roundTo(sectionLineLevelCoord,2)} is OUTSIDE the Shapes, which are at `
+                          + `${levelAxis}=[${lvlMin},${lvlMax}]. An absolute level is a world coordinate - if you `
+                          + `moved these Shapes (elevation().move(...)) the level did not move with them. Use a `
+                          + `relative level (0-1) or set the level after moving.`
+                        : `.`))
+            }
+
             intersectionPointsAlongRangeAxis.sort((a,b) => a - b ); // min first
             
             // Now make the dimension lines at a given coord (parallel to section line) 
@@ -531,12 +594,28 @@ export class Annotator
             }
 
             const minDistance = lvl?.minDistance ?? DEFAULT_MIN_DISTANCE;
-            // Determine offset Vector based on line and collection: Should always point outwards of collection
-            const offsetVec = sectionLine.normal()
-            if( collection.center().distance(sectionLine.center().copy(false).move(offsetVec)) 
-                    < collection.center().distance(sectionLine.center().copy(false).move(offsetVec.reversed())))
+
+            /*  Offset Vector for the dimension lines: perpendicular to the section line within
+                the XY workplane, then flipped so it always points away from the collection.
+                Computed from the direction rather than via Curve.normal(): that is brep
+                Edge.normal()'s own definition, but meshup's Curve.normal() is the PLANE normal
+                (z for a line in XY), which would push the dimension lines out of the drawing. */
+            const sectionDir = sectionLine.direction();
+            const sectionDirLength = Math.hypot(sectionDir.x, sectionDir.y, sectionDir.z);
+            const dirIsAlongZ = (sectionDirLength > 0) && (Math.abs(sectionDir.z) / sectionDirLength > 1 - 1e-9);
+            const workplaneNormal = new this.classes.Vector(0, dirIsAlongZ ? 1 : 0, dirIsAlongZ ? 0 : 1);
+            // brep's Vector.crossed() copies; meshup's cross() mutates the (freshly made) receiver
+            const offsetVec = (typeof (workplaneNormal as any).crossed === 'function')
+                                ? (workplaneNormal as any).crossed(sectionDir).normalize()
+                                : (workplaneNormal as any).cross(sectionDir).normalize();
+
+            const collectionCenter = collection.center();
+            const sectionCenter = sectionLine.center();
+            const outwards = sectionCenter.copy().move([offsetVec.x, offsetVec.y, offsetVec.z]);
+            const inwards = sectionCenter.copy().move([-offsetVec.x, -offsetVec.y, -offsetVec.z]);
+            if(collectionCenter.distance(outwards) < collectionCenter.distance(inwards))
             {
-                offsetVec.reverse(); 
+                offsetVec.reverse();
             }
 
             intersectionPointsAlongRangeAxis.forEach((v,i,arr) => 
@@ -573,6 +652,101 @@ export class Annotator
         })
 
         return autoDimLines;
+    }
+
+    /** Coordinates along `rangeAxis` where Shapes cross the plane `levelAxis = levelCoord`.
+     *
+     *  The mesh kernel has no section-plane extrude (brep sections with a real Face and
+     *  intersects it with the Shapes), but the 'levels' strategy only ever needs the
+     *  coordinates at which geometry crosses a level - so read them off the geometry itself:
+     *  every edge that spans the level contributes the point where it crosses, and edges
+     *  lying IN the level plane contribute both their ends (that is what gives a horizontal
+     *  member sectioned along its own face its real extents).
+     *
+     *  Works for any main axis and for flat drawings (Curves, from elevation()/iso()) as well
+     *  as 3D bodies (Meshes) - unlike a WASM slice(), which is tied to the XY plane.
+     *
+     *  @param shapes - Shapes (nullish entries and nested collections are fine)
+     *  @param tolerance - distance from the level plane still counted as lying in it
+     */
+    _levelCrossingCoords(shapes:Array<any>, levelAxis:MainAxis, levelCoord:number, rangeAxis:MainAxis, tolerance:number=1e-4):Array<number>
+    {
+        const DEDUPE_DECIMALS = 4; // a level cut hits the same coordinate from many faces/edges
+        const coords = new Set<number>();
+
+        const addCoord = (c:number) =>
+        {
+            if(typeof c !== 'number' || !isFinite(c)){ return }
+            coords.add(roundTo(c, DEDUPE_DECIMALS));
+        }
+
+        const addSegment = (a:any, b:any) =>
+        {
+            const da = a[levelAxis] - levelCoord;
+            const db = b[levelAxis] - levelCoord;
+            const aOnLevel = Math.abs(da) <= tolerance;
+            const bOnLevel = Math.abs(db) <= tolerance;
+
+            if(aOnLevel){ addCoord(a[rangeAxis]) }
+            if(bOnLevel){ addCoord(b[rangeAxis]) }
+            if(aOnLevel || bOnLevel){ return } // touching/lying in the plane: the ends are the crossings
+            if((da > 0) === (db > 0)){ return } // both on the same side: no crossing
+
+            const t = da / (da - db);
+            addCoord(a[rangeAxis] + t * (b[rangeAxis] - a[rangeAxis]));
+        }
+
+        /** Points come in as Point/Vertex (x/y/z) or as raw wasm VertexJs (toArray() only) */
+        const asPoint = (v:any):{x:number,y:number,z:number}|null =>
+        {
+            if(!v){ return null }
+            if(typeof v.x === 'number'){ return v }
+            if(typeof v.toArray === 'function')
+            {
+                const [x,y,z] = Array.from(v.toArray() as ArrayLike<number>);
+                return { x: x ?? 0, y: y ?? 0, z: z ?? 0 };
+            }
+            return null;
+        }
+
+        const addPolyline = (pnts:Array<any>, closed:boolean) =>
+        {
+            const p = pnts.map(asPoint).filter(Boolean) as Array<{x:number,y:number,z:number}>;
+            for(let i = 0; i < p.length - 1; i++){ addSegment(p[i], p[i+1]) }
+            if(closed && p.length > 2){ addSegment(p[p.length-1], p[0]) }
+        }
+
+        const addShape = (shape:any) =>
+        {
+            if(!shape){ return }
+            if(typeof shape.isShapeCollection === 'function' && shape.isShapeCollection())
+            {
+                shape.toArray().forEach(addShape);
+            }
+            else if(typeof shape.polygons === 'function') // Mesh: every face is a closed loop
+            {
+                shape.polygons().toArray().forEach((p:any) => addPolyline(p.vertices().toArray(), true));
+            }
+            else if(typeof shape.tessellate === 'function') // Curve, including compound ones
+            {
+                addPolyline(shape.tessellate(), false); // a closed Curve tessellates back to its start
+                (shape._holes ?? []).forEach(addShape);
+            }
+            else if(typeof shape.vertices === 'function') // Polygon and other face-like Shapes
+            {
+                addPolyline(shape.vertices().toArray(), true);
+                const holes = shape.inner?.()?.holes?.() ?? []; // interior holes live on the kernel polygon
+                holes.forEach((hole:Array<any>) => addPolyline(hole, true));
+            }
+            else if(typeof shape[levelAxis] === 'number') // Vertex / Point
+            {
+                if(Math.abs(shape[levelAxis] - levelCoord) <= tolerance){ addCoord(shape[rangeAxis]) }
+            }
+        }
+
+        shapes.forEach(addShape);
+
+        return Array.from(coords);
     }
 
     //// MANAGING MULTIPLE ANNOTATIONS 

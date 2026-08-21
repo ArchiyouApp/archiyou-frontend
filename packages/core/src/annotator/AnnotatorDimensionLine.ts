@@ -41,6 +41,19 @@ import { Type } from 'typebox'
 
 import { roundTo } from '../utils' // utils
 import { MM_PER_UNIT, toMM, formatLength } from '../units/UnitConverter'
+import { DOC_DEFAULT_SVG_FONT_FAMILY } from '../constants'
+
+/*  Fallbacks for the label proportions, used only when a DimensionLine cannot reach an
+    Annotator (a line built outside the app, a unit test). The real settings live on the
+    Annotator — see its SETTINGS block — so a script can change them. */
+const LABEL_DEFAULTS = {
+    DIMENSION_SMALL_LINE_FACTOR: 2,
+    DIMENSION_LEADER_LENGTH_FACTOR: 1.5,
+    DIMENSION_TEXT_CHAR_WIDTH_FACTOR: 0.6,
+    DIMENSION_TEXT_PADDING_FACTOR: 0.5,
+    DIMENSION_TEXT_HEIGHT_FACTOR: 1.2,
+    DIMENSION_TEXT_BACKGROUND_COLOR: 'white' as string|null,
+}
 
 export class DimensionLine extends BaseAnnotation
 {
@@ -54,6 +67,7 @@ export class DimensionLine extends BaseAnnotation
     targetEnd:Point; // point on Shape
     targetShape:AnyShape = null; // the (sub)shape (mostly an Curve) the dimension line is directly generated from
     linkedTo:any = null; // the main parent Shape or ShapeCollection this dimension is linked to
+    _linkedCenterCache:[number, number, number]|null = null; // see _linkedCenter()
     // value:number; // the value of the dimension line, from BaseAnnotation
     static:boolean = false;
     units:ModelUnits = null;
@@ -69,6 +83,7 @@ export class DimensionLine extends BaseAnnotation
     interactive:boolean = false;
     showUnits:boolean = false;
     _param:string = null; // name of bound parameter
+    _paramRemapSrc:string = null; // source of the optional remap function of param(name, remap)
     _hasCustomOffsetVec:boolean = false;
     _offsetComponents:[number, number, number] | null = null;
 
@@ -138,6 +153,7 @@ export class DimensionLine extends BaseAnnotation
         
         this.targetShape = edge;
         this.linkedTo = this._getParentShape(edge); // set main Shape
+        this._linkedCenterCache = null; // a new link means a new centre to offset away from
         this.linkedTo.addAnnotations(this); // make two-sided link
         // init() validates options against an object schema — never pass undefined
         return this.init(edge.start().toPoint(), edge.end().toPoint(), options ?? {})
@@ -428,7 +444,7 @@ export class DimensionLine extends BaseAnnotation
         else 
         {
             // Determine offset from a 2D/3D Shape: So the Shape can have an outside
-            const insidePoint = ((this.linkedTo?.is2D() || this.linkedTo?.is3D()) ? this.linkedTo?.center() : new this.classes.Point(0,0,0)).toArray() as [number, number, number];
+            const insidePoint = this._linkedCenter();
             const targetDir = this.targetDir().toArray() as [number, number, number];
             let newOffsetComponents = this._crossComponents(targetDir, [0, 0, 1]);
 
@@ -437,7 +453,7 @@ export class DimensionLine extends BaseAnnotation
                 newOffsetComponents = this._crossComponents(targetDir, [0, 1, 0]);
             }
 
-            const targetMiddle = this.targetMiddle().toArray() as [number, number, number];
+            const targetMiddle = this._targetMiddleComponents();
             const d1 = this._distanceBetween(this._addComponents(targetMiddle, newOffsetComponents), insidePoint);
             const d2 = this._distanceBetween(this._addComponents(targetMiddle, this._scaleComponents(newOffsetComponents, -1)), insidePoint);
 
@@ -612,8 +628,8 @@ export class DimensionLine extends BaseAnnotation
             0,
         ];
 
-        const insidePoint = ((this.linkedTo?.is2D() || this.linkedTo?.is3D()) ? this.linkedTo?.center() : new this.classes.Point(0,0,0)).toArray() as [number, number, number];
-        const targetMiddle = this.targetMiddle().toArray() as [number, number, number];
+        const insidePoint = this._linkedCenter();
+        const targetMiddle = this._targetMiddleComponents();
         const d1 = this._distanceBetween(this._addComponents(targetMiddle, offsetComponents), insidePoint);
         const d2 = this._distanceBetween(this._addComponents(targetMiddle, this._scaleComponents(offsetComponents, -1)), insidePoint);
 
@@ -650,6 +666,35 @@ export class DimensionLine extends BaseAnnotation
     /** The start and end point of DimensionLine in original coordinate system  
      *  Where the points are depends on type of dimension line. Normal or othogonal
     */
+    /** Centre of the Shape/collection this dimension is linked to, for deciding which side of
+     *  the measured edge to offset to. Cached: the centre comes from a bounding box, and on a
+     *  collection that is a pass over every Shape in it — this is called for both ends of
+     *  every dimension, on every draw. Invalidated by link() and by an explicit offset. */
+    _linkedCenter():[number, number, number]
+    {
+        if(this._linkedCenterCache){ return this._linkedCenterCache }
+
+        // A Shape or collection always has a centre; without one (no link yet) the world
+        // origin decides the side, as before. The old `is2D() || is3D()` guard answered the
+        // same question, but on a collection both walk every Shape's bounding box.
+        const center = (typeof (this.linkedTo as any)?.center === 'function')
+                            ? (this.linkedTo as any).center()
+                            : new this.classes.Point(0,0,0);
+
+        this._linkedCenterCache = center.toArray() as [number, number, number];
+        return this._linkedCenterCache;
+    }
+
+    /** Midpoint of the measured edge, as plain components. */
+    _targetMiddleComponents():[number, number, number]
+    {
+        return [
+            (this.targetStart.x + this.targetEnd.x) / 2,
+            (this.targetStart.y + this.targetEnd.y) / 2,
+            (this.targetStart.z + this.targetEnd.z) / 2,
+        ];
+    }
+
     _calculatePoint(at:'start'|'end'):Point
     {   
         if(!this.offsetLength) { this._calculateAutoOffsetLength(); }
@@ -667,8 +712,8 @@ export class DimensionLine extends BaseAnnotation
                 let offsetX = dy / planarLength;
                 let offsetY = -dx / planarLength;
 
-                const insidePoint = ((this.linkedTo?.is2D() || this.linkedTo?.is3D()) ? this.linkedTo?.center() : new this.classes.Point(0,0,0)).toArray() as [number, number, number];
-                const targetMiddle = this.targetMiddle().toArray() as [number, number, number];
+                const insidePoint = this._linkedCenter();
+                const targetMiddle = this._targetMiddleComponents();
                 const d1 = this._distanceBetween([targetMiddle[0] + offsetX, targetMiddle[1] + offsetY, targetMiddle[2]], insidePoint);
                 const d2 = this._distanceBetween([targetMiddle[0] - offsetX, targetMiddle[1] - offsetY, targetMiddle[2]], insidePoint);
 
@@ -738,11 +783,20 @@ export class DimensionLine extends BaseAnnotation
     }
 
     
-    /** Get rotation in SVG coordinate system (so mirror y!) */
+    /** Direction of this dimension in SVG space, in degrees, as `rotate()` measures it
+     *  (counter-clockwise from +x in a y-DOWN coordinate system). Drives the arrowheads.
+     *
+     *  It said "mirror y" but mirrored across the plane with normal [1,0,0], which negates
+     *  X — the same direction turned by 180°, so every arrowhead in an exported drawing
+     *  pointed the wrong way. Computed here rather than through the kernel Vector classes:
+     *  their angleXY() disagree (meshup measures counter-clockwise in (-180,180], brep
+     *  clockwise in [0,360)), so the shared code has to do its own trigonometry to behave the
+     *  same in both. */
     getSVGRotation():number
     {
-        return this.targetEnd.toVector().copy().mirror([0,0,0],[1,0,0])
-            .subtract(this.targetStart.toVector().copy().mirror([0,0,0],[1,0,0])).angleXY();
+        const dx = this.targetEnd.x - this.targetStart.x;
+        const dy = -(this.targetEnd.y - this.targetStart.y); // SVG's y axis points down
+        return Math.atan2(dy, dx) * 180 / Math.PI;
     }
 
     //// OPERATIONS ////
@@ -767,6 +821,7 @@ export class DimensionLine extends BaseAnnotation
         this.offsetLength = (this.offsetLength === undefined || o?.offset === null) ? this._calculateAutoOffsetLength() : this.offsetLength;
 
         this.units = o?.units || this.units;
+        this.showUnits = o?.showUnits ?? this.showUnits;
         this.roundDecimals = o?.roundDecimals || this.roundDecimals;
         // TODO: more: color, linethickness etc.
         return this;
@@ -783,19 +838,83 @@ export class DimensionLine extends BaseAnnotation
 
     /** Bind a script parameter to this dimension line, making the value text
      *  editable in the viewer overlay. The bound parameter is exported in
-     *  toData() so the overlay can route edits back to the param-menu. */
+     *  toData() so the overlay can route edits back to the param-menu.
+     *
+     *  @param paramName name of the script parameter ($PARAMS.define(...)) to write to
+     *  @param remap optional function mapping the edited dimension value to the
+     *      parameter value: `(value, currentParamValue) => newParamValue`.
+     *      Without it the typed value is written to the parameter as-is, which is
+     *      only right when the parameter is in model units. Use it whenever the
+     *      parameter is scaled or derived - a model in mm with a parameter in cm
+     *      is `.param('DEPTH', (v) => v/10)`.
+     *
+     *  NOTE: the remap function is serialized to source here and re-created in the
+     *      viewer (the main thread, where the script scope no longer exists), so it
+     *      has to be self-contained: use its arguments and globals like Math only,
+     *      never a variable or function from the script around it. That is checked
+     *      at bind time - see _toRemapSrc().
+     */
     @validate(Type.String())
-    bindParam(paramName:string):this
+    bindParam(paramName:string, remap?:(value:number, current?:any) => any):this
     {
         this._param = paramName;
         this.interactive = true;
+        this._paramRemapSrc = (remap === undefined || remap === null)
+                                ? null
+                                : this._toRemapSrc(remap, paramName);
         return this;
     }
 
     /** alias for bindParam */
-    param(paramName:string):this
+    param(paramName:string, remap?:(value:number, current?:any) => any):this
     {
-        return this.bindParam(paramName);
+        return this.bindParam(paramName, remap);
+    }
+
+    /** Serialize a remap function to source, checking up front that it survives the trip.
+     *  The viewer rebuilds the function from this string in the main thread: a closure over
+     *  a script variable is a ReferenceError there, thrown on an edit long after the
+     *  .param() call that caused it. Rebuilding it here in the same detached way surfaces
+     *  that while the script runs, where the author can see it. */
+    _toRemapSrc(remap:any, paramName:string):string
+    {
+        if(typeof remap !== 'function')
+        {
+            throw new Error(`DimensionLine::param(): remap of param "${paramName}" must be a function, like (v) => v/10. Received: ${typeof remap}`);
+        }
+
+        const src = remap.toString();
+
+        try {
+            // Rebuild in an empty scope - exactly what the viewer does
+            const detached = (new Function(`return (${src})`))() as (v:number, c?:any) => any;
+            const probe = (typeof this.value === 'number') ? this.value : 1;
+            const out = detached(probe, undefined);
+
+            // A remap may legitimately return a string (a text param), just not nothing
+            if(out === undefined || out === null || (typeof out === 'number' && !isFinite(out)))
+            {
+                this._archiyou?.console?.warn(
+                    `DimensionLine::param(): remap of param "${paramName}" returned ${String(out)} for value ${probe}. ` +
+                    `Edits with a value the remap cannot map are dropped.`);
+            }
+        }
+        catch(e)
+        {
+            if (e instanceof ReferenceError)
+            {
+                const msg = `DimensionLine::param(): remap of param "${paramName}" cannot run outside the script (${(e as Error).message}). ` +
+                    `It is re-created in the viewer, so keep it self-contained: use only its arguments, like (v) => v/10 - ` +
+                    `no variables or functions from the script around it.`;
+                this._archiyou?.console?.error(msg);
+                throw new Error(msg);
+            }
+            // Anything else is the function's own doing on a probe value: not fatal
+            this._archiyou?.console?.warn(
+                `DimensionLine::param(): remap of param "${paramName}" threw on value ${this.value}: ${(e as Error).message}`);
+        }
+
+        return src;
     }
 
     /** Generic Shape method (every Annotation class should have this!) */
@@ -903,6 +1022,7 @@ export class DimensionLine extends BaseAnnotation
             round: this.round,
             roundDecimals: this.roundDecimals,
             param: this._param,
+            paramRemapSrc: this._paramRemapSrc,
             showUnits: this.showUnits,
         } as unknown as DimensionLineData
 
@@ -913,8 +1033,32 @@ export class DimensionLine extends BaseAnnotation
      *     if 3D the Dimension Line is projected to XY plane
      *     NOTE: we need to transform from Archiyou coordinate system to the SVG one (flip y)
      */
-    toSVG():string
+    toSVG(options?:{ drawingSize?:number, unitsPerMm?:number }):string
     {   
+        /*  Size the line weight, arrowheads and value text for the page.
+
+            `unitsPerMm` — how many model units make one millimeter ON THE PAGE — is the exact
+            way: a document view knows the scale it fits its drawing at, so the sizes below
+            land at the millimeters set on the Annotator (DIMENSION_TEXT_SIZE_MM and friends)
+            whatever the model measures. Callers without a page (a standalone toSVG(), an
+            editor preview) pass `drawingSize` instead, which gets the same result for a
+            drawing fitted to a ~200mm-wide view: view scale is page/drawing and these are
+            drawing/N, so the two cancel. Fixed model units - the 0.5/1/1 this started with -
+            are the one thing that cannot work: right for a 200mm part, invisible on a 1.5m
+            elevation, where 1-unit text lands at ~0.08mm on paper. */
+        const ann = this._archiyou?.annotator;
+        const perMm = options?.unitsPerMm;
+        const drawing = options?.drawingSize;
+
+        const strokeW = perMm ? (ann?.DIMENSION_LINE_WIDTH_MM ?? 0.25) * perMm
+                      : drawing ? drawing / 800 : 0.5;
+        const fontSize = perMm ? (ann?.DIMENSION_TEXT_SIZE_MM ?? 4) * perMm
+                      : drawing ? drawing / 80 : 1;
+        // The arrow glyph is drawn 10 units wide (see _makeSvgArrow), so a 5mm arrowhead is
+        // half a millimeter of scale per glyph unit.
+        const arrowScale = perMm ? ((ann?.DIMENSION_ARROW_SIZE_MM ?? 5) * perMm) / 10
+                      : drawing ? drawing / 667 : 1;
+
         const lineStart = this._calculatePoint('start');
         const lineEnd = this._calculatePoint('end');
         const lineMid = lineStart.copy()
@@ -936,28 +1080,83 @@ export class DimensionLine extends BaseAnnotation
         // labelled so the value is unambiguous when metric/imperial is toggled.
         const dimText = this._formatValueText();
 
+        /*  A dimension shorter than its own value text has nowhere to put it: written at the
+            middle it spills over both arrowheads and, with a backing box, hides the very
+            distance it measures. So it steps aside — a short leader perpendicular to the
+            line, with the value at the end of it, which is what a draughtsman does with a
+            run of narrow dimensions. */
+        const lineLength = Math.hypot(lineEndArr[0] - lineStartArr[0], lineEndArr[1] - lineStartArr[1]);
+        const isSmall = lineLength < fontSize * this._setting('DIMENSION_SMALL_LINE_FACTOR');
+        const labelAt = isSmall ? this._offsetLabelPoint(lineMidArr, lineStartArr, lineEndArr, fontSize) : lineMidArr;
+
         return `<g class="dimensionline">
-                ${this._makeSvgLinePath(lineStartArr,lineEndArr)}
-                ${this._makeSvgArrow(lineStartArr)}
-                ${this._makeSvgArrow(lineEndArr, true)}
-                ${this._makeSvgTextLabel(lineMidArr,dimText)}
+                ${this._makeSvgLinePath(lineStartArr,lineEndArr,strokeW)}
+                ${this._makeSvgArrow(lineStartArr, false, strokeW, arrowScale)}
+                ${this._makeSvgArrow(lineEndArr, true, strokeW, arrowScale)}
+                ${isSmall ? this._makeSvgLabelLeader(lineMidArr, labelAt, strokeW) : ''}
+                ${this._makeSvgTextLabel(labelAt,dimText,fontSize)}
             </g>
         `
     }
 
+    /** x/y of a PointLike, whatever shape it arrives in.
+     *
+     *  The SVG writers below are fed plain `[x,y,z]` arrays by toSVG() (it flips y on the
+     *  array). @validate only VALIDATES — unlike the old @checkInput it does not convert its
+     *  arguments — so reading `.x` off one silently produced `x1="undefined"`, i.e. dimension
+     *  lines that were emitted but could never be drawn. */
+    _svgXY(p:PointLike):{ x:number, y:number }
+    {
+        const a = p as any;
+        if (Array.isArray(a)){ return { x: a[0] ?? 0, y: a[1] ?? 0 } }
+        return { x: a?.x ?? 0, y: a?.y ?? 0 };
+    }
+
+    /** Where the value goes when it does not fit on the line: off to the side, on a leader.
+     *
+     *  Perpendicular to the dimension, on the side the dimension was already offset to — so
+     *  it moves further AWAY from the shape being measured, never back over it. */
+    _offsetLabelPoint(mid:Array<number>, start:Array<number>, end:Array<number>, fontSize:number):Array<number>
+    {
+        const dx = end[0] - start[0];
+        const dy = end[1] - start[1];
+        const length = Math.hypot(dx, dy) || 1;
+
+        let px = -dy / length;
+        let py = dx / length;
+
+        // SVG's y axis points down, so the offset vector flips with it
+        const o = this._offsetComponents ?? [this.offsetVec?.x ?? 0, this.offsetVec?.y ?? 0, 0];
+        if(px * (o[0] ?? 0) + py * -(o[1] ?? 0) < 0){ px = -px; py = -py }
+
+        const distance = fontSize * this._setting('DIMENSION_LEADER_LENGTH_FACTOR');
+        return [mid[0] + px*distance, mid[1] + py*distance, 0];
+    }
+
+    /** The leader from a too-short dimension line out to its value. */
+    _makeSvgLabelLeader(from:Array<number>, to:Array<number>, strokeWidth:number=0.5):string
+    {
+        return `<line class="annotation line leader" style="stroke:black;stroke-width:${+strokeWidth.toFixed(4)}" `
+            + `x1="${+from[0].toFixed(4)}" y1="${+from[1].toFixed(4)}" `
+            + `x2="${+to[0].toFixed(4)}" y2="${+to[1].toFixed(4)}"/>`;
+    }
+
     /** Generate a line segment in SVG (with SVG coords) */
     @validate(PointLikeSchema, PointLikeSchema)
-    _makeSvgLinePath(start:PointLike, end:PointLike)
+    _makeSvgLinePath(start:PointLike, end:PointLike, strokeWidth:number=0.5)
     {  
-       const startPoint = start as Point; // NOTE: auto converted to Point 
-       const endPoint = end as Point;
-       return `<line class="annotation line" style="stroke-width:0.5" x1="${startPoint.x}" y1="${startPoint.y}" x2="${endPoint.x}" y2="${endPoint.y}"/>`
+       const startPoint = this._svgXY(start);
+       const endPoint = this._svgXY(end);
+       // stroke:black inline — the kernels' `.line` rule covers this too, but a dimension has
+       // to survive being pulled out of that stylesheet (a DOM-less SVG rasterizer, a copy of
+       // just the <g class="dimensionline">).
+       return `<line class="annotation line" style="stroke:black;stroke-width:${+strokeWidth.toFixed(4)}" x1="${startPoint.x}" y1="${startPoint.y}" x2="${endPoint.x}" y2="${endPoint.y}"/>`
     }
 
     /** Place SVG arrow on position and rotation. Tip of the arrow is pivot */
     // NOTE: Arrow itself is already in SVG space (so y-axis is pointing downwards)
     @validate(PointLikeSchema, Type.Optional(Type.Boolean({ default: false })))
-    _makeSvgArrow(at:PointLike, flip?:boolean)
+    _makeSvgArrow(at:PointLike, flip?:boolean, strokeWidth:number=0.5, arrowScale:number=1)
     {
        /*   Arrows in raw SVG
             - Pivot of arrow is at [0,0] pointing upwards (in SVG coordinate system of course)
@@ -965,12 +1164,14 @@ export class DimensionLine extends BaseAnnotation
             - TODO: different arrow styles
         */
        const SIZE = '10 5'; // Size of non-rotated graphic, use this for scaling
+       // stroke:black — nothing else styles `.arrow-path`, and SVG's default stroke is `none`,
+       // so without it the arrowheads were simply not drawn.
        const ARROWS_SVG  = {
-            default: '<path class="arrow-path" style="fill:none;stroke-width:0.5" d="M -5 5 L 0 0 L 5 5" />'
+            default: `<path class="arrow-path" style="fill:none;stroke:black;stroke-width:${+(strokeWidth / arrowScale).toFixed(4)}" d="M -5 5 L 0 0 L 5 5" />`
        }
        const DEFAULT_ARROW_SVG = 'default'
 
-       const atPoint = at as Point;
+       const atPoint = this._svgXY(at);
         
        const rotation = (flip) ? this.getSVGRotation() - 90 + 180: this.getSVGRotation() - 90;
        
@@ -981,46 +1182,75 @@ export class DimensionLine extends BaseAnnotation
                 worldSize="${SIZE}"
                 transform="translate(${atPoint.x} ${atPoint.y}) 
                             rotate(${rotation})
-                            scale(1 1)
+                            scale(${+arrowScale.toFixed(4)} ${+arrowScale.toFixed(4)})
                             ">
                             ${ARROWS_SVG[DEFAULT_ARROW_SVG]}
           </g>`
         
     }
 
-    @validate(PointLikeSchema, Type.String())
-    _makeSvgTextLabel(at:PointLike, text:string): string
+    /** An annotation setting, from the Annotator when one is reachable. */
+    _setting<K extends keyof typeof LABEL_DEFAULTS>(name:K):typeof LABEL_DEFAULTS[K]
     {
-        /* IMPORTANT: 
-            This font-size is temporary: 
-            We need to make the text (and background rect) scale according to page size and view scale 
-             so they are always the same
-        */
-       
-        /* IMPORTANT: because SVG are mostly in mm the difference between font size 
-            and the sizes of these drawings must not be too great the text boundingbox might 
-            be so small that we loose accuracy.
-        */
-        const TMP_FONT_SIZE = '1';  
-        const atPoint = at as Point;
-        
-        // NOTE: We rotate later in specific rendering method (html, PDF) for maximum control
-        // We place data on element itself in attribute data
-        const angle = 90 - this.offsetVec.copy().round().abs().angleXY(); // range [0,90] - NOTE: we reverse for SVG
+        const value = (this._archiyou?.annotator as any)?.[name];
+        return (value === undefined) ? LABEL_DEFAULTS[name] : value;
+    }
 
-        
-        return `<text 
-                        class="annotation text" 
+    /** The label's rotation in SVG space, in degrees.
+     *
+     *  A dimension reads ALONG the line it measures — that is what makes a drawing legible
+     *  when it is full of them. Normalized into [-90,90) so the text is never upside down,
+     *  which also makes a vertical dimension read bottom-to-top rather than top-to-bottom,
+     *  as ISO drafting has it. */
+    _labelAngle():number
+    {
+        let a = this.getSVGRotation();
+        while(a >= 90){ a -= 180 }
+        while(a < -90){ a += 180 }
+        return a;
+    }
+
+    @validate(PointLikeSchema, Type.String())
+    _makeSvgTextLabel(at:PointLike, text:string, fontSize:number=1): string
+    {
+        const atPoint = this._svgXY(at);
+        const angle = this._labelAngle();
+
+        /*  A backing box, so the value stays readable where the dimension line, the geometry
+            or another dimension runs under it. Sized by glyph count rather than measured:
+            there are no font metrics here (this runs in a worker and in node alike), and the
+            legacy code only got them because it measured inside jsPDF at draw time. An
+            over-wide box merely hides a little more of the line it sits on. */
+        const background = this._setting('DIMENSION_TEXT_BACKGROUND_COLOR');
+
+        const w = Math.max(1, text.trim().length) * fontSize * this._setting('DIMENSION_TEXT_CHAR_WIDTH_FACTOR')
+                    + fontSize * this._setting('DIMENSION_TEXT_PADDING_FACTOR');
+        const h = fontSize * this._setting('DIMENSION_TEXT_HEIGHT_FACTOR');
+
+        const rect = (!background) ? '' :
+            `<rect class="annotation text-background" `
+            + `x="${+(atPoint.x - w/2).toFixed(4)}" y="${+(atPoint.y - h/2).toFixed(4)}" `
+            + `width="${+w.toFixed(4)}" height="${+h.toFixed(4)}" `
+            + `style="fill:${background};stroke:none" />`;
+
+        /*  NOTE: the rotation is applied HERE, not left on a `data-angle` for a renderer to
+            pick up later. There is no later any more — this SVG is the drawing, in the editor
+            and in the PDF alike. */
+        return `<g class="annotation dimension-label" transform="rotate(${+angle.toFixed(4)} ${atPoint.x} ${atPoint.y})">
+                    ${rect}
+                    <text
+                        class="annotation text"
                         text-anchor="middle"
                         alignment-baseline="middle"
-                        font-size="${TMP_FONT_SIZE}"
+                        font-family="${DOC_DEFAULT_SVG_FONT_FAMILY}"
+                        font-size="${+fontSize.toFixed(4)}"
                         style="fill:black;stroke-opacity:0;stroke-width:0"
                         x="${atPoint.x}"
                         y="${atPoint.y}"
-                        data="{ 'angle': ${-angle} }"
-                        dominant-baseline="central">${text}
-                    </text>`; // NOTE: data in JSON format with "'"! TODO: Make this more elegant!
+                        dominant-baseline="central">${text}</text>
+                </g>`;
     }
+
     // NOTE: do very little styling here to be able to easily style with CSS. Only stroke-width is good to set (default is 1, 0.5 sets it apart from Shapes)
 
     /** Formatted value text — shared by toSVG() and toDXF().
@@ -1033,7 +1263,27 @@ export class DimensionLine extends BaseAnnotation
         const src = this.units;
         if (system && src && (src as string) in MM_PER_UNIT && typeof v === 'number')
         {
-            return formatLength(toMM(v, src), system, { withUnit: true });
+            /*  A metric drawing writes bare numbers — the unit is stated once, in the title
+                block — so units are off unless the script asks (`dim({ showUnits: true })`).
+                Imperial keeps its marks whatever that says: 6'-3" is how the number is
+                WRITTEN, not a unit appended to it, and dropping them leaves 6 3. */
+            const withUnit = (system === 'imperial') ? true : this.showUnits;
+
+            /*  Auto-picking the "best" unit only makes sense when that unit is PRINTED:
+                1200mm reads well as "1.2 m", and as plain "1.2" it means nothing at all on a
+                drawing whose every other number is in millimeters. So with the unit hidden
+                the value stays in the model's own unit — which is the one the title block
+                names — and 1200 is written 1200. */
+            return formatLength(toMM(v, src), system, {
+                withUnit,
+                unit: withUnit ? undefined : src,
+                /*  `roundDecimals` was dead here — this branch runs whenever a unit system is
+                    known, which is always, so `dim({ roundDecimals: 2 })` silently did
+                    nothing. It applies to the bare model-unit value; with the unit printed the
+                    formatter keeps its own decimals for the unit it picked, or "1.2 m" would
+                    round to "1 m". */
+                metricDecimals: withUnit ? undefined : this.roundDecimals,
+            });
         }
         let text = ((this.round) ? roundTo(v, this.roundDecimals) : this.value).toString();
         if (this.showUnits) text += this.units;

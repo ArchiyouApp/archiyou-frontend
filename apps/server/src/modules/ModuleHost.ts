@@ -72,26 +72,76 @@ function revisionOf(entryPath: string, manifestPath: string): string {
  *  or a single `pnpm install` would trigger hundreds of re-scans. */
 const WATCHED_NAMES = new Set(['manifest.json', 'bundle.js', 'server.js']);
 
+/**
+ * Split SERVER_MODULES_DIR into absolute roots.
+ *
+ * Comma or colon separated. Colon is the PATH convention and the one people reach for, but
+ * it also appears in a Windows drive letter, so a single-character segment is treated as
+ * part of the path that follows rather than as a separator of its own.
+ *
+ * Blank entries are dropped, and duplicates are collapsed so a doubled root does not produce
+ * a spurious "id already loaded" warning against itself.
+ */
+export function splitRoots(dir: string): string[] {
+  if (!dir) return [];
+  const parts = dir
+    .split(',')
+    .flatMap((chunk) => {
+      const segs = chunk.split(':');
+      const out: string[] = [];
+      for (const seg of segs) {
+        // Re-attach a Windows drive letter to the segment it belongs to.
+        if (out.length && /^[A-Za-z]$/.test(out[out.length - 1])) out[out.length - 1] += `:${seg}`;
+        else out.push(seg);
+      }
+      return out;
+    })
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => resolve(p));
+  return [...new Set(parts)];
+}
+
 export class ModuleHost {
   private _modules = new Map<string, InstalledModule>();
   private _loaded = false;
-  private _root = '';
-  private _watcher: FSWatcher | null = null;
+  /** Every scanned root, in the order given. Usually one; more when several module
+   *  repositories are checked out side by side (see splitRoots). */
+  private _roots: string[] = [];
+  private _watchers: FSWatcher[] = [];
   private _debounce: NodeJS.Timeout | null = null;
   private _listeners = new Set<() => void>();
 
-  /** Scan the modules directory. Safe to call repeatedly; re-scans. */
+  /**
+   * Scan the modules directories. Safe to call repeatedly; re-scans.
+   *
+   * `dir` may name SEVERAL roots, comma- or colon-separated. One root was enough while
+   * every module lived in a single private repository; an open-source module gets its own
+   * repository, checked out alongside, and the backend has to see both. Roots are scanned
+   * in order and the first definition of an id wins, so an earlier root can deliberately
+   * shadow a later one.
+   */
   load(dir: string = config.modules.dir): this {
     this._modules.clear();
     this._loaded = true;
-    this._root = dir ? resolve(dir) : '';
+    this._roots = splitRoots(dir);
 
-    if (!dir) return this; // feature off — the default
-    const root = this._root;
+    if (this._roots.length === 0) return this; // feature off — the default
 
+    for (const root of this._roots) this._scanRoot(root);
+
+    if (this._modules.size > 0) {
+      const names = [...this._modules.values()].map((m) => `${m.manifest.id}@${m.manifest.version}`);
+      console.log(`🧩 Loaded ${this._modules.size} script module(s): ${names.join(', ')}`);
+    }
+    return this;
+  }
+
+  /** Scan one root for `<id>/manifest.json`. */
+  private _scanRoot(root: string): void {
     if (!existsSync(root)) {
-      console.warn(`⚠ SERVER_MODULES_DIR is set but does not exist: ${root}`);
-      return this;
+      console.warn(`⚠ SERVER_MODULES_DIR names a directory that does not exist: ${root}`);
+      return;
     }
 
     for (const name of readdirSync(root)) {
@@ -116,7 +166,12 @@ export class ModuleHost {
           continue;
         }
         if (this._modules.has(manifest.id)) {
-          console.warn(`⚠ module '${manifest.id}' skipped: duplicate id`);
+          // First root wins. Naming the winner matters once there is more than one root:
+          // otherwise "why is my edit not taking effect" has no visible answer.
+          console.warn(
+            `⚠ module '${manifest.id}' in ${root} skipped: id already loaded from ` +
+            `${this._modules.get(manifest.id)!.dir}`,
+          );
           continue;
         }
 
@@ -143,12 +198,6 @@ export class ModuleHost {
         console.warn(`⚠ module '${name}' skipped: invalid manifest (${detail})`);
       }
     }
-
-    if (this._modules.size > 0) {
-      const names = [...this._modules.values()].map((m) => `${m.manifest.id}@${m.manifest.version}`);
-      console.log(`🧩 Loaded ${this._modules.size} script module(s): ${names.join(', ')}`);
-    }
-    return this;
   }
 
   /** True when at least one module is installed. */
@@ -186,7 +235,9 @@ export class ModuleHost {
     const owned = new Set(entitledIds);
     return [...this._modules.values()].map((m) => ({
       ...m.manifest,
-      entitled: all || owned.has(m.manifest.id),
+      // A public module is available to everybody, including anonymous callers. See
+      // AyModuleManifest.public — gating is the default, this is the deliberate opt-out.
+      entitled: m.manifest.public === true || all || owned.has(m.manifest.id),
       // Only in dev. In production a version bump is the cache key, and shipping
       // a per-build revision would defeat the immutable caching of bundles.
       ...(config.modules.dev ? { rev: m.rev } : {}),
@@ -210,29 +261,33 @@ export class ModuleHost {
    * the server from starting.
    */
   watch(): this {
-    if (this._watcher || !this._root || !existsSync(this._root)) return this;
+    if (this._watchers.length) return this;
 
-    try {
-      this._watcher = watch(this._root, { recursive: true }, (_event, filename) => {
-        if (!filename) return;
-        const name = String(filename).replace(/\\/g, '/').split('/').pop() ?? '';
-        if (!WATCHED_NAMES.has(name)) return;
+    for (const root of this._roots) {
+      if (!existsSync(root)) continue;
+      try {
+        this._watchers.push(watch(root, { recursive: true }, (_event, filename) => {
+          if (!filename) return;
+          const name = String(filename).replace(/\\/g, '/').split('/').pop() ?? '';
+          if (!WATCHED_NAMES.has(name)) return;
 
-        // A build writes several files in quick succession; re-scanning on each
-        // would serve a half-written module to whoever asked in between.
-        if (this._debounce) clearTimeout(this._debounce);
-        this._debounce = setTimeout(() => {
-          this._debounce = null;
-          const before = this.list().map((m) => `${m.id}@${m.version}`).join(',');
-          this.load(this._root);
-          const after = this.list().map((m) => `${m.id}@${m.version}`).join(',');
-          console.log(`🧩 modules changed — re-scanned${before !== after ? ` (${after || 'none'})` : ''}`);
-          this._listeners.forEach((fn) => { try { fn(); } catch { /* never let a listener break the watcher */ } });
-        }, 150);
-      });
-      console.log(`👀 Watching script modules in ${this._root}`);
-    } catch (err) {
-      console.warn(`⚠ could not watch ${this._root} (${(err as Error)?.message}) — module changes need a restart`);
+          // A build writes several files in quick succession; re-scanning on each
+          // would serve a half-written module to whoever asked in between. The
+          // debounce is shared across roots for the same reason.
+          if (this._debounce) clearTimeout(this._debounce);
+          this._debounce = setTimeout(() => {
+            this._debounce = null;
+            const before = this.list().map((m) => `${m.id}@${m.version}`).join(',');
+            this.load(this._roots.join(','));
+            const after = this.list().map((m) => `${m.id}@${m.version}`).join(',');
+            console.log(`🧩 modules changed — re-scanned${before !== after ? ` (${after || 'none'})` : ''}`);
+            this._listeners.forEach((fn) => { try { fn(); } catch { /* never let a listener break the watcher */ } });
+          }, 150);
+        }));
+        console.log(`👀 Watching script modules in ${root}`);
+      } catch (err) {
+        console.warn(`⚠ could not watch ${root} (${(err as Error)?.message}) — module changes need a restart`);
+      }
     }
     return this;
   }
@@ -246,8 +301,8 @@ export class ModuleHost {
   /** Stop watching. Called on server shutdown. */
   close(): void {
     if (this._debounce) { clearTimeout(this._debounce); this._debounce = null; }
-    this._watcher?.close();
-    this._watcher = null;
+    for (const w of this._watchers) w.close();
+    this._watchers = [];
     this._listeners.clear();
   }
 

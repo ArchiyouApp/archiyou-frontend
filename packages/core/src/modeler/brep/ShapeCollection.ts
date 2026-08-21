@@ -26,6 +26,7 @@ import { Point, Vector, Shape, Vertex, Edge, Wire, Face, Shell, Solid, Brep } fr
 
 // Scene + style come from the mesh kernel — one SceneNode graph and one Style model for both.
 import { SceneNode } from '@archiyou/meshup'
+import { renderDrawing } from '../svgLayers'
 import type { StyleData } from '@archiyou/meshup'
 import { Exporter } from './Exporter'
 import { BaseAnnotation } from '../../annotator/AnnotatorBaseAnnotation'
@@ -2206,10 +2207,34 @@ import { getOc } from './index' // OC global getter
          return this;
       }
 
-      /** Flatten every Shape in this collection in place. */
+      /** Flatten every Shape in this collection onto the coordinate plane perpendicular to
+       *  `axis` (default 'z'), then drop the doubles that creates - both across Shapes (two
+       *  identical walls flattened onto the same rectangle) and within them (see
+       *  Shape._flattened()). Dropped Shapes are removed from the scene. Mutates this
+       *  collection. Mirrors meshup's ShapeCollection.flatten(). */
+      @checkInput([['MainAxis','z']], ['auto'])
       flatten(axis?:MainAxis):this
       {
-         this.forEach(shape => shape.flatten(axis));
+         const results = this.shapes.map(shape => 
+         {
+            const flat = shape.flatten(axis); // replaces the Shape in the scene
+            return (flat ?? shape) as AnyShape;
+         });
+
+         const seen = new Set<string>();
+         const kept = results.filter(s => 
+         {
+            const key = (s as any)._flatKey?.() ?? s._id;
+            if(seen.has(key)){ return false };
+            seen.add(key);
+            return true;
+         })
+
+         const keptSet = new Set(kept);
+         results.forEach(s => { if(!keptSet.has(s)){ s.removeFromScene() }});
+
+         this.shapes = kept;
+         this._setFakeArrayKeys();
          return this;
       }
 
@@ -2300,7 +2325,9 @@ import { getOc } from './index' // OC global getter
             // autoRotate (default)
             workShape = (options?.autoRotate == undefined || options?.autoRotate) ? workShape.rotateToLayFlat() : workShape;
             // flatten if given as option
-            workShape = (options?.flatten) ? workShape._flattened() : workShape;
+            // NOTE: _flattened() can return a ShapeCollection of Faces when a Shape flattens
+            // onto more than one outline; it answers the same move/bbox/addToScene API used below.
+            workShape = (options?.flatten) ? workShape._flattened() as AnyShape : workShape;
 
             switch (order)
             {
@@ -2480,9 +2507,11 @@ import { getOc } from './index' // OC global getter
       /** Add annotations of this ShapeCollection */
       addAnnotations(a:Annotation|Array<Annotation>):this
       {
-        // TODO: check for doubles etc
+        // NOTE: an annotation already linked here is not added again — the two-sided link
+        // (DimensionLine.link) and the Annotator both add it. Mirrors meshup.
         const annotations = (Array.isArray(a) ? a : [a])
                               .filter(ann => BaseAnnotation.isAnnotation(ann) )
+                              .filter(ann => !this.annotations.includes(ann))
         this.annotations = this.annotations.concat(annotations)
         return this;
       }
@@ -2687,108 +2716,46 @@ import { getOc } from './index' // OC global getter
          return shapeEdges;
       }
 
-      /** Get Annotations tied to the collection or sub Shapes  */
+      /** Get Annotations tied to the collection or sub Shapes
+       *
+       *  NOTE: deduped. An annotation links itself to the Shape it measures AND is added to
+       *  the collection that was dimensioned (see Annotator.autoDimPart), so the same object
+       *  is in both lists — concatenating them drew every dimension twice, exactly on top of
+       *  itself. Mirrors meshup's ShapeCollection.getAnnotations().
+       *
+       *  @param onlyVisibleShapes skip annotations of Shapes that are hidden
+       */
       getAnnotations(onlyVisibleShapes:boolean=false):Array<Annotation>
       {
-         const shapeAnnotations = this.shapes.reduce((agg,s) => 
+         const shapeAnnotations = this.shapes.reduce((agg,s) =>
          {
-               agg = (onlyVisibleShapes && s.visible()) ? agg.concat(s.annotations) : agg.concat(s.annotations)
-               return agg  
+               return (onlyVisibleShapes && !s.visible()) ? agg : agg.concat(s.annotations)
          },[]);
 
-         return [...this.annotations, ...shapeAnnotations];
+         return [...new Set([...this.annotations, ...shapeAnnotations])];
       }
 
-      /** Export Shapes that are 2D and on XY plane to SVG 
-       *    All shapes will be converted to Edges
-       *    @param options { all:boolean, annotations: boolean, contours:boolean  }
+      /** Export Shapes that are 2D and on XY plane to SVG
+       *
+       *  The document itself — framing, stylesheet, line weight, annotations — is assembled
+       *  in core (see modeler/svgLayers.ts), by the same code the mesh kernel goes through.
+       *  This kernel only contributes its line-work. It used to write the whole document
+       *  here, byte-duplicating meshup's stylesheet and re-deriving the same margins, which
+       *  is how the two came to disagree about what a drawing's extents even are.
+       *
+       *  @param options { all:boolean, annotations:boolean, unitsPerMm:number }
       */
       toSVG(options?:toSVGOptions):string
       {
-         const DEFAULT_OPTIONS = { all: false, annotations: true };
-
-         options = { ...DEFAULT_OPTIONS, ...(options ?? {}) };
-
-         const BBOX_ANNOTATION_MARGIN = 10; // Add small margin on all sides to exported bboxes (SVG and world) - mostly for texts on dimension lines
-
-         let shapeEdges = this._get2DXYShapeEdges(options?.all);
-         
-         if (shapeEdges.length == 0){ return null;}
-         /*  IMPORTANT: SVG's y-axis points DOWN, so the drawing is flipped in Y — mirrored
-             across the XZ plane (normal [0,1,0]), which is _mirroredY.
-
-             This said _mirroredX, which mirrors across the YZ plane and negates X instead. The
-             viewBox below is built for a Y flip (it starts at -maxY), so the two disagreed and
-             every brep drawing came out rotated 180°. The 3D scene was always right; only the
-             SVG was wrong.
-
-             The mirror is a pure coordinate flip, so each mirrored Edge must keep pointing at
-             the Shape it came from — that link is where its styling is read from (an Edge of a
-             styled Wire carries no style of its own). */
-         shapeEdges = shapeEdges.map(s =>
-         {
-            const flipped = s._mirroredY(0);
-            flipped._parent = s._parent ?? s;
-            return flipped;
+         return renderDrawing(this, {
+            all: options?.all === true,
+            annotations: options?.annotations !== false,
+            unitsPerMm: options?.unitsPerMm,
+            units: hostUnits(this),
          });
-
-         // Edges to SVG paths
-         let svgPaths:Array<string> = [];
-         shapeEdges.forEach( edge => 
-         {
-            svgPaths.push(edge.toSVG());
-         })
-         
-         const withAnnotations = options?.annotations ?? true; // true is default
-         const bboxWorld = this.bbox(withAnnotations);
-         // NOTE: origin for SVG is in topleft corner (so different than world coordinates and doc space)
-         const bboxWidth = bboxWorld.width()+2*BBOX_ANNOTATION_MARGIN;
-         const bboxHeight = bboxWorld.depth()+2*BBOX_ANNOTATION_MARGIN;
-
-         const svgWorldBbox = `${bboxWorld.minX()-BBOX_ANNOTATION_MARGIN} ${bboxWorld.minY()-BBOX_ANNOTATION_MARGIN} ${bboxWidth} ${bboxHeight}`; // in format 'x y width height' 
-         const svgViewBbox = `${bboxWorld.minX()-BBOX_ANNOTATION_MARGIN} ${-bboxWorld.maxY()-BBOX_ANNOTATION_MARGIN} ${bboxWidth} ${bboxHeight}`;  // Mirrored! minY => -maxY
-
-         /*  Ship the same stylesheet the mesh kernel does, so an unstyled drawing looks
-             identical whichever kernel produced it — thin black lines at a weight that scales
-             with the drawing. Without it every path would need its stroke written inline, and
-             SVG's default stroke is `none`, so a drawing with no inline styling is INVISIBLE.
-
-             Kept byte-identical to meshup's ShapeCollection.toSVG(): the divisor is chosen so a
-             drawing fitted to a page lands near 0.25mm — a normal technical line weight —
-             whatever the model's real size. Deliberate styling is emitted by Edge.toSVG() as an
-             inline `style=` (not a presentation attribute) so it overrides these rules. */
-         const drawingSize = Math.max(bboxWidth, bboxHeight) || 1;
-         const strokeWidth = +(drawingSize / 800).toFixed(4);
-         const dash = `${+(strokeWidth * 12).toFixed(4)} ${+(strokeWidth * 8).toFixed(4)}`;
-         const styleBlock = '<style>'
-            + `.line{fill:none;stroke:black;stroke-width:${strokeWidth};`
-            + 'stroke-linecap:round;stroke-linejoin:round}'
-            + `.hidden{stroke:#888;stroke-dasharray:${dash}}`
-            + '</style>';
-
-         const svg = `<svg 
-                        xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" 
-                        viewBox="${svgViewBbox}"
-                        _bbox="${svgWorldBbox}" 
-                        _worldUnits="${hostUnits(this)}">
-                        ${styleBlock}
-                        ${svgPaths.join('\n\t')}
-                        ${ (withAnnotations) ? this._getDimensionLinesSvgElems() : ''}
-                     </svg>`
-         // TODO: remove block so we can enable subshape styling
-         return svg;
       }
 
 
-      _getDimensionLinesSvgElems():string
-      {
-         const svgElems = this.getAnnotations().map(a => a.toSVG())
-         const svgText = svgElems.join('\n')
-
-         return svgText;
-      }
-      
-      
       toDXF(options:toDXFOptions = {}):string|null
       {
          console.warn(`ShapeCollection::toDXF(): DXF export is currently disabled, as we are re-evaluating the best approach for this. Please reach out if you want to use or contribute to this feature!`);

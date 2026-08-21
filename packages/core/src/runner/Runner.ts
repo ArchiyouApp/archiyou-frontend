@@ -29,6 +29,7 @@ import type { RunnerActiveScope,
 
 
 import { RunnerComponentImporter } from './RunnerComponentImporter'; // helper for importing components in scope
+import { ScriptExitSignal, isScriptExitSignal, SCRIPT_EXIT_WARNING } from './ScriptExit';
 import { extractTopLevelComponentCalls, extractFirstArg, MAX_COMPONENT_DEPTH, type ComponentCall } from './componentRefs'; // $component() reference parsing (shared with the editor)
 import { Importer as AssetImporter } from '../importer/Importer'; // $import: fetch+parse remote assets
 import type { AssetPayload } from '../importer/Importer';
@@ -354,6 +355,7 @@ export class Runner
             docs: state._archiyou.docs,
             doc: state._archiyou.docs, // alias - backwards compatibility
             calc: state._archiyou.calc,
+            annotator: state._archiyou.annotator, // dimension/label settings live here (DIMENSION_TEXT_SIZE_MM, ...)
             materials: state._archiyou.materials,
             make: state._archiyou.modeler.make, // Make lives on Modeler, not directly on ArchiyouModules
             interactor: state._archiyou.interactor,
@@ -398,6 +400,15 @@ export class Runner
         // as data ({ width: 10, height: 100 }), not as '[object Object]'
         state.print = (...messages:Array<any>) => state.console.user(...messages);
         state.log = (...messages:Array<any>) => state.console.info(...messages);
+
+        // exit(): stop the run here on purpose (debugging). Thrown as a signal the
+        // Runner recognises: the model built so far is still collected, only a
+        // warning is logged - see ScriptExit.ts
+        state.exit = (message?:string) =>
+        {
+            state.console.warn(message ? `${SCRIPT_EXIT_WARNING}: ${message}` : SCRIPT_EXIT_WARNING);
+            throw new ScriptExitSignal(message);
+        }
         
         return state;
     }
@@ -891,7 +902,14 @@ export class Runner
             }
             catch(e)
             {
-               return this._handleExecutionError(scope, this._activeExecRequest, code, e);
+                // exit() is not a failure: collect whatever was modeled before it
+                // and return that as a normal (successful) result.
+                if(isScriptExitSignal(e))
+                {
+                    console.warn(`Runner::_executeLocal(): ${SCRIPT_EXIT_WARNING}`);
+                    return await outputFunc(scope, this._activeExecRequest);
+                }
+                return this._handleExecutionError(scope, this._activeExecRequest, code, e);
             }
         }
 
@@ -1112,6 +1130,16 @@ ${description === '***** CODE ****\nUnexpected end of input' ? code : ''}
             catch(e)
             {
                 const duration = performance.now() - stmtStartTime;
+
+                // exit() halts the loop like an error does, but the run stays successful:
+                // the statement itself counts as executed and no error is attached.
+                if(isScriptExitSignal(e))
+                {
+                    statementResults.push({ ...stmt, status: 'success', duration });
+                    console.warn(`Runner::_executeLocalInScriptStatements(): ${SCRIPT_EXIT_WARNING} at line ${stmt.lineStart}`);
+                    break;
+                }
+
                 const message = this._formatStatementError(stmt, request, e as Error);
                 failed = { ...stmt, status: 'error', message, duration };
                 statementResults.push(failed);

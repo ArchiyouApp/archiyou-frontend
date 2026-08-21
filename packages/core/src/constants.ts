@@ -9,7 +9,7 @@ import type { ExecutionRequestOutputFormatGLTFOptions } from "./execution/types"
  *  TypeScript source by several bundlers, and a JSON import would need resolveJson
  *  plus assertions in every one of them. `tests/unit/modules/version.test.ts`
  *  fails if the two drift. */
-export const ARCHIYOU_CORE_VERSION = '1.0.0';
+export const ARCHIYOU_CORE_VERSION = '0.9.0';
 
 //// MODELER ////
 
@@ -22,7 +22,7 @@ export const MODELER_METHODS_INTO_GLOBAL = [
     'plane', 'planeBetween', 'rect', 'rectBetween', 'basePlane', 'circle',
     'box', 'boxBetween', 'sphere', 'cone', 'cylinder',
     // scene management 
-    'layer', 'collection',
+    'layer', 'collection', 'group',
     'layerShapes',
     // sketch
     'sketch', 'all', 'isTemp', 'select', 'atVertices', 'moveTo', 'lineTo', 'splineTo', 'arcTo', 

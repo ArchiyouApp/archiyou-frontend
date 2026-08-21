@@ -3,7 +3,7 @@ import { Page } from './Page'
 import type {
     WidthHeightInput,
     DocPathStyle, ContainerPositionRel,
-    ContainerType, ContainerHAlignment, ContainerVAlignment, ContainerAlignment, ZoomRelativeTo, ScaleInput,
+    ContainerType, ContainerHAlignment, ContainerVAlignment, ContainerAlignment, ScaleInput,
     ContainerSizeRelativeTo, ContainerPositionLike, ContainerData, Frame,
     ContainerContent,  ContainerPositionCoordAbs, ContainerPositionCoordRel, PageSide, ValueWithUnitsString,
     PageSVGContext } from './types'
@@ -44,8 +44,13 @@ export class Container
     _index:number; // ordering z-index
     _contentAlign:ContainerAlignment;
     _content:any; // TODO: raw content (like Svg for View, source for Image etc)
-    _zoomLevel:ScaleInput;
-    _zoomRelativeTo:ZoomRelativeTo;
+    /** Drawing scale — see scale(). 'fit' (fill the container) unless a script says otherwise. */
+    _scale:ScaleInput = 'fit';
+    /** Zoom on top of that scale — see zoom(). */
+    _zoom:number = 1;
+    /** width('auto') / height('auto'): size this container to its content — see _autoSizeMm(). */
+    _widthAuto:boolean = false;
+    _heightAuto:boolean = false;
 
     _title:string; // title of container placed above container (for example: "Front elevation") 
     _caption:string; // caption of container placed below container (for example: "View from the front")
@@ -107,21 +112,44 @@ export class Container
         return this;
     }
 
-    /** Set width of this Container. Either in percentage of page area ([0-1]) or or units like 10mm, 20pnt */
+    /** Set width of this Container. A number is a fraction of the page area ([0-1]), or use
+     *  units ("30mm", "40%"), or 'auto' to size it to what the container holds. */
     width(n:WidthHeightInput)
     {
         this.checkOnPage();
-        if(!isWidthHeightInput(n)){ throw new Error(`Container::height: Invalid input "${n}": Use a number, number with units ("30mm") or string like "40%"!`)};
+        if(!isWidthHeightInput(n)){ throw new Error(`Container::width: Invalid input "${n}": Use a number, number with units ("30mm"), a string like "40%", or 'auto'!`)};
+
+        this._widthAuto = (n === 'auto');
+        if(this._widthAuto){ return }  // the value stands in until the content is measured
+
         [this._width, this._widthRelativeTo] = this._page._doc._resolveWidthHeightInput(n, this._page, 'width');
-        //console.info(`Container::width(): Set container width to ${this._width}`);
     }
 
-    /** Set height of this Container. Either in percentage of page area ([0-1]) or or units like 10mm, 20pnt */
+    /** Set height of this Container. See width(). */
     height(n:WidthHeightInput)
     {
         this.checkOnPage();
-        if(!isWidthHeightInput(n)){ throw new Error(`Container::height: Invalid input "${n}": Use a number, number with units ("30mm") or string like "40%"!`)};
+        if(!isWidthHeightInput(n)){ throw new Error(`Container::height: Invalid input "${n}": Use a number, number with units ("30mm"), a string like "40%", or 'auto'!`)};
+
+        this._heightAuto = (n === 'auto');
+        if(this._heightAuto){ return }
+
         [this._height, this._heightRelativeTo] = this._page._doc._resolveWidthHeightInput(n, this._page, 'height');
+    }
+
+    /** The size this container actually takes, given the size the page allotted it.
+     *
+     *  Where width()/height() were told 'auto', a subclass answers with what its content
+     *  needs. Only a view can: it knows its drawing and the scale it draws at, so the
+     *  millimeters follow. Everything else keeps the size it was given. */
+    _autoSizeMm(wMm:number, hMm:number):[number, number]
+    {
+        if(this._widthAuto || this._heightAuto)
+        {
+            console.warn(`Container::width|height('auto'): a ${this._type} cannot size itself to its `
+                + `content — only a view can (it knows its drawing and its scale). Kept ${+wMm.toFixed(1)}x${+hMm.toFixed(1)}mm.`);
+        }
+        return [wMm, hMm];
     }
 
     /** Set position with a ContainerAlignment or percentage of width and height [x,y] or absolute position with units */
@@ -180,20 +208,27 @@ export class Container
         return this;
     }
 
-    /** Set zoom level (which is relative to view container size) */
-    zoom(factor:number)
+    /** Zoom in or out of whatever this container would otherwise show: 2 fills it with half
+     *  the drawing, 1/2 with twice as much. Relative to the container, so it composes with
+     *  scale() rather than replacing it. */
+    zoom(factor:number):this
     {
-        if(typeof factor !== 'number'){ throw new Error(`Container::zoom(): Invalid input "${factor}" for zoom relative to container: Use a number like 2 (zoom in 2x) or 1/2 (zoom out 2x)`)};        
-        this._zoomLevel = factor as ScaleInput;
-        this._zoomRelativeTo = 'container';
+        if(typeof factor !== 'number' || !isFinite(factor) || factor <= 0){ throw new Error(`Container::zoom(): Invalid input "${factor}" for zoom relative to container: Use a number like 2 (zoom in 2x) or 1/2 (zoom out 2x)`)};
+        this._zoom = factor;
+        return this;
     }
 
-    /** Set zoom level relative to world size of Shapes */
-    scale(factor:ScaleInput)
+    /** The drawing scale of this container: 'fit' (default), 'auto', a ratio like 1/100, a
+     *  list to choose from, or a written scale like '1:100'.
+     *
+     *  NOTE: scale and zoom used to share one field (`_zoomLevel`) and be told apart by a
+     *  second one, so `.scale(1/100).zoom(2)` quietly threw the scale away. They are separate
+     *  now: the effective scale is the resolved scale times the zoom. */
+    scale(factor:ScaleInput):this
     {
-        if(!isScaleInput){ throw new Error(`Container::scale(): Invalid input "${factor}" to set zoom relative to world size: Use 'auto' (for automatic picking scale) or a number like 2 (2:1) or 1/10 (1:10)`)};
-        this._zoomLevel = factor;
-        this._zoomRelativeTo = 'world';
+        if(!isScaleInput(factor)){ throw new Error(`Container::scale(): Invalid input "${JSON.stringify(factor)}" to set the drawing scale: Use 'fit', 'auto' (largest standard scale that fits), a number like 2 (2:1) or 1/10 (1:10), a list of them, or a written scale like '1:100'`)};
+        this._scale = factor;
+        return this;
     }
 
     /** Turn on border on this container. Use without param to use default style */
@@ -205,9 +240,20 @@ export class Container
 
     //// ADDED CONTEXTUAL CONTENT ////
     
-    caption(s:string):this
+    /** Caption this container: a line of text under its frame.
+     *
+     *  A VIEW overrides this — see View.caption(). There the caption belongs to the drawing:
+     *  it goes inside the frame, it can name the scale, and it needs no text at all, since a
+     *  view knows what it is. Every other container is a box on a page with nothing to say
+     *  about itself, so it needs to be told. */
+    caption(s?:string|boolean|Record<string,any>):this
     {
-        if(!s || typeof s !== 'string'){ throw new Error(`DocPageContainer::caption(): Please supply a caption string!`)}
+        if(typeof s !== 'string' || !s.trim())
+        {
+            console.warn(`Container::caption(): a ${this._type} caption needs a string — `
+                + `caption("Parts list"). Only a view can caption itself (it uses its name and scale).`);
+            return this;
+        }
         this._caption = s;
         return this
     }
@@ -271,8 +317,8 @@ export class Container
 
         const wBase = this._widthRelativeTo === 'page' ? ctx.pageWidthMm : contentW;
         const hBase = this._heightRelativeTo === 'page' ? ctx.pageHeightMm : contentH;
-        const wMm   = (this._width  ?? 0) * wBase;
-        const hMm   = (this._height ?? 0) * hBase;
+        // 'auto' asks the container what its content needs; the rest keep what they were given
+        const [wMm, hMm] = this._autoSizeMm((this._width ?? 0) * wBase, (this._height ?? 0) * hBase);
 
         // Compute top-left position in page-local SVG coords (mm, y-down)
         // Doc model: position[0,1] is anchor in content-area relative [0-1], y-up.
@@ -363,8 +409,8 @@ export class Container
             index: this._index,
             contentAlign: this._contentAlign || this.CONTENT_ALIGN_DEFAULT,
             content: null,
-            zoomLevel: this._zoomLevel || 1,
-            zoomRelativeTo: this._zoomRelativeTo || 'container',
+            scale: this._scale ?? 'fit',
+            zoom: this._zoom ?? 1,
             docUnits: this._page._units, // needed to scale the content
             modelUnits: this._page?._docs?._archiyou?.modeler?.units(), // needed to scale the content
             caption: this._caption,

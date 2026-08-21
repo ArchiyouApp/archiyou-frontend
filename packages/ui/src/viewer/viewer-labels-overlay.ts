@@ -16,6 +16,9 @@ export interface OverlayLabel
   /** When set, clicking the label turns it into an inline editor that
    *  fires `dim-param-change` with `{ param, value }` on commit. */
   param?: string;
+  /** Source of the optional remap function of `.param(name, remap)`, passed on in
+   *  the commit event; the host rebuilds and applies it. */
+  paramRemapSrc?: string;
   interactive?: boolean;
   rawValue?: number | string;
 }
@@ -27,6 +30,8 @@ export interface DimensionParamChangeDetail
 {
   param: string;
   value: string;
+  /** Source of the script's remap function, when the dimension was bound with one. */
+  remapSrc?: string;
 }
 
 export interface OverlayLabelPos
@@ -176,7 +181,7 @@ export class ViewerLabelsOverlay extends LitElement
     // Schema validation happens in the host (model-viewer), which knows the
     // current script params. We just emit; the host silently drops invalid.
     this.dispatchEvent(new CustomEvent<DimensionParamChangeDetail>('dim-param-change', {
-      detail: { param: l.param, value },
+      detail: { param: l.param, value, remapSrc: l.paramRemapSrc },
       bubbles: true,
       composed: true,
     }));

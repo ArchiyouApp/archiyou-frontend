@@ -11,7 +11,9 @@ export type DocUnits = 'mm'|'cm'|'inch'|'pnt'
 export type DocUnitsWithPerc = DocUnits | '%' // Percent of page (side is dependent of measure)
 export type PercentageString = string // 100%, 5% etc.
 export type ValueWithUnitsString = number|string // string with number and DocUnitsWithPerc
-export type WidthHeightInput = number|PercentageString|ValueWithUnitsString;
+/** 'auto' sizes a container to what it holds — see Container.width()/height(). Only a view
+ *  can answer that today: it knows its drawing and the scale it is drawn at. */
+export type WidthHeightInput = number|PercentageString|ValueWithUnitsString|'auto';
 export type ContainerTableInput = string | DataRows
 
 export interface DocSettings {
@@ -81,8 +83,18 @@ export type ContainerHAlignment = 'left'|'center'|'right'
 export type ContainerVAlignment = 'top' | 'center' | 'bottom'
 export type ContainerAlignment = [ContainerHAlignment,ContainerVAlignment] // like [left,top]
 export type ContainerSide = 'width'|'height'
+/** @deprecated scale and zoom are separate concerns now — see Container.scale()/zoom().
+ *  Kept only because the brep types still declare their own copy. */
 export type ZoomRelativeTo = 'container'|'world'
-export type ScaleInput = 'auto'|number;
+/** A drawing scale, as a script writes it.
+ *   - 'fit'    fill the container, whatever ratio that comes to (the default, and what a
+ *              view has always done)
+ *   - 'auto'   the largest STANDARD scale that fits (1:50, 1:100, … — see scale.ts)
+ *   - number   an exact ratio: 1/100 is 1:100, 2 is 2:1
+ *   - number[] candidates; the largest that fits is used
+ *   - string   as written: '1:100', '1/100', or the imperial '1/4"=1\''
+ */
+export type ScaleInput = 'fit'|'auto'|number|Array<number|string>|string;
 export type ContainerSizeRelativeTo = 'page' | 'page-content-area'; // page-content area is page without the padding on both sides
 
 export type ContainerPositionCoordRel = number // [0-1]
@@ -112,8 +124,12 @@ export type ContainerData = { // Combine all Container types for convenience
 
     contentAlign:ContainerAlignment // alignment of content inside container
     content:any; // TODO: raw content
-    zoomLevel?:ScaleInput, // number or 'auto' [default]
-    zoomRelativeTo?:ZoomRelativeTo,
+    /** What the script asked for: 'fit' [default] | 'auto' | a ratio | a list | '1:100' */
+    scale?:ScaleInput,
+    /** Zoom on top of the scale (1 = none) */
+    zoom?:number,
+    /** What the drawing came out at, once resolved against the room it had. */
+    resolvedScale?:{ ratio:number, label:string, unitsPerMm:number, fitted:boolean, fits:boolean }|null,
     docUnits:DocUnits, 
     modelUnits:ModelUnits,
     
@@ -236,6 +252,61 @@ export interface DocGraphicInputOrthoLine extends DocGraphicInputBase
 
 
 //// DOCS:PAGE:CONTAINER:VIEW ////
+
+/** Options for a document view: `view('elevation', { scale: 1/100, caption: true, bar: true })` */
+export interface ViewOptions
+{
+    /** 'fit' [default] | 'auto' | 1/100 | [1/100,1/200] | '1:100' | '1/4"=1\'' */
+    scale?:ScaleInput
+    /** Zoom on top of the scale (2 = twice as big as the scale says) */
+    zoom?:number
+    /** A caption INSIDE the view, in a band at the bottom. true uses the view's name and,
+     *  when a scale was asked for, its label ("Elevation — 1:100"). */
+    caption?:boolean|string|CaptionOptions
+    /** A graduated scale bar in the same band. */
+    bar?:boolean|BarOptions
+    /** Line weight in millimeters ON THE PAGE. Default 0.25mm. */
+    lineWeight?:number
+    /** What to do when a requested scale does not fit the container:
+     *   - 'clip' [default] honour the scale and show what fits (with a warning)
+     *   - 'fit'  fall back to fitting the drawing */
+    overflow?:'clip'|'fit'
+}
+
+export interface CaptionOptions
+{
+    /** Default: the view's name */
+    text?:string
+    /** Append the scale label. Default: true when the view has a requested scale. */
+    scale?:boolean
+    /** Default '{name} — {scale}' */
+    format?:string
+    align?:ContainerHAlignment
+    /** Text height in millimeters on the page. Default 3. */
+    size?:number
+    color?:string
+}
+
+/** A graduated scale bar — the drawing's scale said in geometry rather than in words, so it
+ *  survives being photocopied or rescaled. */
+export interface BarOptions
+{
+    /** Length in MODEL units, or 'auto' [default] for a round number about a third of the
+     *  view's width. */
+    length?:number|'auto'
+    /** Number of segments. Default 4. */
+    divisions?:number
+    /** Bar height in millimeters on the page. Default 1.5. */
+    height?:number
+    align?:ContainerHAlignment
+    /** 'alternating' [default] fills every other segment; 'ticks' draws a line with ticks. */
+    style?:'alternating'|'ticks'
+    /** Label the ends. Default true. */
+    labels?:boolean
+    /** Unit for the labels. Default 'auto' (picked from the length). */
+    units?:'auto'|ModelUnits
+}
+
 
 export interface toSVGOptions
 {

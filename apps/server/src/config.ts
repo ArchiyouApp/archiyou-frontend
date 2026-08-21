@@ -108,7 +108,14 @@ export const config = {
    * timeout, which a synchronous loop can starve; see ExecutionWorker).
    */
   modules: {
-    /** Directory of installed modules. Empty ⇒ feature disabled. */
+    /**
+     * Directory of installed modules. Empty ⇒ feature disabled.
+     *
+     * May name SEVERAL directories, comma- or colon-separated, scanned in order with the
+     * first definition of an id winning. One was enough while every module lived in a single
+     * private repository; an open-source module gets its own repository checked out
+     * alongside, and the backend has to see both.
+     */
     dir: process.env.SERVER_MODULES_DIR ?? '',
     /**
      * Development mode: watch `dir` and re-scan on change, serve bundles

@@ -3,7 +3,12 @@ import { ModelUnitsSchema, PointLikeSchema } from '../modeler/schemas'
 
 export const DimensionOptionsSchema = Type.Optional(
     Type.Object({
+        /** The model unit the VALUE is in (mm, inch, …) — not whether to print it. */
         units:        Type.Optional(ModelUnitsSchema),
+        /** Print the unit after the value. Off by default: a metric drawing writes bare
+         *  numbers and states the unit once in the title block. Imperial marks (6'-3") are
+         *  notation rather than a unit suffix and are always kept. */
+        showUnits:    Type.Optional(Type.Boolean()),
         offset:       Type.Optional(Type.Number()),
         offsetVec:    Type.Optional(PointLikeSchema),
         // Use inline literals (no `default`) to prevent TypeBox from injecting

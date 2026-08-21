@@ -36,7 +36,7 @@ import type { PageOrientation, ScaleInput, ImageOptions, TextOptions,
         ContainerTableInput, TableContainerOptions as TableOptions,
         DocGraphicInputRect, DocGraphicInputCircle, DocGraphicInputOrthoLine,
         ContainerBlock, TitleBlockInput, LabelBlockOptions,
-        DocSettings, DocUnits, DocData, DocSVGPage } from './types'
+        DocSettings, DocUnits, DocData, DocSVGPage, ViewOptions } from './types'
 
 import { Document } from './Document'
 import { PDFExporter } from './PDFExporter'
@@ -256,7 +256,7 @@ export class Docs
     size(size:PageSize):Document { return this.checkAndMakeDefaultDoc().size(size); }
     padding(w:WidthHeightInput, h?:WidthHeightInput):Document { return this.checkAndMakeDefaultDoc().padding(w,h); }
     orientation(o:PageOrientation):Document { return this.checkAndMakeDefaultDoc().orientation(o); }
-    view(name?:string, shapes?:ShapeCollection):Document { return this.checkAndMakeDefaultDoc().view(name, shapes); }
+    view(name?:string, shapesOrOptions?:ShapeCollection|string|ViewOptions, options?:ViewOptions):Document { return this.checkAndMakeDefaultDoc().view(name, shapesOrOptions, options); }
     image(url:string, options?:ImageOptions):Document { return this.checkAndMakeDefaultDoc().image(url, options); }
     text(text:string|number, options?:TextOptions):Document { return this.checkAndMakeDefaultDoc().text(text, options); }
     textarea(text:string|number, options?:TextOptions):Document { return this.checkAndMakeDefaultDoc().textarea(text, options); }
@@ -276,7 +276,7 @@ export class Docs
     pivot(x:number|ContainerPositionLike|string|Array<number|number>, y?:number):Document { return this.checkAndMakeDefaultDoc().pivot(x, y); }
     border(style?:DocPathStyle):Document { return this.checkAndMakeDefaultDoc().border(style); }
     contentAlign(align:ContainerHAlignment|ContainerVAlignment|ContainerAlignment):Document { return this.checkAndMakeDefaultDoc().contentAlign(align); }
-    caption(s?:string):Document { return this.checkAndMakeDefaultDoc().caption(s); }
+    caption(s?:string|boolean|Record<string,any>):Document { return this.checkAndMakeDefaultDoc().caption(s); }
     title(s?:string):Document { return this.checkAndMakeDefaultDoc().title(s); }
     shapes(shapes:ShapeCollection|string, all:boolean=false):Document { return this.checkAndMakeDefaultDoc().shapes(shapes, all); }
     zoom(level:number):Document { return this.checkAndMakeDefaultDoc().zoom(level); }

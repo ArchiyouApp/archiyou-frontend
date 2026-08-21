@@ -217,7 +217,8 @@ export class Make
 
         const rightMem = leftMem.copy().move(width - thickness, 0, 0).name('frameRight');
 
-        return this.modeler.collection(bottomMem, topMem, leftMem, rightMem).name('Frame');
+        // group(): a frame is handed back as one unit, so it gets its own layer in the scene
+        return this.modeler.group(bottomMem, topMem, leftMem, rightMem).name('Frame');
     }
 
     /** Make an advanced wood frame for a wall
@@ -241,8 +242,11 @@ export class Make
         grid = grid || DEFAULT_GRID_DISTANCE;
         studThickness = studThickness || DEFAULT_STUD_THICKNESS;
 
-        // start wall collection
-        const wall = this.modeler.collection().name('wall');
+        // start wall collection. group(): the wall is the scene unit - its addGroup() calls
+        // below nest studs/plates/... as sub-layers under it. The intermediate collections it
+        // gathers stay plain collection()s: they are bags, and grouping them here would only
+        // move their shapes twice and leave empty layers behind.
+        const wall = this.modeler.group().name('wall');
 
         const OPENING_SNAP_POSITION_WITHIN_DISTANCE = studThickness * 2; // kingstud + frame
         const MIN_OPENING_GAP = studThickness * 2; // minimum gap between openings for two king studs
@@ -1193,7 +1197,7 @@ export class Make
             throw new Error(`Make::_layout2DBoxes(): Make sure the stock size (stockWidth or stockHeight, depending on direction) is bigger than the grid!`);
         }
 
-        const createdElems = this.modeler.collection();
+        const createdElems = this.modeler.group(); // returned as one unit: give it a layer
         createdElems.name('boards'); // name() is a getter/setter, so keep it off the chain
         let cursor = this._alignment2DToPoint(o.start, o.width, o.height);
 
@@ -1351,7 +1355,7 @@ export class Make
 
         if (!withSpace) { return strut; }
 
-        return this.modeler.collection(
+        return this.modeler.group( // returned as one unit: strut + its space diagram
             strut,
             this.modeler.rectBetween([0, 0, 0], [space[0], space[1], 0]).color('blue'),
         );
@@ -1490,7 +1494,7 @@ export class Make
 
         const SHEET_MARGIN = 100;
         const placedIndices = new Set<number>();
-        const result = this.modeler.collection().name('packed');
+        const result = this.modeler.group().name('packed'); // sheets become sub-layers below
 
         for (let pi = 0; pi < solution.patterns.length; pi++)
         {

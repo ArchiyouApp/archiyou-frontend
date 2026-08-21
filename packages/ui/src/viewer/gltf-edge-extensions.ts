@@ -267,6 +267,14 @@ function _applyNativeLineStyles(root: THREE.Object3D): void
         const material = Array.isArray(node.material) ? node.material[0] : node.material;
         const bentley = material?.userData?.gltfExtensions?.['BENTLEY_materials_line_style'] as
             { width?: number; pattern?: number } | undefined;
+
+        // A curve exported with a colour gradient carries a COLOR_0 accessor, which GLTFLoader
+        // has already turned into a `color` attribute. Such a curve needs handling even when it
+        // has NO line-style extension — a plain hairline gradient would otherwise be skipped by
+        // the `continue` below and never get its tone-mapping opt-out or its marker.
+        const hasGradient = !!node.geometry?.attributes?.color;
+        if (hasGradient) { _markVertexGradient(node, material); }
+
         if (!bentley) continue;
 
         const width   = bentley.width ?? 1;
@@ -283,6 +291,30 @@ function _applyNativeLineStyles(root: THREE.Object3D): void
             node.computeLineDistances();
         }
     }
+}
+
+/**
+ * Prepare a natively-loaded line that carries per-vertex colour.
+ *
+ * GLTFLoader already sets `vertexColors` from a COLOR_0 accessor, so the colours render on their
+ * own. Two things still have to happen:
+ *
+ *  - **Opt out of tone mapping.** The renderer uses AgX, which would shift every stop away from
+ *    the colour the script actually asked for. The grid helper does the same for the same reason.
+ *  - **Mark the object.** `_applyLineStyleOverride` in model-viewer overwrites `material.color`
+ *    on every line whenever the active view style declares one — and because glTF vertex colour
+ *    is MULTIPLIED by the material colour, that would tint or black out the whole gradient. The
+ *    flag is what tells it to leave this line alone.
+ */
+function _markVertexGradient(line: THREE.Line, material: THREE.Material | undefined): void
+{
+    line.userData.hasVertexGradient = true;
+    if (!material) return;
+    material.toneMapped = false;
+    (material as THREE.LineBasicMaterial).vertexColors = true;
+    // White, so the per-vertex colours come through unmultiplied.
+    (material as THREE.LineBasicMaterial).color?.setHex(0xffffff);
+    material.needsUpdate = true;
 }
 
 /** Replace a native THREE.Line with a screen-space-width LineSegments2 in the same slot. */
@@ -305,13 +337,27 @@ function _upgradeToFatLine(
     const opacity = source.opacity ?? 1;
     const dashed = pattern !== 0xFFFF;
 
+    // Read the colours BEFORE the geometry is disposed at the end of this function — that
+    // disposal is what silently dropped vertex colours on every thick line.
+    const colors = _segmentColors(line);
+    const hasGradient = !!colors && colors.length === positions.length;
+
     const material = new LineMaterial({
-        color: color.getHex(),
+        // White when the colours come per-vertex: LineMaterial's fragment shader MULTIPLIES
+        // material.color by the interpolated vertex colour, so carrying the source colour over
+        // (usually near-black) would multiply the whole gradient away.
+        color: hasGradient ? 0xffffff : color.getHex(),
         linewidth: width, // px — LineMaterial.resolution is kept in sync on resize
         opacity,
         transparent: source.transparent || opacity < 1,
         dashed,
+        vertexColors: hasGradient,
     });
+    if (hasGradient)
+    {
+        // AgX tone mapping would shift every stop off the authored colour.
+        material.toneMapped = false;
+    }
     if (dashed)
     {
         const { dashSize, gapSize } = _dashSizesFromPattern(pattern);
@@ -320,6 +366,7 @@ function _upgradeToFatLine(
     }
 
     const geometry = new LineSegmentsGeometry().setPositions(positions);
+    if (hasGradient) { geometry.setColors(colors!); }
     const fat = new LineSegments2(geometry, material);
     if (dashed) fat.computeLineDistances();
 
@@ -327,6 +374,9 @@ function _upgradeToFatLine(
     // scene explorer and click-selection all read name / userData from this object.
     fat.name        = line.name;
     fat.userData    = { ...line.userData };
+    // The view-style override keys off this; it must survive the swap even if the source line
+    // was reached without going through _markVertexGradient.
+    if (hasGradient) { fat.userData.hasVertexGradient = true; }
     fat.visible     = line.visible;
     fat.renderOrder = line.renderOrder;
     fat.frustumCulled = line.frustumCulled;
@@ -347,36 +397,75 @@ function _upgradeToFatLine(
     source.dispose();
 }
 
-/** Flatten a line primitive's vertices to the [x1,y1,z1, x2,y2,z2, ...] pairs LineSegmentsGeometry wants. */
-function _segmentPositions(line: THREE.Line): number[]
+/**
+ * Walk a line primitive's topology, calling `fn` with the two vertex indices of each segment.
+ *
+ * Positions and per-vertex colours MUST be expanded by the same walk: LineSegmentsGeometry
+ * pairs them by position in the array, so a colour list built from a slightly different
+ * traversal — one that forgot LineLoop's closing segment, say — would silently colour every
+ * segment with its neighbour's value. Sharing one walker makes that class of bug impossible
+ * rather than merely unlikely.
+ */
+function _forEachSegment(line: THREE.Line, fn: (a: number, b: number) => void): void
 {
     const geometry = line.geometry;
     const pos = geometry.attributes.position;
-    if (!pos) return [];
+    if (!pos) return;
 
     const index = geometry.index;
     const count = index ? index.count : pos.count;
     const vertexAt = (i: number) => (index ? index.getX(i) : i);
 
+    if ((line as THREE.LineSegments).isLineSegments)
+    {
+        for (let i = 0; i + 1 < count; i += 2) fn(vertexAt(i), vertexAt(i + 1));
+    }
+    else
+    {
+        // LINE_STRIP (and LineLoop, which additionally closes back to the first vertex)
+        for (let i = 0; i + 1 < count; i++) fn(vertexAt(i), vertexAt(i + 1));
+        if ((line as THREE.LineLoop).isLineLoop && count > 2) fn(vertexAt(count - 1), vertexAt(0));
+    }
+}
+
+/** Flatten a line primitive's vertices to the [x1,y1,z1, x2,y2,z2, ...] pairs LineSegmentsGeometry wants. */
+function _segmentPositions(line: THREE.Line): number[]
+{
+    const pos = line.geometry.attributes.position;
+    if (!pos) return [];
+
     const out: number[] = [];
-    const pushSegment = (a: number, b: number) =>
+    _forEachSegment(line, (a, b) =>
     {
         out.push(
             pos.getX(a), pos.getY(a), pos.getZ(a),
             pos.getX(b), pos.getY(b), pos.getZ(b),
         );
-    };
+    });
+    return out;
+}
 
-    if ((line as THREE.LineSegments).isLineSegments)
+/**
+ * The same expansion for per-vertex colour, for `LineSegmentsGeometry.setColors()`.
+ *
+ * Returns null when the geometry has no colour attribute, which is the normal case.
+ *
+ * Note `setColors` wants **rgb per segment endpoint** — it does not expand a strip the way
+ * LineGeometry does — so this mirrors `_segmentPositions` exactly, six floats per segment.
+ */
+function _segmentColors(line: THREE.Line): number[] | null
+{
+    const col = line.geometry.attributes.color;
+    if (!col) return null;
+
+    const out: number[] = [];
+    _forEachSegment(line, (a, b) =>
     {
-        for (let i = 0; i + 1 < count; i += 2) pushSegment(vertexAt(i), vertexAt(i + 1));
-    }
-    else
-    {
-        // LINE_STRIP (and LineLoop, which additionally closes back to the first vertex)
-        for (let i = 0; i + 1 < count; i++) pushSegment(vertexAt(i), vertexAt(i + 1));
-        if ((line as THREE.LineLoop).isLineLoop && count > 2) pushSegment(vertexAt(count - 1), vertexAt(0));
-    }
+        out.push(
+            col.getX(a), col.getY(a), col.getZ(a),
+            col.getX(b), col.getY(b), col.getZ(b),
+        );
+    });
     return out;
 }
 
@@ -400,6 +489,9 @@ function _createDashedNativeMaterial(
         depthTest: source.depthTest,
         depthWrite: source.depthWrite,
         toneMapped: source.toneMapped,
+        // Without this a HAIRLINE DASHED curve silently loses its gradient: this builds a fresh
+        // material from scratch, and every property not named here is dropped.
+        vertexColors: (source as THREE.LineBasicMaterial).vertexColors === true,
     });
 }
 

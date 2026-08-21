@@ -50,6 +50,10 @@ interface DimensionLineData
    *  Combined with `interactive`, the overlay turns this label into an
    *  inline editor that writes back to the param-menu. */
   param?: string;
+  /** Source of the optional remap function of `.param(name, remap)` — maps the
+   *  edited dimension value to the parameter value. Re-created here, in the main
+   *  thread, so it is self-contained by contract (see DimensionLine.bindParam). */
+  paramRemapSrc?: string;
   interactive?: boolean;
 }
 
@@ -83,6 +87,8 @@ export interface HtmlLabelDef
   /** When set, the overlay renders this label as an inline editor that
    *  writes back to the named script parameter on commit. */
   param?: string;
+  /** Source of the optional `.param(name, remap)` function (see DimensionLineData). */
+  paramRemapSrc?: string;
   interactive?: boolean;
   /** Raw numeric value (for dimensions) — used as the starting input value
    *  when the user clicks the label to edit it. */
@@ -204,6 +210,7 @@ export async function applyAnnotations(
       variant: 'dimension',
       anchorLocal: lp,
       param: d.param,
+      paramRemapSrc: d.paramRemapSrc,
       interactive: !!d.interactive && !!d.param,
       rawValue: d.value,
       dim: { value: d.value, units: d.units, showUnits: d.showUnits, round: d.round, roundDecimals: d.roundDecimals },

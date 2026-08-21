@@ -15,6 +15,7 @@
 
 // Runner (main thread)
 export { Runner } from './runner/Runner';
+export { ScriptExitSignal, isScriptExitSignal, SCRIPT_EXIT_WARNING } from './runner/ScriptExit';
 
 // RunnerWorker (Web Worker) + helpers
 export { RunnerWorker, ArchiyouCoreLoadError } from './runner/worker/RunnerWorker';

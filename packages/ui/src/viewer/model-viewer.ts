@@ -1543,6 +1543,15 @@ export class ModelViewer extends SignalWatcher(LitElement)
       const mat = (node as any).material;
       if (mat?.color)
       {
+        // A line carrying per-vertex colour keeps its own. Both the native and the fat-line
+        // shaders MULTIPLY material.color by the interpolated vertex colour, so forcing a view
+        // style's line colour onto it would tint the gradient — or, with a dark style colour,
+        // black it out entirely. Only the colour is skipped; opacity, width and dash still apply.
+        //
+        // This has to stay idempotent: a light/dark theme flip re-runs the whole view style over
+        // every line, so it must not accumulate or drift on repeated application.
+        const keepsOwnColor = node.userData.hasVertexGradient === true;
+
         this._savedLineColors.set(node, {
           color: mat.color.clone(),
           opacity: mat.opacity ?? 1,
@@ -1552,7 +1561,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
           dashSize: 'dashSize' in mat ? mat.dashSize : undefined,
           gapSize: 'gapSize' in mat ? mat.gapSize : undefined,
         });
-        if (style.lines.color !== undefined) mat.color.setHex(style.lines.color);
+        if (style.lines.color !== undefined && !keepsOwnColor) mat.color.setHex(style.lines.color);
         if (style.lines.opacity !== undefined)
         {
           mat.opacity = style.lines.opacity;
@@ -1582,7 +1591,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
       const mat = (obj as any).material;
       if (mat?.color)
       {
-        mat.color.copy(saved.color);
+        // Never overridden above, so never restored — see _applyLineStyleOverride.
+        if (obj.userData.hasVertexGradient !== true) { mat.color.copy(saved.color); }
         mat.opacity = saved.opacity;
         mat.transparent = saved.transparent;
         if (saved.linewidth !== undefined && 'linewidth' in mat) mat.linewidth = saved.linewidth;
@@ -1672,7 +1682,8 @@ export class ModelViewer extends SignalWatcher(LitElement)
   // ── 8b. Dimension → param updates ──
 
   /** Forwarded from <viewer-labels-overlay> when the user edits a bound
-   *  dimension label. We coerce to the parameter's declared type, validate
+   *  dimension label. We coerce to the parameter's declared type, run the
+   *  script's optional remap function (`.param(name, remap)`) over it, validate
    *  against its JSON schema, and only call updateParam() on success — silent
    *  drops on invalid input per the design (mid-typing values can fail
    *  min/multipleOf, that's fine). */
@@ -1690,11 +1701,56 @@ export class ModelViewer extends SignalWatcher(LitElement)
 
     const coerced = this._coerceParamValue(param, detail.value);
     if (coerced === undefined) return;
-    if (!param.validateValue(coerced)) return; // silent — wait for the user to type more
 
-    updateParam(detail.param, { value: coerced });
+    // The dimension is measured in model units; the param need not be (a model in
+    // mm dimensioning a param in cm). The script's remap bridges the two.
+    let next = detail.remapSrc
+      ? this._applyDimRemap(detail.remapSrc, coerced, param)
+      : coerced;
+    if (next === undefined) return;
+
+    // Same prechecks as the handle map path: snap to the param's step before validating,
+    // so a remapped 79.6 lands on a multipleOf:1 param instead of being dropped.
+    for (const { check, fix } of PARAM_MAP_PRECHECKS)
+    {
+      if (check(param as any)) next = fix(next, param as any);
+    }
+
+    if (!param.validateValue(next)) return; // silent — wait for the user to type more
+
+    updateParam(detail.param, { value: next });
     scheduleExecution();
   };
+
+  /** Rebuild the script's remap function from source and map the edited dimension
+   *  value to a parameter value. The function crossed the worker boundary as text,
+   *  so it only ever sees its own arguments — `(value, currentParamValue)`.
+   *  Returns undefined when it can't be rebuilt or throws (the edit is then dropped). */
+  private _applyDimRemap(src: string, value: unknown, param: any): unknown
+  {
+    let fn: ((v: unknown, current: unknown) => unknown) | null = null;
+    try
+    {
+      // eslint-disable-next-line no-eval
+      fn = (0, eval)('(' + src + ')');
+    }
+    catch (err)
+    {
+      console.error(`Dimension remap function for param "${param.name}" could not be reconstructed:`, err);
+      return undefined;
+    }
+
+    try
+    {
+      const out = fn!(value, param._value ?? param.default);
+      return out === undefined ? undefined : out;
+    }
+    catch (err)
+    {
+      console.error(`Dimension remap function for param "${param.name}" threw:`, err);
+      return undefined;
+    }
+  }
 
   /** Coerce the raw input string to the parameter's value type.
    *  Returns undefined when the string can't be interpreted as the target type
@@ -1839,6 +1895,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
         angle: l.angle,
         circle: l.circle,
         param: l.param,
+        paramRemapSrc: l.paramRemapSrc,
         interactive: l.interactive,
         rawValue: l.rawValue,
       }));
@@ -2219,6 +2276,7 @@ export class ModelViewer extends SignalWatcher(LitElement)
       angle: l.angle,
       circle: l.circle,
       param: l.param,
+      paramRemapSrc: l.paramRemapSrc,
       interactive: l.interactive,
       rawValue: l.rawValue,
     }));

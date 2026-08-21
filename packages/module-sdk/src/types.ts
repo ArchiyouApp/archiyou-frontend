@@ -62,7 +62,7 @@ export interface AyModuleManifest {
     /** Semver of the module itself. Appears in the bundle URL, so it doubles as
      *  the cache key — bump it to invalidate a deployed bundle. */
     version: string;
-    /** Semver RANGE of @archiyou/core this module supports, e.g. '^1.0.0'.
+    /** Semver RANGE of @archiyou/core this module supports, e.g. '^0.9.0'.
      *  Checked at load time. This is what replaces a pinned submodule SHA:
      *  module and engine live in separate repos, so compatibility has to be
      *  declared rather than inferred from a checkout. */
@@ -74,6 +74,24 @@ export interface AyModuleManifest {
     docsUrl?: string;
     /** Optional autocomplete entries, merged into the editor for entitled users. */
     completions?: Array<AyModuleCompletion>;
+    /**
+     * Available to everyone, with no entitlement.
+     *
+     * The module system exists to gate closed-source capabilities, so gating is the
+     * default and this is the deliberate opt-out. An open-source module — one whose
+     * source anybody can read and build — has nothing to protect, and requiring an
+     * admin grant before it would run made it administratively indistinguishable
+     * from a paid one.
+     *
+     * A public module still appears in the catalog, still declares its `engine`
+     * range, and is still refused if its name collides with a core global. The only
+     * thing that changes is that `entitled` is true for everybody, so the bundle
+     * route and the server-call route stop checking `users.modules`.
+     *
+     * Set by the DEPLOYMENT, not by the user: manifests live in SERVER_MODULES_DIR,
+     * so whoever installs a module decides whether it is public.
+     */
+    public?: boolean;
 }
 
 /** A manifest as served by `GET /modules`, annotated for the current caller.

@@ -26,7 +26,7 @@ It's specialized for making daily things like constructions, furniture and house
 * *Upcoming*: Manage your own projects
 * **Full open source stack licensed under Apache2**
 
-
+<p align="center"><img src='./documentation/assets/ay_enzo_mari_docs_ani.gif' width="80%"/></p>
 
 #### How Archiyou can be helpful
 
@@ -36,7 +36,7 @@ It's specialized for making daily things like constructions, furniture and house
 | (Digital) Designers | Make your design parametric, add documentation, offer it as a configurator and show it off to others. See [our editor](https://next.archiyou.com). You can also use our designs as templates for your own projects.  |
 | Developers | Make a (parametric) 3D model by scripting and easily take it wherever you like. If you want to use our geometry kernel see our `packages/core` or npm: [`meshup`](https://www.npmjs.com/package/@archiyou/meshup) or the entire core (upcoming as npm package)  |
 | Professional Makers | Use our customizable products in your projects. See [our library](https://archiyou.com). |
-| Producers | Offer your clients customizable products and automate production without being dependent of CAD licenses |
+| Producers | Offer your clients customizable products and automate design and production without being dependent of CAD licenses |
 
 
 #### Examples
@@ -97,12 +97,13 @@ The entire Archiyou is in this monorepo. It contains all components needed to ho
 
 Here are the most important components:
 
-* Editor - [`apps/editor`](./apps/editor/) - The web interface in which to create and publish CAD scripts
-* Configurator - [`packages/ui/src/configator`](./packages/ui/con) - This allows end-users to configure a parametric model. Configurators can be embedded inside other websites like a Youtube video. Please note that it's served together with the rest of the stack.
-* Server - [`apps/server`](./apps/server/) - The entire backend for the Archiyou platform which serves the Editor to persist and manage scripts and execute scripts on the backend. `Fastify, BullMQ, SQLite, Drizzle ORM, Redis`
-* Core - [`packages/core`](./packages/core) - The core modeling for executing CAD script to create models with styling, hierarchy, calculations and documentation. We use two kernels: [`Meshup`](https://github.com/ArchiyouApp/meshup) (mesh based: speed) and a BREP one based on `OpenCascade` (slow but advanced). 
-* UI - [`packages/ui`](./packages/ui) - All UI components that make up the editor and configurator. `Lit, WebAwesome`
-* Rust-based powertools - [`packages/gdrr2bp-wasm`](./packages/gdrr2bp-wasm/) and [`collada-wasm`](./packages/collada-wasm/)   
+* **Editor** - [`apps/editor`](./apps/editor/) - The web interface in which to create and publish CAD scripts
+* **Configurator** - [`packages/ui/src/configator`](./packages/ui/con) - This allows end-users to configure a parametric model. Configurators can be embedded inside other websites like a Youtube video. Please note that it's served together with the rest of the stack.
+* **Server** - [`apps/server`](./apps/server/) - The entire backend for the Archiyou platform which serves the Editor to persist and manage scripts and execute scripts on the backend. `Fastify, BullMQ, SQLite, Drizzle ORM, Redis`
+* **Core** - [`packages/core`](./packages/core) - The core modeling for executing CAD script to create models with styling, hierarchy, calculations and documentation. We use two kernels: [`Meshup`](https://github.com/ArchiyouApp/meshup) (mesh based: speed) and a BREP one based on `OpenCascade` (slow but advanced). 
+* **UI** - [`packages/ui`](./packages/ui) - All UI components that make up the editor and configurator. `Lit, WebAwesome`
+* **Extendability**: Look at [`modules`](./modules) and [`plugins`](./plugins) - *work in progress*
+* **Rust-based powertools** - [`packages/gdrr2bp-wasm`](./packages/gdrr2bp-wasm/) and [`collada-wasm`](./packages/collada-wasm/)   
 
 Please look at the seperate README's for the seperate documention of these parts. 
 

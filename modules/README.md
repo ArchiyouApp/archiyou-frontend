@@ -177,6 +177,36 @@ normally.
 Nothing you add here can be committed to this repository — `.gitignore` covers `/modules/*`, and
 the `private-modules-boundary` CI job fails the build if anything under it is ever tracked.
 
+### The lockfile leaks too
+
+`pnpm-lock.yaml` is tracked, and pnpm records **one importer per workspace project** — so any
+plain `pnpm install` with the overlay cloned in writes your private module names, and their full
+dependency lists, into it. The deps alone are usually enough to say what a module does. Expect to
+see this the first time you install after cloning a module in:
+
+```
+$ git status --short
+ M pnpm-lock.yaml      # +300-odd lines, all of them modules/…
+```
+
+Do not commit it. Regenerate the lockfile as a public checkout would have it:
+
+```bash
+pnpm lockfile:public
+```
+
+That parks each overlay directory behind a dot-prefix (which the `modules/*` globs do not match),
+reruns `pnpm install --lockfile-only`, and puts everything back. pnpm tolerates importers with no
+directory on disk, so the result still installs cleanly here, with the overlay present.
+
+If you forget, the `no private module may appear in the lockfile` step of the
+`private-modules-boundary` CI job fails the build and names the leaked importers.
+
+One consequence to expect: while the overlay is cloned in, `pnpm install --frozen-lockfile` fails
+locally, because those importers are deliberately absent from the committed lockfile. Plain
+`pnpm install` is the local command; frozen is for CI and the server image, which never see
+`modules/`.
+
 ---
 
 ## Anatomy of a module
@@ -482,6 +512,8 @@ per request, so there is no restart, no re-login, and no token to expire.
 | Editor autocomplete missing | Only entitled modules are registered, from `manifest.completions`. |
 | Edits have no effect, old code keeps running | Dev mode is off. Check for `👀 Watching script modules` at boot and `"rev"` in `GET /modules`; force with `SERVER_MODULES_DEV=1`. |
 | Edits have no effect, and `rev` *is* changing | The build did not run. Check the `build` pane of `pnpm dev:modules`. |
+| `pnpm-lock.yaml` shows hundreds of changed lines after `pnpm install` | Expected — pnpm wrote an importer per overlay module. Run `pnpm lockfile:public`; never commit it. |
+| `pnpm install --frozen-lockfile` fails locally | Also expected while the overlay is cloned in. Use plain `pnpm install`; frozen is for CI and the server image. |
 
 ---
 

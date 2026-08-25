@@ -33,6 +33,7 @@ import { userState } from '@archiyou/editor/src/state/workspace';
 import { fetchMyConfigurators, unpublishConfigurator } from '@archiyou/editor/src/services/publishing';
 import { assetUrl } from '@archiyou/editor/src/services/api';
 import { OVERLAY_MENU_WIDTH, OVERLAY_MENU_HEIGHT } from '@archiyou/editor/src/settings';
+import { onCurrentOrigin } from './publish-constants';
 
 /** Format an ISO date string as "DD/MM/YYYY HH:MM" (locale-aware). */
 function fmtDate(iso: string | null | undefined): string {
@@ -166,7 +167,8 @@ export class ManageConfiguratorsMenu extends SignalWatcher(LitElement)
     const title = group.name;
     const isLatest = (group.versions[0]?.id ?? '') === id;
     const isPublic = item.published?.public ?? false;
-    const url = item.published?.url;
+    // Stored server-side from FRONTEND_URL at publish time — show it on this origin.
+    const url = onCurrentOrigin(item.published?.url);
     const confirming = this._confirmingId === id;
     const deleting = this._deletingId === id;
 

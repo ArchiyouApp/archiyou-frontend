@@ -2,7 +2,7 @@
 
 > [!IMPORTANT]
 > **NEW VERSION IS COMING**
-> This repo offers the latest version of Archiyou, but our main website and editor are not updated yet. If you want to try the new editor: [next.archiyou.com](https://next.archiyou.com). More is coming!
+> This repo offers the latest version of Archiyou, but our main website and editor are not updated yet. If you want to try the new editor: [next.archiyou.com](https://next.archiyou.com). More is coming! 
 
 
 [Archiyou](https://archiyou.com) is an online code CAD platform and open source toolchain for **open parametric design and automation**.
@@ -41,52 +41,20 @@ It's specialized for making daily things like constructions, furniture and house
 
 #### Examples
 
-Here are some examples. Clicking on them will take you to the editor!
+A few examples and designs built with Archiyou. Click on them to open in the editor. 
 
 <table>
   <tr>
-    <td>
-        <a href="#TODO">
-            <img src="./documentation/assets/ay_example_solid.png">
-        </a>
-    </td>
-    <td>
-        <a href="#TODO">
-            <img src="./documentation/assets/ay_example_curves.png">
-        </a>
-    </td>
-       <td>
-        <a href="#TODO">
-            <img src="./documentation/assets/ay_example_tomy.png">
-        </a>
-    </td>
-    <td>
-        <a href="#TODO">
-            <img src="./documentation/assets/ay_example_artcrate.png">
-        </a>
-    </td>
-    <td>
-        <a href="#TODO">
-            <img src="./documentation/assets/ay_example_workbench.png">
-        </a>
-    </td>
-    <td>
-        <a href="https://editor.archiyou.com/_/archiyou/scripts/BooleanBlob:0.1">
-            <img src="./documentation/assets/ay_example_mari.png">
-        </a>
-    </td>
+    <td><a href="https://next.archiyou.com/editor/archiyou/example_solids"><img src="./documentation/assets/ay_example_solid.png"></a></td>
+    <td><a href="https://next.archiyou.com/editor/archiyou/examples_curves"><img src="./documentation/assets/ay_example_curves.png"></a></td>
+    <td><img src="./documentation/assets/ay_example_tomy.png"></td>
+    <td><a href="https://next.archiyou.com/editor/archiyou/artcrate"><img src="./documentation/assets/ay_example_artcrate.png"></a></td>
   </tr>
   <tr>
-    <td>
-        <a href="#TODO">
-            <img src="./documentation/assets/ay_example_roof.png">
-        </a>
-    </td>
-    <td>
-        <a href="#TODO">
-            <img src="./documentation/assets/ay_example_house.png">
-    </td>
-    
+    <td><a href="https://next.archiyou.com/editor/archiyou/workbench"><img src="./documentation/assets/ay_example_workbench.png"></a></td>
+    <td><a href="https://next.archiyou.com/editor/archiyou/maritavolo"><img src="./documentation/assets/ay_example_mari.png"></a></td>
+    <td><img src="./documentation/assets/ay_example_roof.png"></td>
+    <td><img src="./documentation/assets/ay_example_house.png"></td>
   </tr>
 </table>
 
@@ -134,7 +102,7 @@ Rust is only required to rebuild a kernel (`pnpm build:wasm`).
 pnpm dev                        # editor + server together
 pnpm dev:editor                 # editor only
 pnpm dev:server                 # server only
-pnpm test                       # do some testing
+pnpm test                       # run all tests
 ```
 
 The editor's API base URL is baked in **at build time** — see
@@ -150,7 +118,7 @@ The editor's API base URL is baked in **at build time** — see
 
 ## Deploying
 
-The `docker-compose.yml` in the root of this monorepo offers a complete single-host deployment: Caddy as proxy and automatic HTTPS in front of the API, Editor webapp and server-side execution stack (BullMQ and Redis). Currently the last one is disabled by default. Uncomment the worker service in the `docker-compose.yml` to enable server-side execution. 
+The `docker-compose.yml` in the root of this monorepo offers a complete single-host deployment: `Caddy` as proxy and automatic HTTPS in front of the API, Editor webapp and server-side execution stack (`BullMQ` and `Redis`). Currently the last one is disabled by default. Uncomment the worker service in the `docker-compose.yml` to enable server-side execution. 
 
 ### Configuration
 
@@ -216,7 +184,7 @@ Please reach out for more information, ideas or collaboration!
 
 ## AI disclosure
 
-Archiyou started as a good old fashioned non-AI project. Its core was always open source (see deprecated https://github.com/ArchiyouApp/archiyou-core/). While porting and open sourcing the rest of our stack AI was used. First as code assistant (until march 2026), then as agent. We mainly used Claude Sonnet, and then Opus. Most of the work we plan extensively within our team, supported by the agent. The agent codes and writes tests, while we review the code, guide coding standards, clarity and test the applications. All our parametric CAD scripts are hand-crafted. 
+Archiyou started as a good old fashioned non-AI project. Its core was always open source (see deprecated https://github.com/ArchiyouApp/archiyou-core/). While porting and open sourcing the rest of our stack AI was used. First as code assistant (until march 2026), then as agent. We mainly used Claude Sonnet, and then Opus. Most of the work we plan extensively within our team, supported by agents. The agent codes and writes tests, while we review the code, guide coding standards, clarity and test the applications. All our parametric CAD scripts are hand-crafted. 
 
 ## License
 

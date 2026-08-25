@@ -292,7 +292,9 @@ export class Runner
             annotator: new Annotator(),
             interactor: this._interactor, // reuse persistent instance so HandleRegistry survives runs
             calc: new Calc(),
-            docs: new Docs(), // TODO: settings with proxy
+            // No explicit settings: Docs.getAssetProxyUrl() reads the asset proxy off the
+            // request being executed (set below via setArchiyou → runner back-reference).
+            docs: new Docs(),
             materials: new MaterialManager(),
             runner: this,
             // Shared across scopes, not rebuilt per run: it caches loaded module

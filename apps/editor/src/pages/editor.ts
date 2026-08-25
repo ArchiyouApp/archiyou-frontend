@@ -93,7 +93,7 @@ export class PageEditor extends SignalWatcher(LitElement)
             snap="25% 50% 75%"
         >
         <wa-icon class="split-grip"
-            slot="divider" variant="solid" name="grip-lines-vertical"></wa-icon>
+            slot="divider" library="lucide" name="grip-vertical"></wa-icon>
         ${pm ? this._renderPluginLeftPanel(pm) : html`
         <div class="left-panel" slot="start">
           <editor-file-info @script-forked=${this._handleScriptForked}></editor-file-info>
@@ -111,7 +111,7 @@ export class PageEditor extends SignalWatcher(LitElement)
           class="viewer-tools-split"
           position=${this._activeTools.length > 0 ? 100 - this._activeTools.reduce((max, t) => Math.max(max, t.width), 0) : 100}
         >
-          ${this._activeTools.length > 0 ? html`<wa-icon slot="divider" class="split-grip" variant="solid" name="grip-lines-vertical"></wa-icon>` : ''}
+          ${this._activeTools.length > 0 ? html`<wa-icon slot="divider" class="split-grip" library="lucide" name="grip-vertical"></wa-icon>` : ''}
           <model-viewer slot="start"></model-viewer>
           <editor-tool-panels
             slot="end"

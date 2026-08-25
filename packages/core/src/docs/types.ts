@@ -17,7 +17,14 @@ export type WidthHeightInput = number|PercentageString|ValueWithUnitsString|'aut
 export type ContainerTableInput = string | DataRows
 
 export interface DocSettings {
-    proxy: string // url of proxy
+    /** BASE url of the Archiyou asset proxy — `${proxy}/proxy?url=…`, matching
+     *  RunnerScriptExecutionRequest.assetProxyUrl. '' means root-relative. Leave it
+     *  unset and Docs falls back to the running request's own assetProxyUrl. */
+    proxy: string
+    /** ABSOLUTE origin to resolve root-relative image paths against when there is no
+     *  browser origin (a node-side render). Matches
+     *  RunnerScriptExecutionRequest.appBaseUrl, which Docs falls back to. */
+    baseUrl?: string
 }
 
 export interface DocData {

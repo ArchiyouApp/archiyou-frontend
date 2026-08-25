@@ -14,9 +14,9 @@ type ParamType = 'number' | 'boolean' | 'text' | 'options' | 'list';
 const PARAM_TYPES: ParamType[] = ['number', 'boolean', 'text', 'options', 'list'];
 
 const TYPE_ICONS: Record<ParamType, string> = {
-    number:  'hashtag',
-    boolean: 'toggle-on',
-    text:    'font',
+    number:  'hash',
+    boolean: 'toggle-right',
+    text:    'type',
     options: 'circle-dot',
     list:    'list',
 };
@@ -48,10 +48,10 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
                  @click=${(e: Event) => e.stopPropagation()}>
 
                 <div class="dialog-header">
-                    <wa-icon name="sliders"></wa-icon>
+                    <wa-icon library="lucide" name="sliders-horizontal"></wa-icon>
                     <span>${this.editParam ? 'Edit Parameter' : 'Add Parameter'}</span>
                     <button class="close-btn" @click=${this._cancel}>
-                        <wa-icon name="xmark"></wa-icon>
+                        <wa-icon library="lucide" name="x"></wa-icon>
                     </button>
                 </div>
 
@@ -67,7 +67,7 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
                                     title=${t}
                                     @click=${() => this._setType(t)}
                                 >
-                                    <wa-icon name=${TYPE_ICONS[t]}></wa-icon>
+                                    <wa-icon library="lucide" name=${TYPE_ICONS[t]}></wa-icon>
                                     <span>${t}</span>
                                 </button>
                             `)}
@@ -262,7 +262,7 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
                                         ${opt}
                                         <button class="chip-remove" title="Remove"
                                             @click=${() => this._removeOption(opt)}>
-                                            <wa-icon name="xmark"></wa-icon>
+                                            <wa-icon library="lucide" name="x"></wa-icon>
                                         </button>
                                     </span>
                                 `)}
@@ -277,7 +277,7 @@ export class ParamDefineMenu extends SignalWatcher(LitElement)
                             />
                             <button class="btn-add-option" title="Add" @click=${this._addOption}
                                 ?disabled=${!this._optionDraft.trim()}>
-                                <wa-icon name="plus"></wa-icon>
+                                <wa-icon library="lucide" name="plus"></wa-icon>
                             </button>
                         </div>
                     </div>

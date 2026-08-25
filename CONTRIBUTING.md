@@ -29,8 +29,12 @@ pnpm test:core
 ```
 
 CI runs the same thing. Note that **`tsc` does not pass repo-wide** and is not a
-gate — see the README for why. Don't feel obliged to fix unrelated type errors in
-files you touch, but please don't add new ones.
+gate. Each package's *own* source must typecheck cleanly against its dependencies'
+real types (`typecheck:own`), but `packages/core` has a backlog and gets a ratchet
+instead: `typecheck:budget` fails only if the error count goes *up*. Don't feel
+obliged to fix unrelated type errors in files you touch, but please don't add new
+ones — and if you clear some, lower the budget in `packages/core/package.json` in
+the same commit.
 
 Two suites are known-quirky and not your fault:
 

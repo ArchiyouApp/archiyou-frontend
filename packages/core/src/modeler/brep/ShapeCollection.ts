@@ -1242,8 +1242,10 @@ import { getOc } from './index' // OC global getter
          return allSolids;
       }
 
-      /** Return new ShapeCollection with only the visible Shapes */
-      visible():ShapeCollection|AnyShape
+      /** Return new ShapeCollection with only the visible Shapes.
+       *  Named onlyVisible() to match meshup's ShapeCollection, where the plain
+       *  name would shadow the 'visible' group shortcut of a projection. */
+      onlyVisible():ShapeCollection|AnyShape
       {
          return this.filter(s => s.visible());
       }

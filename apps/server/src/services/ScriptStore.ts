@@ -18,6 +18,7 @@ import { Script } from '@archiyou/core/src/Script';
 import type { ScriptData, ScriptShared } from '@archiyou/core/src/execution/types';
 import { uuid4 } from '@archiyou/core/src/utils';
 
+import { configuratorUrl } from '../routes/scriptUrl';
 import { db } from '../db/client';
 import { scriptVersions, type ScriptVersionRow, type NewScriptVersionRow } from '../db/schema';
 
@@ -42,6 +43,17 @@ export class ScriptStore {
     return script.toData();
   }
 
+  /** The row's `published` metadata with `url` re-derived from the CURRENT
+   *  FRONTEND_URL. The stored value is stamped at publish time, so a row published
+   *  against a different environment (or before FRONTEND_URL was set) keeps handing
+   *  out a dead `http://localhost:5173/…` link. Author/name/version are stable for a
+   *  published version, so re-deriving is always safe. */
+  private publishedWithCurrentUrl(row: ScriptVersionRow): ScriptData['published'] {
+    const published = (row.published ?? null) as ScriptData['published'];
+    if (!published || !row.author || !row.name || !row.version) return published;
+    return { ...published, url: configuratorUrl(row.author, row.name, row.version) };
+  }
+
   /** Turn a DB row into the ScriptData wire shape (ISO dates like Script.toData). */
   private rowToData(row: ScriptVersionRow): ScriptData {
     return {
@@ -56,7 +68,7 @@ export class ScriptStore {
       code: row.code,
       params: (row.params ?? {}) as ScriptData['params'],
       presets: (row.presets ?? {}) as ScriptData['presets'],
-      published: (row.published ?? null) as ScriptData['published'],
+      published: this.publishedWithCurrentUrl(row),
       shared: (row.shared ?? null) as ScriptData['shared'],
       thumbnail: row.thumbnail ?? null,
       created: row.created.toISOString(),

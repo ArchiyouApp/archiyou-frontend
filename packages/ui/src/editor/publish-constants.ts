@@ -28,6 +28,36 @@ export function configuratorUrl(author: string, name: string, version: string): 
     + `/${encodeURIComponent(name)}:${encodeURIComponent(version)}`;
 }
 
+/** Rebase an absolute URL onto the current frontend origin, keeping path/query/hash.
+ *  `published.url` is stamped server-side from FRONTEND_URL at publish time, so it goes
+ *  stale the moment the script travels between environments: a script published against
+ *  a dev server keeps `http://localhost:5173/...` forever, and a server deployed without
+ *  FRONTEND_URL stamps localhost for everyone. The configurator is always served from the
+ *  same origin as the editor showing the link, so the current origin is the reliable half
+ *  and only the stored path is worth keeping. Returns the input untouched off-browser. */
+export function onCurrentOrigin(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const base = (typeof window !== 'undefined' && window.location?.origin) || '';
+  if (!base) return url;
+  try {
+    const parsed = new URL(url, base);
+    return `${base}${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return url;   // not a URL we can parse — leave it alone rather than lose it
+  }
+}
+
+/** The public configurator URL to show or copy for a published script: the server-stamped
+ *  one when present (rebased onto this origin), else built from author/name/version. */
+export function publicConfiguratorUrl(
+  storedUrl: string | null | undefined,
+  author: string,
+  name: string,
+  version: string,
+): string {
+  return onCurrentOrigin(storedUrl) ?? configuratorUrl(author, name, version);
+}
+
 /** Wildcard token used in output paths for "all entities" / "all formats". */
 export const OUTPUT_WILDCARD = '*';
 

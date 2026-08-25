@@ -222,7 +222,7 @@ export class DimensionLine extends BaseAnnotation
                 }
 
                 // Skip closed edges: a circle inside the profile is a loop, not a length.
-                const edges = new this.classes.ShapeCollection((shape as any).edges().visible())
+                const edges = new this.classes.ShapeCollection((shape as any).edges().onlyVisible())
                                     .toArray()
                                     .filter(e => !DimensionLine.isClosedProfile(e)) as Array<Curve>;
                 if (edges.length === 0) return this;

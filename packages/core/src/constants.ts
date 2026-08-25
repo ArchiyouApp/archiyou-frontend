@@ -62,6 +62,17 @@ export const SCRIPT_OUTPUT_GLTF_OPTIONS_DEFAULT =
 
 export const DOC_DEFAULT_FONT_FAMILY = 'Outfit'
 export const DOC_DEFAULT_SVG_FONT_FAMILY = `'${DOC_DEFAULT_FONT_FAMILY}', sans-serif`
+
+/** Logo placed in the default document titleblock. A root-relative path on the app's
+ *  own origin: the editor ships this file (apps/editor/public/img/) and every other
+ *  Archiyou surface — login, the configurator attribution — already points here.
+ *  Same-origin means no CORS, no proxy hop and no CSP `connect-src` allowance, unlike
+ *  the third-party CMS url this used to default to.
+ *
+ *  It follows that this resolves only where there IS an origin: in the browser. A
+ *  node-side run (the /execute API asking for doc outputs) has none, so pass an
+ *  absolute `logoUrl` to titleblock() there. */
+export const DOC_DEFAULT_LOGO_URL = '/img/archiyou_logo_header.png'
 export const DOC_TEXT_HEIGHT_TO_FONT_SIZE_FACTOR = 0.9 // mm/cm/inch text heights are mapped to a slightly smaller typographic font-size so visible glyph height better matches the requested physical size
 export const DOC_DIMENSION_LINES_TEXT_HEIGHT = 2.5; // in mm
 export const DOC_CONTAINER_TITLE_TEXT_HEIGHT = 6; // in mm

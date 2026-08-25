@@ -101,6 +101,31 @@ describe('GET /proxy — fetching', () =>
         expect(r.rawPayload.toString()).toBe('<svg/>');
     });
 
+    it('declaws the response so a proxied document cannot run as first-party script', async () =>
+    {
+        // The whole point of the guard: an attacker picks the Content-Type, and in the
+        // recommended single-host deploy this route answers on the app's own origin.
+        const bytes = new TextEncoder().encode('<script>alert(document.domain)</script>');
+        vi.stubGlobal('fetch', vi.fn(async () => fakeRes({ contentType: 'text/html', bytes })));
+
+        const r = await app.inject({ method: 'GET', url: `/proxy?url=${encodeURIComponent(`http://${PUBLIC}/evil`)}` });
+        expect(r.statusCode).toBe(200);
+        // Content-Type still echoed — the importer relies on it as the format signal.
+        expect(r.headers['content-type']).toContain('text/html');
+        expect(r.headers['x-content-type-options']).toBe('nosniff');
+        expect(r.headers['content-security-policy']).toContain('sandbox');
+        expect(r.headers['content-disposition']).toBe('attachment');
+    });
+
+    it('sends the guard headers on error responses too', async () =>
+    {
+        // Error bodies are just as navigable as success ones.
+        const r = await app.inject({ method: 'GET', url: '/proxy?url=http://127.0.0.1/x' });
+        expect(r.statusCode).toBe(403);
+        expect(r.headers['x-content-type-options']).toBe('nosniff');
+        expect(r.headers['content-security-policy']).toContain('sandbox');
+    });
+
     it('413 when Content-Length exceeds the cap', async () =>
     {
         config.proxy.maxBytes = 100;

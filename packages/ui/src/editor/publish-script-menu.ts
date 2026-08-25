@@ -46,7 +46,7 @@ import { shareReferencedComponents, type ComponentShareResult } from '@archiyou/
 import { OVERLAY_MENU_WIDTH } from '@archiyou/editor/src/settings';
 
 import {
-  configuratorUrl,
+  publicConfiguratorUrl,
   DEFAULT_FULFILLMENTS,
   DEFAULT_LICENCE,
   ENTITY_GROUP_LABELS,
@@ -911,10 +911,11 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
 
       const author = stored.author ?? script.author ?? userState.get().id ?? 'me';
       const name = stored.name ?? script.name ?? 'script';
-      // The server stamps published.url from FRONTEND_URL; fall back to the
-      // current origin so the URL is right even if it did not.
+      // The server stamps published.url from FRONTEND_URL; keep only its path and
+      // put it back on the current origin, so the link is right even when that env
+      // var is unset or points at another environment.
       this._success = {
-        url: stored.published?.url ?? configuratorUrl(author, name, stored.version ?? version),
+        url: publicConfiguratorUrl(stored.published?.url, author, name, stored.version ?? version),
         public: this._public,
         count: this._fulfillments.length,
         components,
@@ -961,7 +962,7 @@ export class PublishScriptMenu extends SignalWatcher(LitElement)
       const author = stored.author ?? editData.author ?? userState.get().id ?? 'me';
       const name   = stored.name ?? editData.name ?? 'script';
       this._success = {
-        url: stored.published?.url ?? configuratorUrl(author, name, stored.version ?? this._version),
+        url: publicConfiguratorUrl(stored.published?.url, author, name, stored.version ?? this._version),
         public: this._public,
         count: this._fulfillments.length,
         // Edit mode touches only the published metadata; the code snapshot (and so its

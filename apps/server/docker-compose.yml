@@ -48,17 +48,26 @@ services:
     networks:
       - archiyou-network
 
+  # Executes user-authored scripts with NO sandbox (see SECURITY.md), exactly as in
+  # production — so it gets the same minimal environment here. This deliberately does
+  # NOT use `env_file: .env`: that hands the script Runner every secret in the file,
+  # including SERVER_JWT_SECRET (forging a session token for any user) and the Mailgun
+  # key. config.jwtSecret is a lazy getter precisely so the worker boots without it.
+  #
+  # The root docker-compose.yml is checked against this rule in CI
+  # (apps/server/scripts/check-worker-env.py); a dev box running the same code is worth
+  # holding to it too, since a dev .env is often a copy of the production one.
   worker:
     build:
       context: ../..
       dockerfile: apps/server/Dockerfile
     container_name: archiyou-worker
     command: pnpm worker
-    env_file: .env
     environment:
       - NODE_ENV=production
       - SERVER_REDIS_HOST=redis
       - SERVER_REDIS_PORT=6379
+      - SERVER_EXECUTION_TIMEOUT_MS=${SERVER_EXECUTION_TIMEOUT_MS:-30000}
       - WORKER_ID=worker
     depends_on:
       redis:

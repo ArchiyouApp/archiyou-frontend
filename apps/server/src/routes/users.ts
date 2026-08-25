@@ -2,7 +2,9 @@
  * routes/users.ts — minimal user directory, used by the "Share only with" picker.
  *
  * Only a search endpoint is exposed, and only to authenticated callers. Results
- * are client-safe PublicUser views and always exclude the caller themselves.
+ * always exclude the caller themselves, and are the DIRECTORY view — no email
+ * address, no module entitlements (UserService.toDirectoryUser). Email matches
+ * only on a full address, never a substring; see UserService.search for why.
  */
 
 import type { FastifyInstance } from 'fastify';

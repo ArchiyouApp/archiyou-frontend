@@ -1,6 +1,6 @@
 # Archiyou NLNET documentation
 
-<img src="https://nlnet.nl/logo/banner.svg" width="20%" align="right">Thanks to [NLNET NG0 Commons Fund](https://nlnet.nl/project/Archiyou/) we can further develop the open source and open design community functionality of Archiyou. 
+<img src="https://nlnet.nl/logo/banner.svg" width="20%" align="right">Thanks to [NLnet NGI0 Commons Fund](https://nlnet.nl/project/Archiyou/) we can further develop the open source and open design community functionality of Archiyou. 
 
 This is a basic roadmap:
 
@@ -12,6 +12,6 @@ This is a basic roadmap:
 - [x] New editor: more value for more users
 - [ ] New open design platform: workspaces, design library
 
-All documentation for NLNET can be found in the [documentation/nlnet](https://github.com/ArchiyouApp/archiyou-core/tree/main/documentation/nlnet) folder in this repo.
+All documentation for NLnet can be found in this folder.
 
 Please reach out for more information, ideas or collaboration!

@@ -853,7 +853,7 @@ function docPipeline()
     layer('doc').color('black');
 
     layer('iso').color('black')
-    allVisible = all().visible().solids();
+    allVisible = all().onlyVisible().solids();
 
     // isometries
     isoLeftFront = allVisible.iso([-1,-1,1]).move(WIDTH*5); // main isometry

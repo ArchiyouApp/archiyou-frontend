@@ -84,6 +84,26 @@ export interface ModelerTextOptions
     font?: string | Uint8Array | ArrayBuffer
 }
 
+/**
+ * Options for `Modeler.toGLB()` / `toGLTF()` (see `_exportGLBWithOptions`).
+ *
+ * `duration` and `interpolation` are only read when `animations` is set — they
+ * are handed straight to `GLTFBuilder.addAnimations()`, which is why they mirror
+ * `LayoutAnimationOptions` rather than nesting under it.
+ */
+export interface ModelerSceneExportGLTFOptions
+{
+    /** Bake the `exploded` and `layout` layouter animations into the GLB. Default false. */
+    animations?: boolean
+    /** Animation length in seconds. Default `GLTF_ANIMATION_DURATION`. */
+    duration?: number
+    /** Easing for the baked animations. Default `'easeInOut'` (GLTFBuilder's fallback). */
+    interpolation?: LayoutAnimationInterpolation
+    /** Write the annotator's annotations into the GLTF extras alongside the scenegraph.
+     *  Default false — an unannotated export carries an empty list. */
+    annotations?: boolean
+}
+
 export interface LayoutViewOptions
 {
     /** Lateral spacing between shapes when laid flat. Default 1.5 */

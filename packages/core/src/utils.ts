@@ -169,6 +169,26 @@ export function urlParamsToRecord(paramString: string): Record<string, string> {
     return params;
 }
 
+//// ASSET PROXY ////
+
+/**
+ * URL for fetching a remote asset through the Archiyou asset proxy:
+ * `${base}/proxy?url=<encoded>`; base '' → root-relative `/proxy?url=…`.
+ *
+ * Everything a browser-side run fetches from a third-party host has to go through
+ * this — $import() assets AND document images. A direct cross-origin fetch fails on
+ * CORS, and on a deployment with a strict CSP it never even leaves the page:
+ * `connect-src 'self'` blocks it outright. The proxy is same-origin, so both hold.
+ *
+ * The one definition of the contract — it is the server's `GET /proxy?url=…`
+ * (apps/server/src/routes/proxy.ts). A second, drifting copy of it is exactly how
+ * document images ended up POSTing to a route that answers GET.
+ */
+export function assetProxyUrlFor(url: string, proxyBase = ''): string
+{
+    return `${proxyBase.replace(/\/$/, '')}/proxy?url=${encodeURIComponent(url)}`;
+}
+
 //// ENCODING BINARY DATA ////
 
 export const arrayBufferToBase64 = (arraybuffer: ArrayBuffer): string =>

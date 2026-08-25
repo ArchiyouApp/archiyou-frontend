@@ -10,7 +10,7 @@
  *  line weight, annotations, scale — is written once instead of once per kernel.
  */
 
-import { buildSVGDocument, type SVGLayer, type SVGFrame, type SVGStroke } from './SVGExporter'
+import { buildSVGDocument, drawableFaces, type SVGLayer, type SVGFrame, type SVGStroke } from './SVGExporter'
 import { annotationLayer, collectAnnotations, annotationMarginMm } from '../annotator/annotationLayer'
 import type { ModelUnits } from './types'
 import { isKernelShapeCollection } from './typeguards'
@@ -57,23 +57,25 @@ function meshGroupClasses(collection: any): Map<any, string>
     return curveToGroup
 }
 
-/** The 2D line-work of a mesh-kernel Shape or ShapeCollection. */
+/** The 2D line-work of a mesh-kernel Shape or ShapeCollection: its curves, and the faces
+ *  lying flat on the XY plane (see drawableFaces) — a flattened footprint is a collection of
+ *  Meshes, and used to come out of a view completely blank. */
 function meshDrawableLayer(collection: any): SVGLayer
 {
-    const curves = collection?.curves?.()?.toArray?.() ?? []
+    const drawables = [...drawableFaces(collection), ...(collection?.curves?.()?.toArray?.() ?? [])]
     const groups = meshGroupClasses(collection)
 
     const elements: Array<string> = []
     let box: Box2D | null = null
 
-    curves.forEach((curve: any) =>
+    drawables.forEach((shape: any) =>
     {
-        const groupName = groups.get(curve)
+        const groupName = groups.get(shape)
         const cssClass = 'line' + (groupName ? ` ${groupName}` : '')
-        const elem = curve?.toSVGElem?.(cssClass, { omitDefaults: true, nonScalingStroke: false })
+        const elem = shape?.toSVGElem?.(cssClass, { omitDefaults: true, nonScalingStroke: false })
         if (typeof elem !== 'string' || !elem) return
         elements.push(elem)
-        box = unionBox(box, boxSVG(curve))
+        box = unionBox(box, boxSVG(shape))
     })
 
     return { elements, box }

@@ -72,7 +72,66 @@ export function collectAnnotations(o:any):Array<any>
         });
     }
 
+    found.push(...regroupedAnnotations(o, found));
+
     return [...new Set(found.filter(Boolean))];
+}
+
+/** The Shapes a drawable holds, whichever kernel and shape of API it came from. */
+function shapesOf(o:any):Array<any>|null
+{
+    const s = (typeof o?.shapes === 'function') ? o.shapes() : o?.shapes;
+    if(Array.isArray(s)){ return s }
+    if(Array.isArray(s?.toArray?.())){ return s.toArray() }
+    return null;
+}
+
+/** The Annotator that owns the global annotation list, reached from a drawable. */
+function annotatorOf(o:any, shapes:Array<any>):any
+{
+    const from = (x:any) => x?._modeler?.modules?.annotator ?? x?._ay?.annotator;
+    return from(o) ?? shapes.map(from).find(Boolean);
+}
+
+/** Annotations that belong to this drawing but hang off a collection it no longer IS.
+ *
+ *  A dimension links itself to the collection it measured, not to that collection's member
+ *  Shapes. group()/collection()/add() re-parent the Shapes into a NEW collection and leave
+ *  the annotations behind on the old one — so the doc-pipeline idiom
+ *
+ *      tableTop.autoDim(...);  elevations = group(tableTop, frame)
+ *
+ *  drew every dimension when the view was handed `tableTop`, and none at all when it was
+ *  handed `elevations`: the geometry moved and its dimensions did not follow.
+ *
+ *  Resolved by MEMBERSHIP rather than by the link: an annotation on another collection is
+ *  this drawing's when every Shape that collection holds is in this drawing. `every`, not
+ *  `some` — a view showing one beam of a dimensioned frame is not showing that frame, and
+ *  should not inherit measurements that run off its edge.
+ */
+function regroupedAnnotations(o:any, already:Array<any>):Array<any>
+{
+    const shapes = shapesOf(o);
+    if(!shapes || shapes.length === 0){ return [] }
+
+    const annotator = annotatorOf(o, shapes);
+    const global = annotator?.getAnnotations?.();
+    if(!Array.isArray(global) || global.length === 0){ return [] }
+
+    const seen = new Set(already);
+    const mine = new Set(shapes);
+
+    return global.filter((a:any) =>
+    {
+        if(!a || seen.has(a)){ return false }
+
+        const linked = a.linkedTo;
+        if(!linked){ return false }
+        if(mine.has(linked)){ return true } // linked straight to a Shape of this drawing
+
+        const linkedShapes = shapesOf(linked);
+        return !!linkedShapes && linkedShapes.length > 0 && linkedShapes.every(s => mine.has(s));
+    });
 }
 
 /** Draw annotations as one layer of a drawing.

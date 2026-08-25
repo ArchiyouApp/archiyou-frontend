@@ -236,7 +236,7 @@ calc.metric('timber volume/length', roundTo(TIMBER_VOLUME/(WALL_LENGTH*1e-3),2),
 
 function docPipeline()
 {
-    visibleShapes = all().visible();
+    visibleShapes = all().onlyVisible();
     iso = visibleShapes.iso().move(WALL_LENGTH*2);
     frontElevation = visibleShapes.elevation('front')
                         .move(WALL_LENGTH*2, -WALL_HEIGHT*2)
@@ -259,7 +259,7 @@ $pipeline('techdraw',
 
 
 // TODO: table 'parts' needs to be evaluated later
-make.partList(all().visible(), 'parts')
+make.partList(all().onlyVisible(), 'parts')
 
 
 doc

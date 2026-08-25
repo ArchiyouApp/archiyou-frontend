@@ -212,3 +212,8 @@ jobs:
           mkdir -p apps/editor/dist
           docker compose -f docker-compose.yml config \
             | python3 apps/server/scripts/check-worker-env.py
+          # The dev stack runs the same unsandboxed Runner, and a dev .env is very
+          # often a copy of the production one — so it is held to the same rule.
+          docker compose -f apps/server/docker-compose.yml \
+            --project-directory apps/server config \
+            | python3 apps/server/scripts/check-worker-env.py

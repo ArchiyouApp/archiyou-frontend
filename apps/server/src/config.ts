@@ -218,7 +218,7 @@ export const config = {
    * Off-box backups to S3-compatible storage — see src/admin/backup.ts.
    *
    * NEVER invoked by the server process: this is read only by the standalone
-   * `pnpm admin:backup` script, run from the host crontab (README → Backups).
+   * `pnpm admin:backup` script, run from the host crontab (apps/server/README → Backups).
    * With no bucket configured the script exits 2 and nothing else changes.
    *
    * WHAT gets backed up is `backupTargets` at the bottom of this file, not these
@@ -389,7 +389,7 @@ export interface BackupTarget {
  * `SERVER_BACKUP_SKIP` drops one for a particular deployment.
  *
  * ⚠️  A target outside the `server_data` volume must also be mounted into the `api`
- * container, or the script cannot see it in production. See README → Backups.
+ * container, or the script cannot see it in production. See apps/server/README → Backups.
  */
 export const backupTargets: BackupTarget[] = [
   { name: 'db', path: config.databaseFile, kind: 'sqlite' },

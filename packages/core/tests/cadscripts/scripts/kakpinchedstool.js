@@ -164,7 +164,7 @@ seatPlanks.moveTo([0,0,STOOL_HEIGHT-BEAM_THICKNESS/2])
 
 
 
-stool = all().visible().filter( s => s.type === 'Solid');
+stool = all().onlyVisible().filter( s => s.type === 'Solid');
 
 allSamePlanks = seatPlanks.every(plank => plank.bbox().width() === seatPlanks.first().bbox().width());
 section = `${BEAM_THICKNESS}x${BEAM_WIDTH}`;
@@ -210,7 +210,7 @@ function docFunc()
 {
     // Isometry
     seatPlanks.moveZ(300);
-    iso = all().visible().solids().iso([1,0.5,1]) // BUG: seatPlanks reference does not work after stool is created
+    iso = all().onlyVisible().solids().iso([1,0.5,1]) // BUG: seatPlanks reference does not work after stool is created
             .move(2000)
             .rotateZ(180+10);
     seatPlanks.moveZ(-300);

@@ -921,7 +921,10 @@ export class Modeler
         }
         if (!options || Object.keys(options).length === 0) return exportScene.toSVG()
 
-        return buildSVG(exportScene.shapes().curves(), { units: this.units(), ...options })
+        // The whole collection, not just its curves(): the exporter picks the drawable shapes
+        // itself (curves and flat faces alike), and curves() strips the projection groups it
+        // reads hidden lines from — a copy is a new collection with no groups on it.
+        return buildSVG(exportScene.shapes(), { units: this.units(), ...options })
     }
 
     /** Hidden-line projection of every Mesh in the scene to a 2D SVG line drawing.
@@ -1253,7 +1256,7 @@ export class Modeler
         // Mirrors RunnerScriptExecutionResult.state so a standalone .glb still
         // carries the data the viewer/scene-navigator need. Legacy `annotations`
         // key is also written for one back-compat cycle on the read side.
-        const anns = (options as any)?.annotations
+        const anns = options?.annotations
             ? (this._modules?.annotator?.getAnnotationsData?.() ?? [])
             : [];
         const archiyouState = this.toArchiyouState(anns);

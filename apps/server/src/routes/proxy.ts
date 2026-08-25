@@ -17,7 +17,19 @@
  *   - No client cookies/auth forwarded upstream.
  *
  * The upstream Content-Type is echoed verbatim — the core importer uses it as
- * the primary format signal for extension-less API responses.
+ * the primary format signal for extension-less API responses. That means this
+ * route can be made to serve attacker-chosen content types from OUR origin, and
+ * in the recommended single-host deployment (editor at `/`, API at `/api/*`) that
+ * origin is the app's own — where the CSP must allow 'unsafe-inline' for the
+ * Runner. A proxied HTML document would therefore execute as first-party script.
+ *
+ * So the bytes are echoed but declawed on the way out (see RESPONSE_GUARD_HEADERS):
+ * `nosniff` stops a mislabelled body being re-interpreted, `CSP: sandbox` denies
+ * script execution and same-origin identity if the URL is ever navigated to or
+ * framed, and `Content-Disposition: attachment` makes navigation download rather
+ * than render. None of the three is visible to `fetch()`, which is how every real
+ * consumer reads this route (Importer.fetch, docs/Image.loadImageData), so the
+ * format signal survives intact.
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
@@ -105,6 +117,20 @@ async function safeLookup(host: string): Promise<Array<{ address: string }>> {
     throw new ProxyError(502, `Could not resolve host '${host}'.`);
   }
 }
+
+/**
+ * Sent on every proxy response, success or failure. Static, because a guarantee
+ * that depends on correctly classifying the upstream content type is not one.
+ */
+const RESPONSE_GUARD_HEADERS: Record<string, string> = {
+  // Never let a body be re-sniffed into something more dangerous than its label.
+  'X-Content-Type-Options': 'nosniff',
+  // `sandbox` with no allow-list: no scripts, no plugins, no same-origin identity,
+  // no top-level navigation. Mirrors what plugin.ts serves thumbnails with.
+  'Content-Security-Policy': "default-src 'none'; sandbox",
+  // Navigating here downloads instead of rendering. `fetch()` ignores this.
+  'Content-Disposition': 'attachment',
+};
 
 class ProxyError extends Error {
   constructor(public readonly statusCode: number, message: string) {
@@ -220,24 +246,28 @@ export async function registerProxyRoutes(fastify: FastifyInstance): Promise<voi
     async (request: FastifyRequest<{ Querystring: { url?: string } }>, reply: FastifyReply) => {
       const raw = request.query.url;
       if (!raw) {
-        return reply.code(400).send({ success: false, error: "Missing 'url' query parameter." });
+        return reply.headers(RESPONSE_GUARD_HEADERS)
+          .code(400).send({ success: false, error: "Missing 'url' query parameter." });
       }
 
       sweepBuckets();
       if (rateLimited(request.ip)) {
-        return reply.code(429).send({ success: false, error: 'Rate limit exceeded. Slow down.' });
+        return reply.headers(RESPONSE_GUARD_HEADERS)
+          .code(429).send({ success: false, error: 'Rate limit exceeded. Slow down.' });
       }
 
       try {
         const url = await assertFetchable(raw);
         const { body, contentType } = await fetchAsset(url);
         return reply
+          .headers(RESPONSE_GUARD_HEADERS)
           .header('Content-Type', contentType)
           .header('Access-Control-Allow-Origin', '*')
           .header('Cache-Control', 'public, max-age=300')
           .header('X-Proxied-From', url.href)
           .send(body);
       } catch (err) {
+        reply.headers(RESPONSE_GUARD_HEADERS);
         if (err instanceof ProxyError) {
           return reply.code(err.statusCode).send({ success: false, error: err.message });
         }

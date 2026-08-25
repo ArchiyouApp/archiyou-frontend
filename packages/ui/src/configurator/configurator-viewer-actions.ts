@@ -17,7 +17,7 @@ import { SignalWatcher } from '@lit-labs/signals';
 import '@awesome.me/webawesome/dist/components/icon/icon.js';
 
 import { editorScript } from '@archiyou/editor/src/state/workspace';
-import { configuratorUrl } from '../editor/publish-constants.js';
+import { publicConfiguratorUrl } from '../editor/publish-constants.js';
 
 /** Height of the embed frame. The width is fluid (100% of the host element), so
  *  the snippet drops into any column without the user picking numbers. */
@@ -157,7 +157,7 @@ export class ConfiguratorViewerActions extends SignalWatcher(LitElement)
   {
     const script = editorScript.get();
     if (!script?.published || !script.author || !script.name || !script.version) return null;
-    return script.published.url ?? configuratorUrl(script.author, script.name, script.version);
+    return publicConfiguratorUrl(script.published.url, script.author, script.name, script.version);
   }
 
   private _snippet(embedUrl: string): string

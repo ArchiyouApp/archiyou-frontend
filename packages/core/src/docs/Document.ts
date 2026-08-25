@@ -58,6 +58,7 @@ import { isDocUnits, isPercentageString, isValueWithUnitsString, isAnyPageContai
 
 import { convertValueFromToUnit, escapeXml } from './utils'
 import { isNumeric } from '../utils'
+import { DOC_DEFAULT_LOGO_URL } from '../constants'
 
 
 /** A document that is part of a Docs module instance.
@@ -266,8 +267,15 @@ export class Document
     /** Add Image Container to active Page */
     image(url:string, options?:ImageOptions):this
     {
-        if(typeof url !== 'string'){ throw new Error(`Document::image: Please supply a string with the image`);}
-        if(!url.includes('http')){ throw new Error(`Document::image: Please supply a url with http(s)`);}
+        if(typeof url !== 'string' || url.trim() === ''){ throw new Error(`Document::image: Please supply a string with the image url`);}
+        // http(s), a data: uri, or a path on the app's own origin ('/img/logo.png' — which
+        // is what the default titleblock logo is). Any OTHER scheme is refused: 'file:' and
+        // friends are not something a document should be able to reach.
+        const scheme = url.match(/^([a-z][a-z0-9+.-]*):/i)?.[1]?.toLowerCase();
+        if(scheme && !['http','https','data'].includes(scheme))
+        {
+            throw new Error(`Document::image: Cannot load an image from '${scheme}:'. Use an http(s) url, a data: uri, or a path like '/img/logo.png'.`);
+        }
 
         const newImageContainer = new Image(url, options).on(this._getOrMakeActivePage());
         this._activeContainer = newImageContainer;
@@ -529,7 +537,7 @@ export class Document
         const DEFAULT_SETTINGS = {
             title : 'Untitled',
             designer : 'Unknown',
-            logoUrl: 'https://cms.shopxyz.nl/uploads/archiyou_logo_header_bgwhite_d35135524b.png',
+            logoUrl: DOC_DEFAULT_LOGO_URL,
             designLicense: 'CC BY-NC',
             manualLicense: 'CC BY-NC',
         }

@@ -14,9 +14,9 @@ import { SCENE_EXPLORER_MINIMIZED_TREE_LEVEL } from '@archiyou/editor/src/settin
  *  Mesh/Curve nodes show their geometry icon. */
 function nodeIcon(node: SceneNodeData): string
 {
-  if (!node.shape) return 'layer-group'; // container / layer
-  // Children-bearing leaf nodes are uncommon; default to cube for shapes.
-  return 'cube';
+  if (!node.shape) return 'layers'; // container / layer
+  // Children-bearing leaf nodes are uncommon; default to a box for shapes.
+  return 'box';
 }
 
 @customElement('scene-explorer')
@@ -74,10 +74,10 @@ export class SceneExplorer extends SignalWatcher(LitElement)
     return html`
       ${!this.standalone ? html`
         <div class="header" @click=${this._activate}>
-          <wa-icon name="sitemap"></wa-icon>
+          <wa-icon library="lucide" name="network"></wa-icon>
           <span class="title">scene</span>
           <span class="spacer"></span>
-          <wa-icon name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
+          <wa-icon library="lucide" name=${collapsed ? 'chevron-down' : 'chevron-up'}></wa-icon>
         </div>
       ` : nothing}
 
@@ -139,11 +139,11 @@ export class SceneExplorer extends SignalWatcher(LitElement)
           @click=${() => hasKids && this._toggleExpand(path)}
         >
           ${hasKids
-            ? html`<wa-icon name=${isExpanded ? 'chevron-down' : 'chevron-right'}></wa-icon>`
+            ? html`<wa-icon library="lucide" name=${isExpanded ? 'chevron-down' : 'chevron-right'}></wa-icon>`
             : nothing}
         </button>
 
-        <wa-icon class="node-icon" name=${nodeIcon(node)}></wa-icon>
+        <wa-icon class="node-icon" library="lucide" name=${nodeIcon(node)}></wa-icon>
 
         <span
           class="node-name ${isHidden ? 'faded' : ''} ${isMatch ? 'match' : ''}"
@@ -163,7 +163,7 @@ export class SceneExplorer extends SignalWatcher(LitElement)
           title=${isHidden ? 'Show node' : 'Hide node'}
           @click=${() => toggleNodeVisibility(path)}
         >
-          <wa-icon name=${isHidden ? 'eye-slash' : 'eye'}></wa-icon>
+          <wa-icon library="lucide" name=${isHidden ? 'eye-off' : 'eye'}></wa-icon>
         </button>
       </div>
 

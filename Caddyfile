@@ -30,15 +30,13 @@ next.archiyou.com {
 		reverse_proxy api:4100
 	}
 
-	# --- Runtime-loaded editor plugins ---
-	# plugin-loader.ts fetches /plugins/<name> at runtime; in dev a Vite plugin
-	# serves the repo-root plugins/ dir. Nothing served it in production, so the
-	# built-in shape-picker 404'd. Mounted read-only in docker-compose.prod.yml.
-	handle /plugins/* {
-		root * /srv/plugins
-		uri strip_prefix /plugins
-		file_server
-	}
+	# NOTE: runtime-loaded editor plugins are DEV-ONLY. plugin-loader.ts fetches
+	# /plugins/<name>, which a Vite plugin serves from the repo-root plugins/ dir
+	# during development; nothing serves it here, so the built-in shape-picker is
+	# simply absent in production. To change that, serve plugins/ under /plugins
+	# and uncomment the matching bind mount in docker-compose.yml — but note that
+	# it puts arbitrary JS from the checkout on the app's own origin, where the CSP
+	# already allows 'unsafe-eval' and 'unsafe-inline'.
 
 	# --- Editor SPA ---
 	handle {

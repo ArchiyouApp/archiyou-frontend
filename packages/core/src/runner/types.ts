@@ -93,6 +93,14 @@ export interface RunnerScriptExecutionRequest
      *  from SERVER_API_BASE_URL; empty string → root-relative `/proxy`. */
     assetProxyUrl?: string
 
+    /** ABSOLUTE origin of the app serving the editor/configurator, e.g.
+     *  'https://next.archiyou.com'. Only needed where the run has no origin of its
+     *  own: a browser resolves a root-relative asset path ('/img/logo.png' — the
+     *  default titleblock logo) against location.origin, but a node-side run has no
+     *  location at all, and would otherwise drop the image. The server fills it from
+     *  FRONTEND_URL. Ignored in the browser, where the real origin wins. */
+    appBaseUrl?: string
+
     /** Local scripts the runner can resolve as components when the parent
      *  script references them via $component('./name'). Sent as ScriptData
      *  (structured-clone-safe over the worker boundary) — the worker shim

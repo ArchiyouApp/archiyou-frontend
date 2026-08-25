@@ -2,6 +2,7 @@ import { Container } from './Container'
 import type { ContainerData, ContainerContent, ContainerAlignment, ImageOptionsFit, ImageOptions, PageSVGContext } from './types'
 import { isContainerAlignment, isImageOptionsFit } from './typeguards'
 import { arrayBufferToBase64, stripOuterSVGTags, stripXMLDeclaration, getPreserveAspectRatio } from './utils'
+import { assetProxyUrlFor } from '../utils'
 
 
 /** Image bytes by URL, shared by every Image container in this context.
@@ -129,35 +130,90 @@ export class Image extends Container
         return data;
     }
 
-    /** Fetch the image bytes (through the proxy when one is configured). Resolves to
-     *  undefined when the image cannot be loaded — never rejects, so one unreachable
-     *  image degrades to a missing picture instead of failing the whole document. */
+    /** Where to actually fetch this image from — or undefined when it cannot be fetched
+     *  in this environment (the image is then simply left out of the document).
+     *
+     *  Only a CROSS-ORIGIN http(s) url needs the asset proxy. Same-origin and relative
+     *  urls must go out directly: they raise no CORS question and satisfy the strictest
+     *  `connect-src 'self'`, and the proxy would reject a relative one outright ("Only
+     *  http(s) URLs are allowed") — so proxying everything would break exactly the urls
+     *  that need no help. A relative url does need an origin to resolve against, which
+     *  a browser has and node does not.
+     *
+     *  Resolution is explicit rather than left to fetch(): a Web Worker created from a
+     *  blob: url has a blob: base, against which '/img/logo.png' does not resolve to the
+     *  page's own origin. Node has no origin at all, so it uses the run's appBaseUrl
+     *  (the server fills that from FRONTEND_URL). */
+    private _resolveFetchUrl():string|undefined
+    {
+        const url = this._url;
+
+        if(url.startsWith('data:')) return url; // already carries its bytes
+
+        const isAbsolute = /^https?:\/\//i.test(url);
+        const origin = (typeof globalThis !== 'undefined')
+                            ? (globalThis as any)?.location?.origin
+                            : undefined;
+
+        // The page's own origin is authoritative where there is one; a node-side run
+        // falls back to the origin the run was told the app is served from.
+        const base = (typeof origin === 'string' && origin && origin !== 'null')
+                        ? origin
+                        : this._page._docs?.getAppBaseUrl?.();
+
+        if(!isAbsolute)
+        {
+            if(!base)
+            {
+                console.warn(`DocPageContainerImage::loadImageData(): Cannot resolve the relative image url "${url}" — this run has no origin to resolve it against. Set appBaseUrl on the execution request (the server fills it from FRONTEND_URL), or use an absolute url for this image.`);
+                return undefined;
+            }
+            try { return new URL(url, base).href; }
+            catch(e)
+            {
+                console.warn(`DocPageContainerImage::loadImageData(): Could not resolve "${url}" against base "${base}": ${e}`);
+                return undefined;
+            }
+        }
+
+        // Same-origin absolute url: no proxy needed, and one hop less.
+        if(base && url.startsWith(`${base}/`)) return url;
+
+        // Base url of the asset proxy: from Doc settings, else from the running request.
+        // '' is valid (root-relative /proxy), so test for undefined, not falsiness.
+        const proxyBase = this._page._docs?.getAssetProxyUrl?.();
+        if(typeof proxyBase !== 'string')
+        {
+            console.warn(`DocPageContainerImage::loadImageData(): No asset proxy configured. Fetching "${url}" directly — this works in node, but is blocked by CORS/CSP in the browser.`);
+            return url;
+        }
+
+        // Same contract as $import(): GET ${base}/proxy?url=<encoded>.
+        return assetProxyUrlFor(url, proxyBase);
+    }
+
+    /** Fetch the image bytes (through the asset proxy when one is configured). Resolves
+     *  to undefined when the image cannot be loaded — never rejects, so one unreachable
+     *  image degrades to a missing picture instead of failing the whole document.
+     *
+     *  The proxy is not optional in the browser: a remote image is a cross-origin GET, so
+     *  it dies on CORS, and on a deployment with a strict CSP (`connect-src 'self'`) the
+     *  request is refused before it is even sent — which is what made the default titleblock
+     *  logo silently vanish in production while it rendered fine on a localhost dev server
+     *  with no CSP. The proxy is same-origin, so it survives both. */
     private async _fetchImageData():Promise<any>
     {
         let data;
 
-        // async load the image through a proxy (to avoid CORS issues in browser)
-        const proxyUrl = this._page._docs?._settings?.proxy;
-        if(!proxyUrl)
-        {
-            console.warn(`DocPageContainerImage::loadImageData(): No proxy given. Please supply settings with proxy url in Doc()! Querying the images directly. This might not work in the browser!`);
-        }
+        const fetchUrl = this._resolveFetchUrl();
+        if(!fetchUrl) return undefined; // unfetchable here — _resolveFetchUrl() said why
 
-        const fetchUrl = (proxyUrl) ? proxyUrl : this._url;
         // Bound the request: an unresponsive host used to stall the export for as long
         // as it took to time out (or forever), once per output.
-        const timeout = AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS);
-        const fetchSettings = (proxyUrl)
-                            ?  {
-                                method: 'POST',
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ url : this._url }),
-                                signal: timeout,
-                            }
-                            : {
-                                method: 'GET',
-                                signal: timeout,
-                            }
+        const fetchSettings = {
+            method: 'GET',
+            signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
+        };
 
         // Do fetch
         const t0 = Date.now();
@@ -167,7 +223,7 @@ export class Image extends Container
 
             if(r.status !== 200)
             {
-                console.error(`DocPageContainerImage::loadImageData(): Could not get image. Check if it exists or proxy address: "${proxyUrl}"`)
+                console.error(`DocPageContainerImage::loadImageData(): Could not get image "${this._url}" (HTTP ${r.status}) from "${fetchUrl}". Check that it exists and that the asset proxy is reachable.`)
             }
             else {
                 data = (this.getImageFormat() === 'svg') ? await r.text() : this._exportImageDataBase64(await r.arrayBuffer());
@@ -176,7 +232,7 @@ export class Image extends Container
         }
         catch(e)
         {
-            console.warn(`DocPageContainerImage::loadImageData(): Could not load image at "${this._url}" fetching through proxy: "${proxyUrl}" after ${Date.now()-t0}ms:  ERROR: "${e}".`);
+            console.warn(`DocPageContainerImage::loadImageData(): Could not load image at "${this._url}" (fetched from "${fetchUrl}") after ${Date.now()-t0}ms:  ERROR: "${e}".`);
         }
 
         return data;

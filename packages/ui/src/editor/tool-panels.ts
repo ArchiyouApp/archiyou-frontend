@@ -29,7 +29,7 @@ export class EditorToolPanels extends LitElement
       const position = tools[0].height;
       return html`
         <wa-split-panel orientation="vertical" position=${position} class="vertical-split">
-          <wa-icon slot="divider" class="split-grip-h" variant="solid" name="grip-lines"></wa-icon>
+          <wa-icon slot="divider" class="split-grip-h" library="lucide" name="grip-horizontal"></wa-icon>
           <editor-tool-panel slot="start" .tool=${tools[0]}></editor-tool-panel>
           <editor-tool-panel slot="end"   .tool=${tools[1]}></editor-tool-panel>
         </wa-split-panel>

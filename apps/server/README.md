@@ -282,6 +282,59 @@ container runs as — a root-owned database file breaks the API on boot.
 Run steps 1–2 against a scratch directory once a quarter. An untested restore is
 not a backup.
 
+### Working on a copy of production
+
+`pnpm dbdownload` (from the repo root) copies the live database onto this
+machine over SSH — no S3 credentials, no docker exec, nothing installed on the
+server. It is the mirror image of `admin:backup`: that one runs *on* the server
+and pushes an archive off-box; this one runs on a laptop and overwrites the
+*local* `apps/server/data/archiyou.db`.
+
+```bash
+pnpm dbdownload           # asks for server, username, password
+pnpm dbdownload --dry     # connect, confirm the file is there, change nothing
+pnpm dbdownload --help    # every answer also has a flag
+```
+
+**Nothing is configured up front and no credential is ever stored.** It asks for
+the server, your username and the database path; the *password* is asked for by
+`ssh` itself, so this script never sees it — it cannot land in a file, in `ps`
+output, or in the environment. There is deliberately no key-file setting and no
+`.env` block. You are asked **once**: the first connection is an ssh
+ControlMaster and every later command and transfer rides the same authenticated
+socket, which is closed on the way out. (Where ssh can already authenticate by
+itself — agent or `~/.ssh/config` — it just does not ask.) The non-secret
+answers are remembered in the gitignored `apps/server/data/.dbdownload.json`, so
+the next run is three Enters.
+
+The remote path it asks for is `<deploy dir>/apps/server/data/archiyou.db` — the
+database is a plain file in the bind-mounted checkout (see
+`docker-compose.yml` → api), not a docker volume.
+
+Two things it guarantees:
+
+- **The remote read is consistent.** The snapshot is taken with `sqlite3
+  <db> ".backup"` — SQLite's online backup API — so it is safe against a running
+  server, needs no WAL checkpoint, and is `PRAGMA integrity_check`ed on the
+  server before a byte is transferred. The temporary snapshot is always deleted,
+  including when the download fails. *If the server has no `sqlite3` binary* the
+  script falls back to copying the live database plus its `-wal` and warns
+  loudly; `apt install sqlite3` there is the fix.
+- **The local database is never lost.** Whatever is in `apps/server/data/` is
+  copied to `apps/server/data/db-backups/<stamp>/` (database *and* its
+  `-wal`/`-shm`) before anything is replaced, and the newest `--keep` (default
+  10) of those are retained. Restore one with
+  `cp apps/server/data/db-backups/<stamp>/* apps/server/data/`.
+
+The swap only happens after the download has landed and been checked, so a
+failed run leaves the working database exactly as it was. The old `-wal`/`-shm`
+are deleted as part of the swap for the same reason step 4 of the restore recipe
+does it. **Stop the dev server first** — replacing the file underneath an open
+connection is how you get a corrupt one.
+
+Remember what you are pulling down: this is production data, including user
+records. Treat the copy — and the backups directory — accordingly.
+
 ### Why a script has no thumbnail
 
 Script thumbnails are iso line drawings generated **in the browser** while the

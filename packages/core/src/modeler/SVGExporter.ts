@@ -231,7 +231,7 @@ function compactElement(elem: string, decimals: number, tol: number): string
 {
     return elem
         .replace(STYLE_ATTR_RE, '')
-        .replace(/\sd="([^"]*)"/, (_m, d: string) => ` d="${simplifyPathData(d, tol)}"`)
+        .replace(/\sd="([^"]*)"/g, (_m, d: string) => ` d="${simplifyPathData(d, tol)}"`)
         .replace(DECIMAL_RE, (m) => String(+(+m).toFixed(decimals)))
 }
 
@@ -303,7 +303,31 @@ interface PreparedCurve
     isHidden: boolean
 }
 
-/** Flatten a ShapeCollection into renderable curves, tagged by projection group.
+/** A Shape a drawing can write out as a FACE: a Mesh or Polygon lying on a plane parallel to
+ *  XY — what flatten() answers with. It carries exactly the drawing its outline would, and
+ *  was previously dropped by every exporter here, so a footprint-only script got no drawing
+ *  and no thumbnail at all.
+ *
+ *  A shape with real height is NOT one: drawn from above it collapses to a line, which is
+ *  what the projections (isometry/elevation/section) exist to avoid.
+ *
+ *  Duck-typed rather than `instanceof meshup.Mesh`: this module draws for either kernel and
+ *  so never commits to one's classes. */
+export function isDrawableFace(shape: any): boolean
+{
+    return (shape?.type === 'Mesh' || shape?.type === 'Polygon') && shape.isFlatOnXY?.() === true
+}
+
+/** Every Shape of a collection that draws as a face. */
+export function drawableFaces(collection: any): Array<any>
+{
+    const shapes = collection?.shapes?.() ?? []
+    return (Array.isArray(shapes) ? shapes : []).filter(isDrawableFace)
+}
+
+/** Flatten a ShapeCollection into renderable shapes, tagged by projection group.
+ *
+ *  Curves AND flat faces — see isDrawableFace().
  *
  *  NOTE: the 'silhouette' group tags the SAME Curve objects as 'visible' (it is a
  *  classification, not a separate edge set), so it must never be emitted as its own
@@ -311,9 +335,11 @@ interface PreparedCurve
  */
 function prepareCurves(collection: any): Array<PreparedCurve>
 {
-    const curves: Array<any> = collection?.curves?.()?.toArray?.()
+    const curveList: Array<any> = collection?.curves?.()?.toArray?.()
         ?? collection?.curves?.()
         ?? []
+
+    const curves: Array<any> = [...drawableFaces(collection), ...(Array.isArray(curveList) ? curveList : [])]
 
     // Ask for the 'hidden' group only when it is actually there: ShapeCollection.group()
     // logs an ERROR for a missing group, and it is missing in both common cases — authored
@@ -326,7 +352,7 @@ function prepareCurves(collection: any): Array<PreparedCurve>
     const hiddenSet = new Set<any>(hiddenGroup?.toArray?.() ?? [])
 
     const out: Array<PreparedCurve> = []
-    for (const curve of Array.isArray(curves) ? curves : [])
+    for (const curve of curves)
     {
         const box = curveBoxSVG(curve)
         if (!box) continue

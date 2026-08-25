@@ -37,7 +37,7 @@ import {
 import { fetchSharedScript } from '@archiyou/editor/src/services/sharing';
 import { fetchPublishedScript } from '@archiyou/editor/src/services/publishing';
 
-import { configuratorUrl } from './publish-constants';
+import { publicConfiguratorUrl } from './publish-constants';
 
 /** Parse "X.Y…" → [major, minor]; defaults to [0, 0] when unparseable. */
 function parseMajorMinor(v: string | null | undefined): [number, number] {
@@ -368,7 +368,9 @@ export class EditorFileInfo extends SignalWatcher(LitElement)
 
     const publishedVersion = script?.version ?? this._lastPublishedVersion?.version ?? null;
     const publishedUrl = (script?.published || this._lastPublishedVersion) && script?.author && script?.name && publishedVersion
-      ? (script?.published?.url ?? this._lastPublishedVersion?.url ?? configuratorUrl(script!.author!, script!.name!, publishedVersion))
+      ? publicConfiguratorUrl(
+          script?.published?.url ?? this._lastPublishedVersion?.url,
+          script!.author!, script!.name!, publishedVersion)
       : null;
 
     if (!sharedUrl && !publishedUrl)

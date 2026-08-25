@@ -251,7 +251,7 @@ layer('assembly').color('green')
 side.copy().mirrorX((-WIDTH+2*BEAM_THICKNESS)/2)
         .color('green'); // color not automatically added (BUG)
 
-chair = all().solids().visible();
+chair = all().solids().onlyVisible();
 
 //// CALC ////
 

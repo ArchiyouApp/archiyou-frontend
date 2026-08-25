@@ -44,6 +44,21 @@ export function toPublicUser(u: UserRow): PublicUser {
   };
 }
 
+/**
+ * The view of *somebody else* — what the people picker is allowed to see.
+ *
+ * `toPublicUser` is the view of yourself (login, /auth/me) and legitimately carries
+ * your address and entitlements. Handing that same shape to a directory search meant
+ * any account could enumerate every user's email, so this drops both: the address,
+ * and the module entitlements, which are nobody else's business either.
+ *
+ * `email` stays in the shape as null rather than being removed, so PublicUser stays
+ * one type and the picker's `u.email ? … : nothing` branch simply does not render.
+ */
+export function toDirectoryUser(u: UserRow): PublicUser {
+  return { ...toPublicUser(u), email: null, modules: [] };
+}
+
 /** Tolerate a legacy or hand-edited row: the column is JSON, so it can hold
  *  anything if someone writes it directly. Anything that is not a list of
  *  non-empty strings degrades to "no modules" rather than crashing a login. */
@@ -70,11 +85,25 @@ export class UserService {
     return db.select().from(users).where(eq(users.id, id)).get();
   }
 
-  /** Search accounts by handle / email / name (case-insensitive substring),
-   *  excluding `excludeUsername` (the caller). Returns client-safe views. */
+  /**
+   * Search accounts for the "Share only with" picker, excluding `excludeUsername`
+   * (the caller).
+   *
+   * Two deliberate narrowings, because this is the one route that reads *other*
+   * people's rows and every signed-in account can call it:
+   *
+   *  - **Handle and name match on substring; email matches only in full.** A
+   *    substring email search turns the directory into an address harvester, and
+   *    lets anyone confirm whether a given address has an account — which is
+   *    precisely what /auth/forgot-password refuses to disclose. Requiring the
+   *    whole address keeps the real workflow (you already know the address of the
+   *    person you want to share with) and removes the probe.
+   *  - **The result never carries the address**, see toDirectoryUser.
+   */
   search(query: string, excludeUsername: string, limit = 10): PublicUser[] {
-    const q = `%${query.trim().toLowerCase()}%`;
-    if (query.trim().length === 0) return [];
+    const raw = query.trim().toLowerCase();
+    if (raw.length === 0) return [];
+    const substring = `%${raw}%`;
     const rows = db
       .select()
       .from(users)
@@ -82,15 +111,15 @@ export class UserService {
         and(
           ne(users.username, excludeUsername.toLowerCase()),
           or(
-            like(users.username, q),
-            like(sql`lower(${users.email})`, q),
-            like(sql`lower(${users.name})`, q),
+            like(users.username, substring),
+            like(sql`lower(${users.name})`, substring),
+            eq(sql`lower(${users.email})`, raw),
           ),
         ),
       )
       .limit(limit)
       .all();
-    return rows.map(toPublicUser);
+    return rows.map(toDirectoryUser);
   }
 
   /** Turn an email/name into a unique lowercase handle. */

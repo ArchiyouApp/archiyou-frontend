@@ -119,13 +119,6 @@ export class MainMenuFileMenu extends LitElement
           <wa-icon slot="icon" library="lucide" name="box"></wa-icon>
           ${msg('API')}
         </wa-dropdown-item>
-
-        <wa-divider></wa-divider>
-
-        <wa-dropdown-item value="vscode">
-          <wa-icon slot="icon" src="/img/vscode.svg"></wa-icon>
-          ${msg('Open in VS Code')}
-        </wa-dropdown-item>
       </wa-dropdown>
     `;
   }

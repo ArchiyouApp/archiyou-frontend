@@ -76,7 +76,7 @@ diagStrutLeft = line(diagStrutVertexLeftBottom, diagStrutLineLeftEnd)
 diagStrutLeft.copy().mirrorX(sideCenterLine.center().x)
             .name('sideD')
 
-sideFront = all().visible().color('red').name('sideFront');
+sideFront = all().onlyVisible().color('red').name('sideFront');
 sideBack =  sideFront
             .copy()
             .move(0,spineWidth+STRUT_HEIGHT)

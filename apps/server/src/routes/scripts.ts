@@ -10,17 +10,12 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 
 import type { ScriptData, ScriptShared } from '@archiyou/core/src/execution/types';
 
-import { config } from '../config';
 import { scriptStore } from '../services/ScriptStore';
 import { thumbnailStore } from '../services/ThumbnailStore';
 import { logThumbnail } from '../services/thumbnailLog';
 import { translationQueue } from '../translation/TranslationQueue';
 import { userService } from '../services/UserService';
-
-/** Public URL where a published configurator is served (frontend origin). */
-function configuratorUrl(author: string, name: string, version: string): string {
-  return `${config.frontendUrl}/configurators/${author}/${name}:${version}`;
-}
+import { configuratorUrl } from './scriptUrl';
 
 /** Publish/share bodies carry the thumbnail SVG source alongside the ScriptData, in a field
  *  that is deliberately NOT part of ScriptSchema — so the bytes can never round-trip through

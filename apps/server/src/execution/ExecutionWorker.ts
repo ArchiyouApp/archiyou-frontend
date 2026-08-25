@@ -152,10 +152,20 @@ export class ExecutionWorker
     {
         const { timeoutMs } = config.execution;
         let timer: NodeJS.Timeout | undefined;
+        // Node has no `location`, so a root-relative asset path in the script — the
+        // default document titleblock logo is '/img/archiyou_logo_header.png' — has
+        // nothing to resolve against and the image is silently dropped. Tell the run
+        // where the app is served from. Stamped here rather than at the /execute route
+        // so every server-side execution path gets it. A request that already carries
+        // one keeps it.
+        const runRequest: RunnerScriptExecutionRequest = {
+            ...request,
+            appBaseUrl: request.appBaseUrl ?? config.frontendUrl,
+        };
         try
         {
             return await Promise.race([
-                this.runner.execute(request),
+                this.runner.execute(runRequest),
                 new Promise<never>((_, reject) =>
                 {
                     timer = setTimeout(

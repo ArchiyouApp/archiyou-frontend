@@ -81,11 +81,41 @@ export class Docs
         this._settings = settings;
         if(!settings)
         {
-            console.warn(`Docs::constructor(settings,ay): No settings ({ proxy: string }) given. Not all functionality enabled!`);
+            // Not a problem by itself: getAssetProxyUrl() falls back to the running
+            // request's assetProxyUrl, which is how the editor supplies it.
+            console.info(`Docs::constructor(settings,ay): No settings ({ proxy: string }) given; taking the asset proxy from the active run.`);
         }
         else {
             console.info(`Docs::constructor(settings, ay): Init Docs module with settings: "${JSON.stringify(settings)};`)
         }
+    }
+
+    /** BASE url of the asset proxy for anything this document fetches (images).
+     *  Explicit settings win; otherwise it comes from the request being executed, which
+     *  is where the editor puts it (execution-service sets assetProxyUrl = API_BASE_URL).
+     *  undefined means "no proxy configured" — the caller then fetches directly, which
+     *  works in node but is blocked by CORS/CSP in the browser.
+     *
+     *  '' is a MEANINGFUL value (root-relative `/proxy`), so this must not collapse it
+     *  to a falsy "unset". */
+    getAssetProxyUrl():string|undefined
+    {
+        const fromSettings = this._settings?.proxy;
+        if(typeof fromSettings === 'string') return fromSettings;
+        const fromRequest = this._archiyou?.runner?.getActiveExecRequest?.()?.assetProxyUrl;
+        return (typeof fromRequest === 'string') ? fromRequest : undefined;
+    }
+
+    /** ABSOLUTE origin to resolve a root-relative image path against when the run has
+     *  no origin of its own (node). Explicit settings win, else the running request's
+     *  appBaseUrl, which the server fills from FRONTEND_URL. undefined in a browser
+     *  run that was never told one — there location.origin is the answer anyway. */
+    getAppBaseUrl():string|undefined
+    {
+        const fromSettings = this._settings?.baseUrl;
+        if(typeof fromSettings === 'string' && fromSettings) return fromSettings;
+        const fromRequest = this._archiyou?.runner?.getActiveExecRequest?.()?.appBaseUrl;
+        return (typeof fromRequest === 'string' && fromRequest) ? fromRequest : undefined;
     }
 
     hasDocs():boolean

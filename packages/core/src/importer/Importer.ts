@@ -19,6 +19,8 @@
 import { Importer as MeshupImporter, ShapeCollection } from '@archiyou/meshup';
 import type { ImportFormat } from '@archiyou/meshup';
 
+import { assetProxyUrlFor } from '../utils';
+
 export interface AssetImportOptions
 {
     /** Force a format instead of auto-detecting. */
@@ -86,10 +88,11 @@ export class Importer
     static SCALE_MIN = 10;
     static SCALE_MAX = 10_000;
 
-    /** Proxy URL for a remote asset. `${base}/proxy?url=<encoded>`; base '' → root-relative. */
+    /** Proxy URL for a remote asset. `${base}/proxy?url=<encoded>`; base '' → root-relative.
+     *  Shared with the docs Image loader — see assetProxyUrlFor(). */
     static proxyUrlFor(url: string, proxyBase = ''): string
     {
-        return `${proxyBase.replace(/\/$/, '')}/proxy?url=${encodeURIComponent(url)}`;
+        return assetProxyUrlFor(url, proxyBase);
     }
 
     /** Fetch an asset through the proxy. Never throws — failures come back on

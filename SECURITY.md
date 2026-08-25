@@ -55,7 +55,7 @@ Mitigations in place:
 - dynamic param behaviours are only `new Function`-hydrated for scripts the
   signed-in user owns, never for foreign ones
 - the importer parses pasted script data without evaluating it
-- the deployed CSP (`apps/server/Caddyfile`) constrains what a script can reach
+- the deployed CSP (the repo-root `Caddyfile`) constrains what a script can reach
 
 Note that the CSP must allow `'unsafe-eval'`, because that is how the Runner
 works. Session tokens are JWTs held in `localStorage`, so any XSS that does get
@@ -75,12 +75,21 @@ SSRF (rejecting loopback, private, link-local, CGNAT and multicast targets,
 re-checking every redirect hop), caps the response size, times out, and rate
 limits per IP.
 
+The upstream `Content-Type` is echoed verbatim, because the importer uses it as the
+format signal — so the response is instead declawed on the way out: `nosniff`,
+`Content-Security-Policy: default-src 'none'; sandbox`, and
+`Content-Disposition: attachment`. Together those mean a proxied HTML or SVG
+document downloads rather than renders if it is ever navigated to, and cannot
+execute script or claim our origin if it is framed. `fetch()` — how every real
+consumer reads this route — is unaffected. This matters because in the recommended
+single-host deployment the API answers on the *app's own* origin, whose CSP must
+allow `'unsafe-eval'` and `'unsafe-inline'` for the Runner.
+
 Residual gaps, tracked as open issues: the DNS lookup used for validation is not
-the one `fetch` ultimately connects with, so a DNS-rebinding race is possible;
+the one `fetch` ultimately connects with, so a DNS-rebinding race is possible; and
 the IPv6 blocklist uses prefix string matching rather than proper prefix-length
-checks; and the upstream `Content-Type` is echoed, which lets the API origin serve
-attacker-supplied content types. Set `SERVER_PROXY_ALLOWLIST` to close this down
-if you do not need arbitrary hosts.
+checks. Set `SERVER_PROXY_ALLOWLIST` to close this down if you do not need
+arbitrary hosts.
 
 ## Deployment checklist
 
@@ -97,7 +106,7 @@ if you do not need arbitrary hosts.
       links in outgoing email.
 - [ ] `SERVER_PROXY_ALLOWLIST` considered.
 - [ ] Off-box backups configured (`SERVER_BACKUP_S3_*`) and the cron line from
-      [README → Backups](README.md#backups) installed. `pnpm admin:backup` takes a
+      [apps/server/README → Backups](apps/server/README.md#backups) installed. `pnpm admin:backup` takes a
       consistent snapshot with SQLite's online backup API, so no manual WAL
       checkpoint is needed — but do **not** roll your own by copying `archiyou.db`
       while a `-wal` sits next to it: that silently loses every write still in the

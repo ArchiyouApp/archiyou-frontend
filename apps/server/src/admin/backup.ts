@@ -8,7 +8,7 @@
  * The SQLite database is snapshotted with SQLite's online backup API, so this is
  * safe to run against a live server and needs no manual WAL checkpoint.
  *
- * Scheduling lives in the host crontab, not here — see README → Backups.
+ * Scheduling lives in the host crontab, not here — see apps/server/README → Backups.
  *
  * Exit codes (cron's MAILTO gets these through `docker compose exec`):
  *   0  archive uploaded (or written with --out) and any prune completed

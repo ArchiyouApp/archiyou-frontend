@@ -373,7 +373,7 @@ describe('Doc', () =>
 		const svg = await doc.toSVG() as string
 
 		expect(svg).toContain('<svg')
-		expect(svg).not.toContain('ShapeCollection::toSVG() — no curves')
+		expect(svg).not.toContain('ShapeCollection::toSVG() — nothing 2D to draw')
 	})
 
 	it('exports a mesh-mode pipeline view built from a collection of copied subcollections', async () =>
@@ -406,7 +406,7 @@ describe('Doc', () =>
 		const svg = await doc.toSVG() as string
 
 		expect(svg).toContain('<svg')
-		expect(svg).not.toContain('ShapeCollection::toSVG() — no curves')
+		expect(svg).not.toContain('ShapeCollection::toSVG() — nothing 2D to draw')
 	})
 })
 

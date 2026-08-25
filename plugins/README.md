@@ -1,5 +1,7 @@
 # Developing an Archiyou plugin
 
+**IN DEVELOPMENT**
+
 Archiyou plugins are **guests** in the Archiyou editor: the editor keeps owning the shell,
 the 3D viewer, and execution, while a plugin contributes to a small set of extension points.
 This is a hands-on manual for the parts that work today. The rest of the architecture —

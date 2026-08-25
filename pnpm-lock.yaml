@@ -461,9 +461,6 @@ importers:
       '@archiyou/core':
         specifier: workspace:*
         version: link:../core
-      '@archiyou/editor':
-        specifier: workspace:*
-        version: link:../../apps/editor
       '@archiyou/module-sdk':
         specifier: workspace:*
         version: link:../module-sdk

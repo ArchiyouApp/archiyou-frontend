@@ -4,6 +4,8 @@
  *
  *  - conversion between different data formats
  *  - basic energy calculations
+ * 
+ *  UP FOR DEPRECATION: Modules will be able to do these things client-side
  */
 
 /** API wrapper for Archiyou services */

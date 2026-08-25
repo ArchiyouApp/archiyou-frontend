@@ -9,23 +9,10 @@
  * 
 */
 
-// TODO: after refactor
-//import { DxfBlock, point3d } from '@tarikjabiri/dxf'
-
 import type  { MainAxis, ModelUnits, AnyShape, AnyShapeCollection, AnyShapeOrCollection } from '../modeler/types'
+
 /**
- * Geometry types come from MESHUP, not the BREP kernel, even though several
- * names collide. This class builds geometry through `this.classes.*`, and
- * KernelClasses (modeler/types.ts) is declared entirely in terms of meshup —
- * `Vector: typeof meshup.Vector`, and so on. Importing the identically-named
- * BREP `Vector`/`Point` instead produces the memorable
- * "Type 'Vector' is missing the following properties from type 'Vector'".
- *
- * `import type` only: these are used purely in type position, so nothing is
- * emitted and the annotator gains no runtime dependency on either kernel.
- *
- * Note meshup has no `Edge` — its 1D shape is `Curve` (see the casts below,
- * which is what `linkedTo` actually holds in mesh mode).
+ * TODO: Types from both kernels. Now only meshup. 
  */
 import type { Vector, Point, PointLike, Curve } from '@archiyou/meshup'
 import type { ArchiyouModules } from '../types'

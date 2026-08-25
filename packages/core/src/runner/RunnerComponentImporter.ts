@@ -1,16 +1,7 @@
-import type { Runner } from './Runner'
-import { Script } from '../Script';
-import { ScriptOutputManager } from '../execution/ScriptOutputManager';
-import { ScriptOutputPath } from '../execution/ScriptOutputPath';
-
-import type { RunnerScriptExecutionRequest, RunnerScriptScope } from './types';
-import { ScriptData } from '../execution/types';
-import { ImportComponentResult, ImportComponentResultPipelines } from './types';
-import { SceneNode } from '@archiyou/meshup';
-import type { ComponentGraphNode } from '@archiyou/meshup';
-
 
 /**
+ *   RunnerComponentImporter.ts
+ * 
  *   Exists in script execution scope
  *   And gathers all information needed to execute a component script 
  *   and return specific results
@@ -90,6 +81,19 @@ import type { ComponentGraphNode } from '@archiyou/meshup';
  *          
  * 
  */
+
+import type { Runner } from './Runner'
+import { Script } from '../Script';
+import { ScriptOutputManager } from '../execution/ScriptOutputManager';
+import { ScriptOutputPath } from '../execution/ScriptOutputPath';
+
+import type { RunnerScriptExecutionRequest, RunnerScriptScope } from './types';
+import { ScriptData } from '../execution/types';
+import { ImportComponentResult, ImportComponentResultPipelines } from './types';
+import { SceneNode } from '@archiyou/meshup';
+import type { ComponentGraphNode } from '@archiyou/meshup';
+
+
 export class RunnerComponentImporter
 {
     //// SETTINGS ////

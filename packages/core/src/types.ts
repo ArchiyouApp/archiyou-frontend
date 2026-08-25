@@ -1,10 +1,8 @@
 /**
  *  General internal types
  *  
- *  - Place types that are used by (script) users in specific modules 
- *  - We use typebox for validation and type inference
- *  
- *  
+ *  - Module-specific types are in their own files, e.g. modeler/types.ts
+ *  - We use Typebox for validation of most user-facing methods as well as for type inference 
  * 
  */
 
@@ -22,6 +20,7 @@ import type { ModuleRegistry } from "./modules/ModuleRegistry";
 import type { SceneNodeData } from "./modeler/types";
 
 
+/** The Archiyou modules used for app and modules to interact */
 export interface ArchiyouModules 
 {
     console: Console,
@@ -37,8 +36,8 @@ export interface ArchiyouModules
      *  contexts that build an ArchiyouModules without a Runner. */
     modules?: ModuleRegistry,
     // modeling kernels
-    oc?: any, // OpenCascade (BREP)
-    meshup?: any, // Meshup (mesh/curve)
+    oc?: any, // OpenCascade (BREP) 
+    meshup?: any, // Meshup (mesh/curve) // TODO: TS typing
 }
 
 

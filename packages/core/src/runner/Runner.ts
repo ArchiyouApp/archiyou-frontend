@@ -2,10 +2,12 @@
  *  Archiyou Runner.ts
  * 
  *  Easily execute Archiyou scripts in different contexts. 
- *  Currently support execution in main thread, not in webworkers /worker threads because its best practice to have these workers defined separately
- *   
+ *  Currently support execution in main thread, and workers (use RunnerWorker) 
  * 
+ *  WARNING: a Runner maintains seperate states (for example seperate for component) but execution is not sandboxed. 
+ *   
  *  For requesting results we use output paths in RunnerExecutionRequest.outputs:
+ *  
  *  For example: 
 */
  //      - default/models/glb: get the default model in GLB format with default options

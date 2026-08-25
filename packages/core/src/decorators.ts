@@ -1,3 +1,14 @@
+/**
+ *  decorators.ts
+ *  
+ *  Archiyou is code CAD so we spend some time making a forgiving developer experience for writing scripts.
+ *  This file provides decorators that validate and coerce method arguments using TypeBox schemas
+ *  and give sane hints when they are invalid.
+ *  
+ *  TODO: More work to do after switching to the Typebox method. 
+ * 
+ */
+
 import { Value } from 'typebox/value'
 import { Type, type TSchema } from 'typebox'
 

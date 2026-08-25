@@ -1,6 +1,6 @@
 import type { ExecutionRequestOutputFormatGLTFOptions } from "./execution/types";
 
-//// ENGINE ////
+//// ENGINE VERSION ////
 
 /** The version script modules declare compatibility against via their manifest
  *  `engine` range (see packages/core/src/modules/ModuleRegistry.ts).

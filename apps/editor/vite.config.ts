@@ -75,6 +75,23 @@ export default defineConfig(() => {
       },
     },
 
+    resolve: {
+      alias: {
+        // packages/ui reaches back into this app's source for shared state and
+        // services (state/workspace, services/publishing, ...). That used to
+        // resolve through a `@archiyou/editor: workspace:*` dependency in
+        // packages/ui, but declaring it made ui and editor depend on each other,
+        // and turbo refuses to build a cyclic package graph — `pnpm build` and
+        // `pnpm test` both died on "Cyclic dependency detected" before running
+        // anything. The import is a dev-time source alias, not a package
+        // dependency (ui has no build output, this app is private), so the alias
+        // lives here instead. Both tsconfigs carry the matching `paths` entry.
+        // Remove this once that shared state moves down into a package both
+        // sides can depend on.
+        '@archiyou/editor/src': path.resolve(import.meta.dirname, 'src'),
+      },
+    },
+
     // Workers must be ES modules so they can use dynamic imports and top-level await
     worker: {
       format: 'es' as const,

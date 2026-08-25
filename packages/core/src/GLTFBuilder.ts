@@ -1,3 +1,17 @@
+/**
+ * GLTFBuilder.ts
+ *  
+ *  Archiyou leans on GLTF quite a bit: as basic vizualisation format and as advanced usage:
+ *  
+ *  - The Archiyou viewer is a GLTF viewer with Archiyou-specific extensions
+ *  - These extensions include: line rendering (following the Cesium/Bentley standard), 
+ *        animations, and Archiyou-specific extras (scenegraph, annotations, managed handles)
+ *  
+ *  Our default geometry kernel Meshup writes GLTF, but the GLTFBuilder extends it. 
+ * 
+ * 
+ */
+
 // Vector/toRad come from the MESH kernel on purpose. They used to be imported from
 // ./modeler/brep, which pulled the 10MB OpenCascade barrel into every mesh-only run — and
 // worse, brep's Point constructor calls getOc(), so `new Vector(1,0,0)` below threw outright

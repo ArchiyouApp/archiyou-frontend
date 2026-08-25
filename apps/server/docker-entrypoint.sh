@@ -93,12 +93,24 @@ fi
 # The latter is how you pick up a changed SERVER_API_BASE_URL — that lives in the
 # environment, not in a source file, so the staleness check cannot see it.
 
+# Both ways of disabling the build SAY SO. A silent skip is indistinguishable
+# from a build that decided it was up to date, and sends you hunting through the
+# staleness check for a reason that was never there.
 should_build=1
-[ "${ARCHIYOU_SKIP_BUILD:-}" = '1' ] && should_build=0
+if [ "${ARCHIYOU_SKIP_BUILD:-}" = '1' ]; then
+  should_build=0
+  echo "==> Build DISABLED by ARCHIYOU_SKIP_BUILD=1 — booting on whatever was built last." >&2
 # The worker service mounts the checkout read-only and has nothing to build.
 # Testing apps/editor rather than $REPO because a read-only bind mount reports
 # the mount point itself as unwritable, which is precisely the case to skip.
-[ -w "$REPO/apps/editor" ] || should_build=0
+elif [ ! -w "$REPO/apps/editor" ]; then
+  should_build=0
+  echo "==> Build SKIPPED: $REPO/apps/editor is not writable by uid $(id -u)." >&2
+  echo "    Expected on the worker (read-only mount). On the api it is a bug:" >&2
+  echo "    the editor SPA will never be rebuilt and caddy keeps serving the old" >&2
+  echo "    bundle, or 404s if there is none. Fix on the host:" >&2
+  echo "      sudo chown -R 1000:1000 <checkout>/apps/editor" >&2
+fi
 
 if [ "$should_build" = '1' ]; then
   # Sources whose change means a rebuild is due. Deliberately not $REPO itself:

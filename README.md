@@ -1,5 +1,21 @@
 # Archiyou
 
+> [!NOTE]
+> **Archived history — not maintained.**
+> This repository holds the 113 commits Archiyou was built from between 2026-03-26 and
+> 2026-08-25, which were squashed into the `Initial commit` of the public repository.
+> Its tip is byte-identical to that commit. Development continues at
+> [ArchiyouApp/archiyou](https://github.com/ArchiyouApp/archiyou); issues and pull
+> requests belong there.
+>
+> Every commit here carries its AI disclosure, added retroactively in a single pass.
+> See [documentation/nlnet/ai](./documentation/nlnet/ai/README.md) for how that was
+> reconstructed, and for where it is weaker than disclosure written at the time.
+> Build output (`apps/editor/dist/`, `packages/gdrr2bp-wasm/target/`) and one committed
+> `.env` file were removed from the history; everything else is unchanged.
+>
+> The rest of this README is the one that stood at the last commit, in August 2026.
+
 > [!IMPORTANT]
 > **NEW VERSION IS COMING**
 > This repo offers the latest version of Archiyou, but our main website and editor are not updated yet. If you want to try the new editor: [next.archiyou.com](https://next.archiyou.com). More is coming! 

@@ -20,14 +20,14 @@ Output: (this commit)
 Review: <what the author checked>
 ```
 
-## Honesty of this record
+## Weaknesses of this method
 
 The disclosure was added **retroactively**, in one pass over the history, so it is weaker than the per-commit disclosure the public repository has had since 2026-09-14. What that means in practice:
 
 - **The commits are the originals.** Their content, dates, order, subjects and bodies are unchanged. Only the author line and the disclosure block were added, and `Co-Authored-By` trailers were removed in favour of the block.
 - **The prompts are verbatim**, from the local Claude Code prompt history. That history starts on 2026-04-23 and has holes (2026-04-23 → 2026-05-07, 2026-05-07 → 2026-05-18, 2026-06-17 → 2026-06-29), so 16 of the 113 commits say `Prompt: not retained` instead of quoting one.
+- **Human and generated work are not separated thus human-made code-changes (not seperately commited) are not visible as such**, ** In this period the author and the agent worked within the same commits, so commits are marked `mixed` rather than split into separate human and generated commits. NLnet's policy asks for that separation going forward; the public repository does it from 2026-09-14 on.
 - **The models before 2026-08-15 are reconstructed from memory.** Claude Code logs that the model was switched, not which model was picked. The rule applied: Claude Sonnet 4.6 before July 2026, Claude Opus 4.6 from July 2026, except where a commit trailer or a surviving session transcript named the model (Claude Opus 5, from 2026-07-30 on).
-- **Human and generated work are not separated.** In this period the author and the agent worked within the same commits, so commits are marked `mixed` rather than split into separate human and generated commits. NLnet's policy asks for that separation going forward; the public repository does it from 2026-09-14 on.
 - **The review lines are general.** They record the working method of the period (code review plus testing in the browser), not a specific per-commit check written at the time.
 - **Build output and one committed key were removed** from the history: `apps/editor/dist/`, `packages/gdrr2bp-wasm/target/` and a `.env` file that held an API key.
 
